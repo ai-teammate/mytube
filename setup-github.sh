@@ -51,6 +51,16 @@ set_secret "JIRA_API_TOKEN"    "$(get JIRA_API_TOKEN)"
 set_secret "GEMINI_API_KEY"    "$(get GEMINI_API_KEY)"
 set_secret "FIGMA_TOKEN"       "$(get FIGMA_TOKEN)"
 set_secret "CODEMIE_API_KEY"   "$(get CODEMIE_API_KEY)"
+set_secret "DB_USER"           "$(get DB_USER)"
+set_secret "DB_PASSWORD"       "$(get DB_PASSWORD)"
+
+# GCP_SA_KEY is a JSON file — set from gcp-key.json if present
+if [ -f "gcp-key.json" ]; then
+  echo "  secret: GCP_SA_KEY (from gcp-key.json)"
+  gh secret set "GCP_SA_KEY" --body "$(cat gcp-key.json)" --repo "$REPO"
+else
+  echo "  skip   GCP_SA_KEY (gcp-key.json not found — see instruction.md)"
+fi
 
 echo ""
 echo "==> Variables"
@@ -64,6 +74,18 @@ set_var "AI_AGENT_PROVIDER"                     "$(get AI_AGENT_PROVIDER)"
 set_var "CODEMIE_BASE_URL"                      "$(get CODEMIE_BASE_URL)"
 set_var "CODEMIE_MODEL"                         "$(get CODEMIE_MODEL)"
 set_var "CODEMIE_MAX_TURNS"                     "$(get CODEMIE_MAX_TURNS)"
+set_var "GCP_PROJECT_ID"                        "$(get GCP_PROJECT_ID)"
+set_var "GCP_REGION"                            "$(get GCP_REGION)"
+set_var "CLOUD_SQL_CONNECTION_NAME"             "$(get CLOUD_SQL_CONNECTION_NAME)"
+set_var "DB_NAME"                               "$(get DB_NAME)"
+set_var "GCP_DB_USER_SECRET"                    "$(get GCP_DB_USER_SECRET)"
+set_var "GCP_DB_PASSWORD_SECRET"                "$(get GCP_DB_PASSWORD_SECRET)"
+set_var "FIREBASE_PROJECT_ID"                   "$(get FIREBASE_PROJECT_ID)"
+set_var "FIREBASE_API_KEY"                      "$(get FIREBASE_API_KEY)"
+set_var "FIREBASE_AUTH_DOMAIN"                  "$(get FIREBASE_AUTH_DOMAIN)"
+set_var "FIREBASE_MESSAGING_SENDER_ID"          "$(get FIREBASE_MESSAGING_SENDER_ID)"
+set_var "FIREBASE_APP_ID"                       "$(get FIREBASE_APP_ID)"
+set_var "FIREBASE_STORAGE_BUCKET"               "$(get FIREBASE_STORAGE_BUCKET)"
 
 echo ""
 echo "Done."
