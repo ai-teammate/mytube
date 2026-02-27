@@ -45,7 +45,7 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --max-instances 3 \
+            --max-instances 2 \
             --add-cloudsql-instances ${{ vars.CLOUD_SQL_CONNECTION_NAME }} \
             --set-env-vars "DB_NAME=${{ vars.DB_NAME }},INSTANCE_UNIX_SOCKET=/cloudsql/${{ vars.CLOUD_SQL_CONNECTION_NAME }}" \
             --set-secrets "DB_USER=${{ vars.GCP_DB_USER_SECRET }}:latest,DB_PASSWORD=${{ vars.GCP_DB_PASSWORD_SECRET }}:latest" \
@@ -65,7 +65,7 @@ jobs:
             --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }} \
             --format="value(name)" \
-            --sort-by="~metadata.creationTimestamp" | tail -n +3)
+            --sort-by="~metadata.creationTimestamp" | tail -n +2)
           if [ -n "$OLD" ]; then
             echo "$OLD" | xargs -I{} gcloud run revisions delete {} \
               --region ${{ env.REGION }} \
@@ -78,7 +78,7 @@ jobs:
           OLD=$(gcloud container images list-tags ${{ env.IMAGE }} \
             --project ${{ env.PROJECT_ID }} \
             --format="get(digest)" \
-            --sort-by="~timestamp" | tail -n +3)
+            --sort-by="~timestamp" | tail -n +2)
           if [ -n "$OLD" ]; then
             echo "$OLD" | xargs -I{} gcloud container images delete \
               "${{ env.IMAGE }}@{}" \
