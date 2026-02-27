@@ -1,0 +1,196 @@
+name: AI Teammate
+
+# Customize run name to show config and ticket key
+run-name: "${{ inputs.config_file }} : ${{ inputs.concurrency_key }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Path to config'
+        required: true
+      encoded_config:
+        description: 'Encoded or JSON Agent Config'
+        required: false
+      concurrency_key:
+        description: 'Ticket key for concurrency grouping (e.g., JD-123)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  ai-teammate:
+    runs-on: ubuntu-latest
+    concurrency:
+      # Group by config_file + concurrency_key
+      # This prevents duplicate runs on same ticket while allowing parallel processing of different tickets
+      group: ai-teammate-${{ inputs.config_file }}-${{ inputs.concurrency_key }}
+      cancel-in-progress: false
+
+    steps:
+      - name: 📋 Job Info
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🤖 AI Teammate Workflow Started"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📁 Config File: ${{ inputs.config_file }}"
+          echo "🎫 Ticket Key: ${{ inputs.concurrency_key }}"
+          if [ -n "${{ inputs.encoded_config }}" ]; then
+            echo "📝 Encoded Config: provided (${#ENCODED_CONFIG} chars)"
+          else
+            echo "📝 Encoded Config: (not provided - using default JQL from config)"
+          fi
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        env:
+          ENCODED_CONFIG: ${{ inputs.encoded_config }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Setup Java Environment
+        uses: ./.github/actions/setup-java-only
+        with:
+          cache-key-suffix: '-cursor'
+
+      - name: Set up Node.js
+        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm global packages
+        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            /usr/local/lib/node_modules
+          key: ${{ runner.os }}-npm-global-${{ hashFiles('.github/workflows/ai-teammate.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-global-
+
+      - name: Install Cursor CLI
+        if: vars.AI_AGENT_PROVIDER != 'codemie'
+        run: |
+          echo "Installing Cursor CLI..."
+          curl https://cursor.com/install -fsS | bash
+
+          echo "Checking installation locations..."
+          ls -la "$HOME/.cursor/" || echo "No .cursor directory"
+          ls -la "$HOME/.cursor/bin/" || echo "No .cursor/bin directory"
+          ls -la "$HOME/.local/bin/" || echo "No .local/bin directory"
+
+          # Cursor CLI installs to ~/.local/bin, not ~/.cursor/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          # Test installation
+          export PATH="$HOME/.local/bin:$PATH"
+          if command -v cursor-agent; then
+            echo "✅ cursor-agent found at: $(command -v cursor-agent)"
+            cursor-agent --version 2>&1 || echo "Version check failed"
+          else
+            echo "❌ cursor-agent not found after installation"
+            echo "Available files in .local/bin:"
+            ls -la "$HOME/.local/bin/" 2>/dev/null || echo "Directory does not exist"
+          fi
+
+      - name: Install Codemie CLI
+        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        run: |
+          if command -v codemie-claude &> /dev/null; then
+            echo "✅ Codemie CLI found in cache"
+            codemie-claude --version || echo "Version check failed"
+          else
+            echo "📦 Installing Codemie CLI..."
+            npm install -g @codemieai/code
+            codemie install claude --supported
+            echo "✅ Codemie CLI ready"
+            codemie-claude --version || echo "Version check failed"
+          fi
+
+      - name: Install DMTools CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.137/install.sh | bash -s v1.7.137
+          echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
+
+      - name: Verify CLI Installations
+        run: |
+          dmtools || echo "dmtools verification failed"
+          if [ "${{ vars.AI_AGENT_PROVIDER }}" != "codemie" ]; then
+            cursor-agent --version || echo "cursor-agent version failed"
+          else
+            codemie-claude --version || echo "codemie-claude version failed"
+          fi
+
+      - name: Configure Git Author
+        run: |
+          git config --global user.name "AI Teammate"
+          git config --global user.email "agent.ai.native@gmail.com"
+          echo "✅ Git author configured as AI Teammate"
+
+      - name: Run AI Teammate
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          MODEL: sonnet-4.5
+          AGENT_DISABLE_WATCHDOG: "1"
+          PATH: "/home/runner/.local/bin:/home/runner/.dmtools/bin:/bin:/usr/bin:$PATH"
+          # Jira Configuration
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_BASE_PATH: ${{ vars.JIRA_BASE_PATH }}
+          JIRA_AUTH_TYPE: ${{ vars.JIRA_AUTH_TYPE }}
+          JIRA_TRANSFORM_CUSTOM_FIELDS_TO_NAMES: ${{ vars.JIRA_TRANSFORM_CUSTOM_FIELDS_TO_NAMES }}
+
+          # Confluence Configuration
+          CONFLUENCE_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          CONFLUENCE_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          CONFLUENCE_BASE_PATH: ${{ vars.CONFLUENCE_BASE_PATH }}
+          CONFLUENCE_DEFAULT_SPACE: ${{ vars.CONFLUENCE_DEFAULT_SPACE }}
+          CONFLUENCE_GRAPHQL_PATH: ${{ vars.CONFLUENCE_GRAPHQL_PATH }}
+          JIRA_CLEAR_CACHE: "true"
+          # DMTools Integration Settings
+          DMTOOLS_INTEGRATIONS: "jira,confluence,figma,ai,cli,file"
+
+          # AI Service Configuration
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEFAULT_LLM: "gemini"
+
+          # Figma Configuration
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          FIGMA_BASE_PATH: ${{ vars.FIGMA_BASE_PATH }}
+          ENCODED_CONFIG: ${{ inputs.encoded_config }}
+
+          # GitHub Authentication for PR creation
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+          # AI Agent Provider
+          AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
+
+          # Codemie Configuration
+          CODEMIE_API_KEY: ${{ secrets.CODEMIE_API_KEY }}
+          CODEMIE_BASE_URL: ${{ vars.CODEMIE_BASE_URL }}
+          CODEMIE_MODEL: ${{ vars.CODEMIE_MODEL }}
+          CODEMIE_MAX_TURNS: ${{ vars.CODEMIE_MAX_TURNS }}
+
+        run: |
+          echo "Using configuration: ${{ inputs.config_file }}"
+
+          # Build CI run URL for traceability
+          CI_RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "CI Run URL: ${CI_RUN_URL}"
+
+          if [ -n "${ENCODED_CONFIG}" ]; then
+            echo "Encoded config received (raw):"
+            printf '%s\n' "${ENCODED_CONFIG}"
+            dmtools run "${{ inputs.config_file }}" "${ENCODED_CONFIG}" --ciRunUrl "${CI_RUN_URL}"
+          else
+            echo "No encoded config provided."
+            dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
+          fi

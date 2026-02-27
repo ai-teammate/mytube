@@ -1,0 +1,7 @@
+**.env
+**.token
+cache**
+outputs
+input
+.playwright-mcp
+node_modules
