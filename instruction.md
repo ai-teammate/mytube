@@ -23,6 +23,12 @@ Open-source personal video platform (YouTube-like), built for scale on Google Cl
 | Frontend | Next.js (static export) | GitHub Pages via `deploy-pages.yml` |
 | Auth | Firebase Auth | Google Sign-in, emulator for testing |
 
+## Live URLs
+
+| Service | URL |
+|---------|-----|
+| API | https://mytube-api-80693608388.us-central1.run.app |
+
 ## Project Structure
 
 ```
