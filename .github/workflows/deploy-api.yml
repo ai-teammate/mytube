@@ -57,3 +57,31 @@ jobs:
             --region ${{ env.REGION }} \
             --format "value(status.url)" \
             --project ${{ env.PROJECT_ID }}
+
+      - name: Delete old Cloud Run revisions
+        run: |
+          OLD=$(gcloud run revisions list \
+            --service ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --format="value(name)" \
+            --sort-by="~metadata.creationTimestamp" | tail -n +3)
+          if [ -n "$OLD" ]; then
+            echo "$OLD" | xargs -I{} gcloud run revisions delete {} \
+              --region ${{ env.REGION }} \
+              --project ${{ env.PROJECT_ID }} \
+              --quiet
+          fi
+
+      - name: Delete old GCR images
+        run: |
+          OLD=$(gcloud container images list-tags ${{ env.IMAGE }} \
+            --project ${{ env.PROJECT_ID }} \
+            --format="get(digest)" \
+            --sort-by="~timestamp" | tail -n +3)
+          if [ -n "$OLD" ]; then
+            echo "$OLD" | xargs -I{} gcloud container images delete \
+              "${{ env.IMAGE }}@{}" \
+              --project ${{ env.PROJECT_ID }} \
+              --quiet --force-delete-tags
+          fi
