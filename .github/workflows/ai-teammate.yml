@@ -187,6 +187,9 @@ jobs:
           CODEMIE_MODEL: ${{ vars.CODEMIE_MODEL }}
           CODEMIE_MAX_TURNS: ${{ vars.CODEMIE_MAX_TURNS }}
 
+          # DMTools Advanced Configuration
+          PROMPT_CHUNK_TOKEN_LIMIT: ${{ vars.PROMPT_CHUNK_TOKEN_LIMIT }}
+
         run: |
           echo "Using configuration: ${{ inputs.config_file }}"
 
