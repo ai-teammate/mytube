@@ -17,6 +17,15 @@ and silently skips them on subsequent startup.
 4. Schema state after the "second run" is identical to the state after the first run —
    no tables dropped, no data lost.
 
+## Scope limitation
+
+The ticket steps describe starting and restarting the Go API binary and verifying
+application log output. This test covers the same idempotency guarantee at the
+**SQL / database level** via psycopg2, which avoids the need for a compiled binary in
+CI. The `migration.go` → `m.Up()` → `ErrNoChange` code path is not exercised
+directly. API-level log assertion (verifying "already at latest version" in Go logs)
+is out of scope for this test and should be addressed in a follow-up integration test.
+
 ## Prerequisites
 
 - Python 3.10+

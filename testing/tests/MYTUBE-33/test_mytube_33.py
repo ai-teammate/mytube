@@ -191,18 +191,7 @@ class TestFirstRunState:
 
     def test_schema_migrations_table_exists(self, schema: SchemaService):
         """golang-migrate creates schema_migrations to track applied versions."""
-        with schema._conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_tables
-                    WHERE schemaname = 'public'
-                      AND tablename  = 'schema_migrations'
-                )
-                """
-            )
-            exists = cur.fetchone()[0]
-        assert exists, (
+        assert schema.table_exists("schema_migrations"), (
             "schema_migrations table does not exist — migration version tracking is broken"
         )
 
