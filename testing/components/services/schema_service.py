@@ -160,3 +160,26 @@ class SchemaService:
                 "SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public'"
             )
             return cur.fetchone()[0]
+
+    def drop_all_public_tables(self) -> None:
+        """Drop all user-defined tables in the public schema and the set_updated_at function."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                DO $$ DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                    END LOOP;
+                END $$;
+                """
+            )
+            cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
+
+    def apply_sql_file(self, path: str) -> None:
+        """Read and execute a SQL file against the database."""
+        with open(path, "r") as f:
+            sql = f.read()
+        with self._conn.cursor() as cur:
+            cur.execute(sql)

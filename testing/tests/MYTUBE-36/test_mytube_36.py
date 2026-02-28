@@ -73,31 +73,13 @@ def schema(db_config: DBConfig) -> SchemaService:
 
     # Start from a clean slate — drop everything that might exist from a
     # previous run.
-    with svc._conn.cursor() as cur:
-        cur.execute(
-            """
-            DO $$ DECLARE
-                r RECORD;
-            BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                END LOOP;
-            END $$;
-            """
-        )
-        cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
+    svc.drop_all_public_tables()
 
     # Apply UP migration so the schema is in the expected post-migration state.
-    with open(MIGRATION_UP_SQL, "r") as f:
-        up_sql = f.read()
-    with svc._conn.cursor() as cur:
-        cur.execute(up_sql)
+    svc.apply_sql_file(MIGRATION_UP_SQL)
 
     # Apply DOWN migration — this is what we are testing.
-    with open(MIGRATION_DOWN_SQL, "r") as f:
-        down_sql = f.read()
-    with svc._conn.cursor() as cur:
-        cur.execute(down_sql)
+    svc.apply_sql_file(MIGRATION_DOWN_SQL)
 
     yield svc
 
