@@ -7,14 +7,14 @@ started, GET /health responds with HTTP 200 and a JSON body indicating
 
 The test manages the full lifecycle:
   1. Starts a PostgreSQL-backed API server process with the correct DB env vars.
-  2. Waits until the server is ready (or times out).
+  2. Waits until the server is ready (or times out) using socket polling.
   3. Issues GET /health and asserts the response.
   4. Tears down the server process after the test.
 """
 import os
+import socket
 import subprocess
 import sys
-import time
 import urllib.request
 import urllib.error
 
@@ -38,7 +38,38 @@ SERVER_BINARY = os.getenv(
 )
 
 SERVER_STARTUP_TIMEOUT = 15  # seconds
-SERVER_POLL_INTERVAL = 0.3   # seconds
+SOCKET_POLL_TIMEOUT = 0.3    # seconds per socket probe
+
+
+def _wait_for_server(host: str, port: int, proc: subprocess.Popen, timeout: float) -> None:
+    """Block until the server's TCP port accepts connections or timeout elapses.
+
+    Uses socket-level probing instead of time.sleep() to implement an explicit
+    wait pattern as required by the test architecture rules.
+    """
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            stdout = proc.stdout.read().decode()
+            stderr = proc.stderr.read().decode()
+            pytest.fail(
+                f"API server exited unexpectedly before becoming ready.\n"
+                f"stdout: {stdout}\nstderr: {stderr}"
+            )
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(SOCKET_POLL_TIMEOUT)
+            result = sock.connect_ex((host, port))
+        if result == 0:
+            return
+    proc.terminate()
+    proc.wait(timeout=5)
+    stdout = proc.stdout.read().decode()
+    stderr = proc.stderr.read().decode()
+    pytest.fail(
+        f"API server did not become ready within {timeout}s.\n"
+        f"stdout: {stdout}\nstderr: {stderr}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +109,11 @@ def api_server(api_config: APIConfig, db_config: DBConfig):
                 f"Failed to build API server:\n{build_result.stderr}"
             )
 
-    port = api_config.base_url.split(":")[-1]
+    # Parse host and port from base_url (format: http://host:port)
+    url_parts = api_config.base_url.split(":")
+    host = url_parts[1].lstrip("/")
+    port = int(url_parts[-1])
+
     env = {
         **os.environ,
         "DB_HOST": db_config.host,
@@ -87,7 +122,7 @@ def api_server(api_config: APIConfig, db_config: DBConfig):
         "DB_PASSWORD": db_config.password,
         "DB_NAME": db_config.dbname,
         "SSL_MODE": db_config.sslmode,
-        "PORT": port,
+        "PORT": str(port),
     }
     if api_config.health_token:
         env["HEALTH_TOKEN"] = api_config.health_token
@@ -99,34 +134,7 @@ def api_server(api_config: APIConfig, db_config: DBConfig):
         stderr=subprocess.PIPE,
     )
 
-    # Wait for the server to start accepting connections.
-    health_url = api_config.health_url()
-    deadline = time.monotonic() + SERVER_STARTUP_TIMEOUT
-    while time.monotonic() < deadline:
-        try:
-            req = urllib.request.Request(health_url, method="GET")
-            if api_config.health_token:
-                req.add_header("X-Health-Token", api_config.health_token)
-            with urllib.request.urlopen(req, timeout=1):
-                break  # server is up
-        except Exception:
-            if proc.poll() is not None:
-                stdout = proc.stdout.read().decode()
-                stderr = proc.stderr.read().decode()
-                pytest.fail(
-                    f"API server exited unexpectedly before becoming ready.\n"
-                    f"stdout: {stdout}\nstderr: {stderr}"
-                )
-            time.sleep(SERVER_POLL_INTERVAL)
-    else:
-        proc.terminate()
-        proc.wait(timeout=5)
-        stdout = proc.stdout.read().decode()
-        stderr = proc.stderr.read().decode()
-        pytest.fail(
-            f"API server did not become ready within {SERVER_STARTUP_TIMEOUT}s.\n"
-            f"stdout: {stdout}\nstderr: {stderr}"
-        )
+    _wait_for_server(host, port, proc, SERVER_STARTUP_TIMEOUT)
 
     yield proc
 
@@ -137,6 +145,13 @@ def api_server(api_config: APIConfig, db_config: DBConfig):
         proc.kill()
 
 
+@pytest.fixture(scope="module")
+def health_response(api_server, api_config: APIConfig):
+    """Single shared GET /health response for the entire test module."""
+    svc = HealthService(api_config)
+    return svc.get_health()
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -145,41 +160,30 @@ def api_server(api_config: APIConfig, db_config: DBConfig):
 class TestHealthEndpoint:
     """GET /health must return 200 OK with a healthy JSON body after migration."""
 
-    def test_returns_200_ok(self, api_server, api_config: APIConfig):
+    def test_returns_200_ok(self, health_response):
         """The status code must be 200."""
-        svc = HealthService(api_config)
-        response = svc.get_health()
-        assert response.status_code == 200, (
-            f"Expected HTTP 200, got {response.status_code}. "
+        assert health_response.status_code == 200, (
+            f"Expected HTTP 200, got {health_response.status_code}. "
             "Database migration may have failed or the server is not connected to the DB."
         )
 
-    def test_response_body_status_ok(self, api_server, api_config: APIConfig):
+    def test_response_body_status_ok(self, health_response):
         """The JSON body must contain status == 'ok'."""
-        svc = HealthService(api_config)
-        response = svc.get_health()
-        assert response.status == "ok", (
-            f"Expected status 'ok', got '{response.status}'. "
+        assert health_response.status == "ok", (
+            f"Expected status 'ok', got '{health_response.status}'. "
             "The health check indicates the database is not reachable."
         )
 
-    def test_response_body_db_connected(self, api_server, api_config: APIConfig):
+    def test_response_body_db_connected(self, health_response):
         """The JSON body must contain db == 'connected'."""
-        svc = HealthService(api_config)
-        response = svc.get_health()
-        assert response.db == "connected", (
-            f"Expected db 'connected', got '{response.db}'. "
+        assert health_response.db == "connected", (
+            f"Expected db 'connected', got '{health_response.db}'. "
             "The API server cannot ping the database."
         )
 
-    def test_content_type_is_json(self, api_server, api_config: APIConfig):
+    def test_content_type_is_json(self, health_response):
         """The response Content-Type must be application/json."""
-        url = api_config.health_url()
-        req = urllib.request.Request(url, method="GET")
-        if api_config.health_token:
-            req.add_header("X-Health-Token", api_config.health_token)
-        with urllib.request.urlopen(req) as resp:
-            content_type = resp.headers.get("Content-Type", "")
-        assert "application/json" in content_type, (
-            f"Expected Content-Type to contain 'application/json', got '{content_type}'"
+        assert "application/json" in health_response.content_type, (
+            f"Expected Content-Type to contain 'application/json', "
+            f"got '{health_response.content_type}'"
         )

@@ -2,7 +2,7 @@
 import urllib.request
 import urllib.error
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from testing.core.config.api_config import APIConfig
@@ -13,6 +13,7 @@ class HealthResponse:
     status_code: int
     status: Optional[str]
     db: Optional[str]
+    content_type: str = field(default="")
 
 
 class HealthService:
@@ -31,14 +32,17 @@ class HealthService:
         try:
             with urllib.request.urlopen(req) as resp:
                 status_code = resp.status
+                content_type = resp.headers.get("Content-Type", "")
                 body = json.loads(resp.read().decode())
                 return HealthResponse(
                     status_code=status_code,
                     status=body.get("status"),
                     db=body.get("db"),
+                    content_type=content_type,
                 )
         except urllib.error.HTTPError as e:
             body_text = e.read().decode()
+            content_type = e.headers.get("Content-Type", "")
             try:
                 body = json.loads(body_text)
             except json.JSONDecodeError:
@@ -47,4 +51,5 @@ class HealthService:
                 status_code=e.code,
                 status=body.get("status"),
                 db=body.get("db"),
+                content_type=content_type,
             )
