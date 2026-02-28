@@ -6,9 +6,8 @@ Verifies that the `mytube-hls-output` GCS bucket:
   1. Exists in GCS.
   2. Has public read access (allUsers roles/storage.objectViewer), satisfying
      the CDN delivery requirement defined in infra/setup.sh.
-  3. Serves objects publicly — a test file uploaded to the bucket is accessible
-     via the public GCS URL (CDN endpoint), confirming correct HLS delivery
-     configuration.
+  3. Serves objects via the Cloud CDN frontend URL (CDN_BASE_URL), confirming
+     correct HLS delivery configuration end-to-end.
 """
 import os
 import sys
@@ -64,18 +63,25 @@ class TestHLSBucketProvisionedWithPublicAccess:
             "roles/storage.objectViewer. Cloud CDN delivery requires public read access."
         )
 
-    def test_object_served_via_public_url(self, gcs_service: GCSService, gcs_config: GCSConfig):
+    def test_object_served_via_cdn_url(self, gcs_service: GCSService, gcs_config: GCSConfig):
         """
         Step 3: A file uploaded to the bucket must be accessible via the
-        public GCS URL, confirming CDN endpoint delivery works end-to-end.
+        Cloud CDN frontend URL (CDN_BASE_URL), confirming CDN delivery
+        works end-to-end — not just direct GCS access.
         """
+        if not gcs_config.cdn_base_url:
+            pytest.skip(
+                "CDN_BASE_URL is not set. Set it to the Cloud CDN frontend IP or CNAME "
+                "(e.g. https://34.x.x.x or https://cdn.example.com) to verify CDN delivery."
+            )
+
         object_name = gcs_service.upload_test_object(gcs_config.hls_bucket)
         try:
-            response = gcs_service.fetch_object_via_public_url(gcs_config.hls_bucket, object_name)
+            response = gcs_service.fetch_object_via_cdn_url(object_name)
             assert response.status_code == 200, (
-                f"Expected HTTP 200 from public CDN URL, got {response.status_code}. "
-                f"Object '{object_name}' in bucket '{gcs_config.hls_bucket}' "
-                "is not publicly accessible."
+                f"Expected HTTP 200 from Cloud CDN URL, got {response.status_code}. "
+                f"Object '{object_name}' is not reachable via CDN endpoint "
+                f"'{gcs_config.cdn_base_url}'."
             )
             assert response.content == b"HLS test probe", (
                 f"CDN response body mismatch. Expected b'HLS test probe', "

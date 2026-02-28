@@ -69,10 +69,19 @@ class GCSService:
 
     def fetch_object_via_public_url(self, bucket_name: str, object_name: str) -> httpx.Response:
         """
-        Fetch an object via its public GCS URL (simulating CDN delivery).
+        Fetch an object via its direct public GCS URL.
         Returns the HTTP response.
         """
         url = self._config.public_object_url(bucket_name, object_name)
+        return httpx.get(url, follow_redirects=True, timeout=30.0)
+
+    def fetch_object_via_cdn_url(self, object_name: str) -> httpx.Response:
+        """
+        Fetch an object via the Cloud CDN frontend URL.
+        CDN_BASE_URL must be configured in GCSConfig.
+        Returns the HTTP response.
+        """
+        url = self._config.cdn_object_url(object_name)
         return httpx.get(url, follow_redirects=True, timeout=30.0)
 
     def delete_object(self, bucket_name: str, object_name: str) -> None:
