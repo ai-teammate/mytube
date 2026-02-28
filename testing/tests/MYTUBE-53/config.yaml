@@ -1,0 +1,5 @@
+test_id: MYTUBE-53
+type: static
+framework: pytest
+platform: filesystem
+dependencies: []
