@@ -7,22 +7,20 @@ database produces all 8 required tables with the correct columns, types,
 primary keys, foreign keys, and default values.
 """
 import os
-import subprocess
 import sys
 import pytest
-import psycopg2
 
 # Ensure the testing root is importable regardless of where pytest is invoked.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.db_config import DBConfig
 from testing.components.services.schema_service import SchemaService
+from testing.tests.conftest import make_conn_fixture
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-MIGRATION_SQL = os.path.join(
+_MIGRATION_SQL = os.path.join(
     os.path.dirname(__file__),
     "..",
     "..",
@@ -43,45 +41,8 @@ REQUIRED_TABLES = [
     "ratings",
 ]
 
-
-@pytest.fixture(scope="module")
-def db_config() -> DBConfig:
-    return DBConfig()
-
-
-@pytest.fixture(scope="module")
-def conn(db_config: DBConfig):
-    """Open a connection to the test database, apply the migration, yield, then clean up."""
-    connection = psycopg2.connect(db_config.dsn())
-    connection.autocommit = True
-
-    # Drop all tables so we start from a clean state.
-    with connection.cursor() as cur:
-        cur.execute(
-            """
-            DO $$ DECLARE
-                r RECORD;
-            BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                END LOOP;
-            END $$;
-            """
-        )
-        # Drop functions and triggers left over from previous runs.
-        cur.execute(
-            "DROP FUNCTION IF EXISTS set_updated_at() CASCADE;"
-        )
-
-    # Apply the migration SQL directly.
-    with open(MIGRATION_SQL, "r") as f:
-        migration_sql = f.read()
-    with connection.cursor() as cur:
-        cur.execute(migration_sql)
-
-    yield connection
-
-    connection.close()
+# Shared connection fixture: drop all → apply schema migration.
+conn = make_conn_fixture([_MIGRATION_SQL])
 
 
 @pytest.fixture(scope="module")
