@@ -1,0 +1,5 @@
+test_id: MYTUBE-32
+type: api
+framework: subprocess+http
+platform: go-binary
+dependencies: []
