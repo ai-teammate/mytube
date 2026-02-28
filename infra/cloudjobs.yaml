@@ -1,8 +1,7 @@
 # infra/cloudjobs.yaml — Cloud Run Job definition for mytube-transcoder.
 #
 # This file documents the desired Cloud Run Job configuration.
-# It is applied via the setup.sh gcloud commands; update it when the
-# actual transcoder image becomes available (FFmpeg story).
+# It is applied via the setup.sh gcloud commands.
 #
 # Reference:
 #   https://cloud.google.com/run/docs/reference/rest/v2/projects.locations.jobs
@@ -13,9 +12,16 @@
 #     --image gcr.io/${GCP_PROJECT_ID}/mytube-transcoder:latest \
 #     --region ${GCP_REGION} \
 #     --service-account mytube-transcoder@${GCP_PROJECT_ID}.iam.gserviceaccount.com \
-#     --set-env-vars HLS_BUCKET=mytube-hls-output \
+#     --set-env-vars HLS_BUCKET=mytube-hls-output,RAW_BUCKET=mytube-raw-uploads \
+#     --set-env-vars CDN_BASE_URL=https://cdn.${GCP_PROJECT_ID}.example.com \
+#     --set-env-vars DB_NAME=${DB_NAME} \
+#     --set-env-vars INSTANCE_UNIX_SOCKET=/cloudsql/${CLOUD_SQL_CONNECTION_NAME} \
+#     --set-secrets DB_USER=${GCP_DB_USER_SECRET}:latest,DB_PASSWORD=${GCP_DB_PASSWORD_SECRET}:latest \
 #     --max-retries 1 \
 #     --task-timeout 3600 \
+#     --memory 2Gi \
+#     --cpu 2 \
+#     --ephemeral-storage 10Gi \
 #     --project ${GCP_PROJECT_ID}
 
 apiVersion: run.googleapis.com/v1
@@ -32,13 +38,36 @@ spec:
           timeoutSeconds: "3600"
           containers:
             - image: gcr.io/${GCP_PROJECT_ID}/mytube-transcoder:latest
-              # Per-execution overrides are injected by the trigger service at
-              # runtime via the Cloud Run Jobs API "overrides" field.
-              # Static env vars that never change between executions live here.
+              # Per-execution overrides (VIDEO_ID, RAW_OBJECT_PATH) are injected
+              # by the trigger service at runtime via the Cloud Run Jobs API
+              # "overrides" field.  Static env vars that never change live here.
               env:
                 - name: HLS_BUCKET
                   value: mytube-hls-output
+                - name: RAW_BUCKET
+                  value: mytube-raw-uploads
+                # CDN_BASE_URL: set to your Cloud CDN hostname, e.g. https://cdn.example.com
+                - name: CDN_BASE_URL
+                  value: ""
+                # Cloud SQL Unix socket — same pattern as the API service.
+                - name: INSTANCE_UNIX_SOCKET
+                  value: /cloudsql/${CLOUD_SQL_CONNECTION_NAME}
+                - name: DB_NAME
+                  value: ${DB_NAME}
+                # DB_USER and DB_PASSWORD are injected from Secret Manager.
+                - name: DB_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${GCP_DB_USER_SECRET}
+                      key: latest
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${GCP_DB_PASSWORD_SECRET}
+                      key: latest
               resources:
                 limits:
                   cpu: "2"
                   memory: 2Gi
+                  # 10 GiB ephemeral disk: covers typical uploads (up to ~60 min at 1080p).
+                  ephemeral-storage: 10Gi

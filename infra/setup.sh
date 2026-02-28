@@ -106,21 +106,28 @@ gcloud projects add-iam-policy-binding "${PROJECT}" \
   --member="serviceAccount:${TRANSCODER_SA_EMAIL}" \
   --role="roles/run.developer"
 
-# ── 6. Create the Cloud Run Job (transcoder placeholder) ─────────────────────
-# The actual FFmpeg logic is in a separate story; the Job is created with a
-# placeholder image so the Eventarc trigger can reference a real job name.
+# ── 6. Create the Cloud Run Job ───────────────────────────────────────────────
+# Creates the transcoder job with FFmpeg image, DB connection, and 10 GiB disk.
 echo ""
 echo "==> Creating Cloud Run Job: ${JOB_NAME}..."
 if ! gcloud run jobs describe "${JOB_NAME}" \
     --region="${REGION}" \
     --project="${PROJECT}" &>/dev/null; then
   gcloud run jobs create "${JOB_NAME}" \
-    --image="gcr.io/google-containers/pause:3.5" \
+    --image="gcr.io/${PROJECT}/mytube-transcoder:latest" \
     --region="${REGION}" \
     --service-account="${TRANSCODER_SA_EMAIL}" \
-    --set-env-vars="HLS_BUCKET=${HLS_BUCKET}" \
+    --set-env-vars="HLS_BUCKET=${HLS_BUCKET},RAW_BUCKET=${RAW_BUCKET}" \
+    --set-env-vars="CDN_BASE_URL=${CDN_BASE_URL:?CDN_BASE_URL must be set}" \
+    --set-env-vars="DB_NAME=${DB_NAME:?DB_NAME must be set}" \
+    --set-env-vars="INSTANCE_UNIX_SOCKET=/cloudsql/${CLOUD_SQL_CONNECTION_NAME:?CLOUD_SQL_CONNECTION_NAME must be set}" \
+    --set-secrets="DB_USER=${GCP_DB_USER_SECRET:?GCP_DB_USER_SECRET must be set}:latest" \
+    --set-secrets="DB_PASSWORD=${GCP_DB_PASSWORD_SECRET:?GCP_DB_PASSWORD_SECRET must be set}:latest" \
     --max-retries=1 \
     --task-timeout=3600 \
+    --memory=2Gi \
+    --cpu=2 \
+    --ephemeral-storage=10Gi \
     --project="${PROJECT}"
   echo "    Created Cloud Run Job ${JOB_NAME}"
 else
