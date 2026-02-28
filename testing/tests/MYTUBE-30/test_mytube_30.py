@@ -15,9 +15,6 @@ import os
 import socket
 import subprocess
 import sys
-import urllib.request
-import urllib.error
-
 import pytest
 
 # Ensure the testing root is importable regardless of where pytest is invoked.
