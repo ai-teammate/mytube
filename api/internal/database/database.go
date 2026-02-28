@@ -9,12 +9,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// DB is the interface covering the database/sql.DB methods used by this package.
-// Using an interface makes it trivial to swap in a mock during unit tests.
-type DB interface {
-	Ping() error
-}
-
 // Open opens a *sql.DB using connection parameters from environment variables.
 // Callers are responsible for closing the returned DB.
 func Open() (*sql.DB, error) {

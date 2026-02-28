@@ -110,6 +110,23 @@ func TestNewHealthHandler_TokenCorrect(t *testing.T) {
 	}
 }
 
+func TestNewHealthHandler_TokenWrong(t *testing.T) {
+	t.Setenv("HEALTH_TOKEN", "supersecret")
+
+	pinger := &mockPinger{err: nil}
+	h := handler.NewHealthHandler(pinger)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("X-Health-Token", "wrongtoken")
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 with wrong token, got %d", rec.Code)
+	}
+}
+
 func TestNewHealthHandler_NoTokenEnvSkipsCheck(t *testing.T) {
 	t.Setenv("HEALTH_TOKEN", "")
 

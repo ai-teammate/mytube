@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -32,7 +33,8 @@ type HealthResponse struct {
 func NewHealthHandler(db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := os.Getenv("HEALTH_TOKEN")
-		if token != "" && r.Header.Get("X-Health-Token") != token {
+		provided := r.Header.Get("X-Health-Token")
+		if token != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
