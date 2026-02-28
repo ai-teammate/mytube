@@ -13,10 +13,12 @@ import os
 import sys
 import pytest
 import psycopg2
+import psycopg2.errors
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
+from testing.components.services.video_service import VideoService
 
 MIGRATION_SQL = os.path.join(
     os.path.dirname(__file__),
@@ -71,6 +73,11 @@ def conn(db_config: DBConfig):
 
 
 @pytest.fixture(scope="module")
+def video_service(conn) -> VideoService:
+    return VideoService(conn)
+
+
+@pytest.fixture(scope="module")
 def uploader_id(conn) -> str:
     """Insert a single user and return its id for use as uploader_id."""
     with conn.cursor() as cur:
@@ -89,34 +96,17 @@ def uploader_id(conn) -> str:
 class TestVideoStatusCheckConstraint:
     """videos.status CHECK constraint must enforce the allowed-values list."""
 
-    def test_invalid_status_archived_is_rejected(self, conn, uploader_id: str):
+    def test_invalid_status_archived_is_rejected(self, video_service: VideoService, uploader_id: str):
         """INSERT with status='archived' must raise a check-constraint violation."""
         with pytest.raises(psycopg2.errors.CheckViolation) as exc_info:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO videos (uploader_id, title, status)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (uploader_id, "Test video – invalid status", "archived"),
-                )
-        conn.rollback()
+            video_service.insert_video(uploader_id, "Test video – invalid status", "archived")
         assert "check" in str(exc_info.value).lower() or "violates" in str(exc_info.value).lower(), (
             f"Expected a CHECK constraint violation, got: {exc_info.value}"
         )
 
-    def test_valid_status_pending_is_accepted(self, conn, uploader_id: str):
+    def test_valid_status_pending_is_accepted(self, video_service: VideoService, uploader_id: str):
         """INSERT with status='pending' must succeed."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO videos (uploader_id, title, status)
-                VALUES (%s, %s, %s)
-                RETURNING id, status
-                """,
-                (uploader_id, "Test video – valid status", "pending"),
-            )
-            row = cur.fetchone()
+        row = video_service.insert_video(uploader_id, "Test video – valid status", "pending")
         assert row is not None, "INSERT with status='pending' returned no row"
         assert row[1] == "pending", (
             f"Expected returned status 'pending', got '{row[1]}'"

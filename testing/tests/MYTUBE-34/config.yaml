@@ -1,5 +1,5 @@
 test_id: MYTUBE-34
-type: database
+type: api
 framework: psycopg2
 platform: postgresql
 dependencies: []
