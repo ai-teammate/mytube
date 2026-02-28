@@ -40,5 +40,5 @@ pytest testing/tests/MYTUBE-29/test_mytube_29.py -v
 testing/tests/MYTUBE-29/test_mytube_29.py::TestAllTablesExist::test_table_exists[users] PASSED
 testing/tests/MYTUBE-29/test_mytube_29.py::TestAllTablesExist::test_table_exists[videos] PASSED
 ...
-================================================== 28 passed in X.XXs ==================================================
+================================================== 34 passed in X.XXs ==================================================
 ```

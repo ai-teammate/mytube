@@ -52,13 +52,7 @@ def db_config() -> DBConfig:
 @pytest.fixture(scope="module")
 def conn(db_config: DBConfig):
     """Open a connection to the test database, apply the migration, yield, then clean up."""
-    connection = psycopg2.connect(
-        host=db_config.host,
-        port=db_config.port,
-        user=db_config.user,
-        password=db_config.password,
-        dbname=db_config.dbname,
-    )
+    connection = psycopg2.connect(db_config.dsn())
     connection.autocommit = True
 
     # Drop all tables so we start from a clean state.
