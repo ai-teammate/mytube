@@ -73,12 +73,9 @@ class TestCategorySeeding:
             f"Category '{category_name}' not found in the categories table."
         )
 
-    def test_seed_is_idempotent(self, category_service: CategoryService, conn):
+    def test_seed_is_idempotent(self, category_service: CategoryService):
         """Running the seed migration a second time must not create duplicate rows."""
-        with open(_SEED_MIGRATION_SQL, "r") as fh:
-            seed_sql = fh.read()
-        with conn.cursor() as cur:
-            cur.execute(seed_sql)
+        category_service.apply_seed(_SEED_MIGRATION_SQL)
 
         count = category_service.get_category_count()
         assert count == 5, (

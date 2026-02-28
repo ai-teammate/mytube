@@ -27,3 +27,10 @@ class CategoryService:
                 (name,),
             )
             return cur.fetchone()[0] == 1
+
+    def apply_seed(self, sql_path: str) -> None:
+        """Execute a seed SQL file against the database."""
+        with open(sql_path, "r") as fh:
+            sql = fh.read()
+        with self._conn.cursor() as cur:
+            cur.execute(sql)
