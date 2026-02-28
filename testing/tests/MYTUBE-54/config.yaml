@@ -1,5 +1,5 @@
 test_id: MYTUBE-54
-type: api
+type: infrastructure
 framework: pytest
-platform: gcp
+platform: static
 dependencies: []

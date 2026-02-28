@@ -7,27 +7,36 @@ Objective:
     (google.cloud.storage.object.v1.finalized) and does not react to other
     storage events such as object deletion.
 
-Approach:
-    Since the Eventarc trigger is an infrastructure component that filters
-    events before they reach the trigger service, this test suite verifies
-    correctness at two complementary levels:
+⚠️  STATIC ANALYSIS PROXY TEST — NOT A RUNTIME VERIFICATION
+====================================================================
+This test suite performs static analysis of infrastructure source files.
+It does NOT:
+  - Connect to GCP
+  - Delete any real GCS object
+  - Poll Cloud Run Job execution logs
+  - Verify live system behaviour
 
-    1. Infrastructure configuration (setup.sh):
-       - The Eventarc trigger command uses
-         --event-filters=type=google.cloud.storage.object.v1.finalized
-       - No deletion event type (object.v1.deleted) is registered as a filter.
+What this test DOES provide:
+  - Confirms infra/setup.sh contains the correct Eventarc provisioning
+    command in its operator instructions (an echo-printed gcloud command)
+  - Confirms the command registers only the finalized event type (not
+    deleted or archived)
+  - Confirms the trigger handler (trigger.go) validates payloads before
+    executing jobs, providing defence-in-depth
 
-    2. Trigger handler behaviour (trigger.go):
-       - The handler only executes a Cloud Run Job when it receives a valid
-         GCS finalized event payload.
-       - A payload that does NOT conform to a finalized event (e.g. a deletion
-         payload that lacks object name / bucket fields) is rejected with a
-         400 Bad Request and the job executor is never called.
-       - An empty body (as a deletion event stub would produce if it somehow
-         reached the handler) is rejected and the executor is not invoked.
+Limitation (acknowledged):
+  The gcloud eventarc triggers create command in setup.sh is printed inside
+  echo "..." statements (lines 166–173) as manual operator instructions —
+  it is NOT executed by the script. Therefore these tests verify the
+  *intended* provisioning instructions, not whether the trigger was
+  actually deployed or deployed correctly.
 
-    Together these tests confirm that object deletion cannot cause
-    mytube-transcoder to be invoked.
+  For full runtime confidence, a live integration test should additionally:
+    - Run: gcloud eventarc triggers describe mytube-gcs-finalize
+    - Assert the returned event-filter fields match the expected values.
+
+  This static-analysis suite is documented as a complementary layer, not
+  as a substitute for the runtime scenario described in the ticket.
 """
 import os
 import re
@@ -56,12 +65,23 @@ def _read_file(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Infrastructure configuration tests
+# Infrastructure configuration tests (static analysis of setup.sh)
+#
+# NOTE: All tests in this class analyse the text of setup.sh, including the
+# operator-instruction block printed via echo "..." on lines 166–173. This
+# verifies the *intended* provisioning command, not a live gcloud invocation.
 # ---------------------------------------------------------------------------
 
 
 class TestEventarcTriggerConfiguration:
-    """The Eventarc trigger provisioning script must filter on object.v1.finalized only."""
+    """
+    The Eventarc trigger provisioning script must filter on object.v1.finalized only.
+
+    ⚠️  Static analysis scope: these tests read infra/setup.sh as text. The
+    gcloud eventarc triggers create command is wrapped in echo "..." operator
+    instructions and is not executed by the script. The tests confirm the
+    correct event types and bucket are present in those instructions.
+    """
 
     def test_setup_sh_exists(self):
         """infra/setup.sh must be present — it is the authoritative provisioning script."""
@@ -69,13 +89,50 @@ class TestEventarcTriggerConfiguration:
             f"Expected infra/setup.sh at {_SETUP_SH} — file not found"
         )
 
+    def test_gcloud_eventarc_command_is_in_echo_operator_instructions(self):
+        """
+        Documents and verifies the known limitation: the gcloud eventarc
+        triggers create command appears inside echo "..." operator instruction
+        lines, not as a directly-executed statement.
+
+        This test makes the static-analysis scope explicit: subsequent tests
+        that check event-filter strings are verifying the echoed instructions,
+        not a live trigger deployment.
+        """
+        content = _read_file(_SETUP_SH)
+
+        # The command must appear inside an echo "..." block (static instruction)
+        echo_gcloud_pattern = re.compile(
+            r'echo\s+"[^"]*gcloud\s+eventarc\s+triggers\s+create',
+            re.MULTILINE,
+        )
+        assert echo_gcloud_pattern.search(content), (
+            "setup.sh does not contain 'gcloud eventarc triggers create' inside "
+            "an echo statement. The operator instruction block may have changed — "
+            "review the provisioning script manually."
+        )
+
+        # Confirm there is NO bare (non-echo) gcloud eventarc triggers create
+        # call, so this test accurately represents the static-analysis-only scope.
+        lines = content.splitlines()
+        for line in lines:
+            stripped = line.strip()
+            if "gcloud eventarc triggers create" in stripped:
+                assert stripped.startswith("echo"), (
+                    f"Found a non-echo 'gcloud eventarc triggers create' line: {line!r}. "
+                    "If the command is now executed directly, the tests in this class "
+                    "verify live provisioning and this limitation note should be removed."
+                )
+
     def test_eventarc_trigger_uses_finalized_event_type(self):
         """
-        The gcloud eventarc triggers create command in setup.sh must specify
+        The operator instruction in setup.sh must specify
         --event-filters=type=google.cloud.storage.object.v1.finalized.
 
         This is the only event type that the Eventarc trigger should listen to,
         ensuring object creation (not deletion) drives the transcoding pipeline.
+
+        Scope: verifies the echo-printed operator instruction (see module docstring).
         """
         content = _read_file(_SETUP_SH)
         assert "google.cloud.storage.object.v1.finalized" in content, (
@@ -86,11 +143,13 @@ class TestEventarcTriggerConfiguration:
 
     def test_eventarc_trigger_does_not_register_deleted_event_type(self):
         """
-        setup.sh must NOT register object.v1.deleted as an event filter.
+        setup.sh must NOT contain object.v1.deleted as an event filter.
 
         If a deletion event type were added, deleting a file from the raw bucket
         could launch the transcoding job — which is the regression this test
         guards against.
+
+        Scope: verifies the echo-printed operator instruction (see module docstring).
         """
         content = _read_file(_SETUP_SH)
         assert "object.v1.deleted" not in content, (
@@ -101,9 +160,11 @@ class TestEventarcTriggerConfiguration:
 
     def test_eventarc_trigger_does_not_register_archived_event_type(self):
         """
-        setup.sh must NOT register object.v1.archived as an event filter.
+        setup.sh must NOT contain object.v1.archived as an event filter.
 
         Archival events should also not trigger transcoding.
+
+        Scope: verifies the echo-printed operator instruction (see module docstring).
         """
         content = _read_file(_SETUP_SH)
         assert "object.v1.archived" not in content, (
@@ -121,6 +182,8 @@ class TestEventarcTriggerConfiguration:
         setup.sh defines RAW_BUCKET="mytube-raw-uploads" and uses it via the
         shell variable ${RAW_BUCKET} in the --event-filters=bucket= flag.
         This test validates both the variable assignment and its use.
+
+        Scope: verifies the echo-printed operator instruction (see module docstring).
         """
         content = _read_file(_SETUP_SH)
 
@@ -156,16 +219,6 @@ class TestEventarcTriggerConfiguration:
         assert "hls" not in bucket_filter_value.lower(), (
             f"The Eventarc trigger bucket filter '{bucket_filter_value}' appears "
             "to reference the HLS bucket instead of the raw-uploads bucket."
-        )
-
-    def test_eventarc_trigger_command_is_present(self):
-        """
-        setup.sh must contain a gcloud eventarc triggers create command.
-        """
-        content = _read_file(_SETUP_SH)
-        assert "gcloud eventarc triggers create" in content, (
-            "setup.sh does not contain a 'gcloud eventarc triggers create' command. "
-            "The Eventarc trigger is not being provisioned."
         )
 
 
