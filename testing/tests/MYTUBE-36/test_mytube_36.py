@@ -9,7 +9,6 @@ schema in its pre-migration state (no tables, no trigger function).
 import os
 import sys
 import pytest
-import psycopg2
 
 # Ensure the testing root is importable regardless of where pytest is invoked.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -64,18 +63,17 @@ def db_config() -> DBConfig:
 
 
 @pytest.fixture(scope="module")
-def conn(db_config: DBConfig):
+def schema(db_config: DBConfig) -> SchemaService:
     """
-    Open a connection to the test database, apply the UP migration to
-    establish a known good state, then run the DOWN migration, and yield
-    the connection for assertions.
+    Instantiate SchemaService from DBConfig (connection owned by the service),
+    apply the UP migration to establish a known good state, then run the DOWN
+    migration, and yield the service for assertions.
     """
-    connection = psycopg2.connect(db_config.dsn())
-    connection.autocommit = True
+    svc = SchemaService(db_config)
 
     # Start from a clean slate — drop everything that might exist from a
     # previous run.
-    with connection.cursor() as cur:
+    with svc._conn.cursor() as cur:
         cur.execute(
             """
             DO $$ DECLARE
@@ -92,23 +90,18 @@ def conn(db_config: DBConfig):
     # Apply UP migration so the schema is in the expected post-migration state.
     with open(MIGRATION_UP_SQL, "r") as f:
         up_sql = f.read()
-    with connection.cursor() as cur:
+    with svc._conn.cursor() as cur:
         cur.execute(up_sql)
 
     # Apply DOWN migration — this is what we are testing.
     with open(MIGRATION_DOWN_SQL, "r") as f:
         down_sql = f.read()
-    with connection.cursor() as cur:
+    with svc._conn.cursor() as cur:
         cur.execute(down_sql)
 
-    yield connection
+    yield svc
 
-    connection.close()
-
-
-@pytest.fixture(scope="module")
-def schema(conn) -> SchemaService:
-    return SchemaService(conn)
+    svc.close()
 
 
 # ---------------------------------------------------------------------------
@@ -129,20 +122,8 @@ class TestAllTablesDropped:
 class TestTriggerFunctionDropped:
     """The set_updated_at() trigger function must be removed by the DOWN migration."""
 
-    def test_set_updated_at_function_dropped(self, conn):
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_proc p
-                    JOIN pg_namespace n ON n.oid = p.pronamespace
-                    WHERE n.nspname = 'public'
-                      AND p.proname = 'set_updated_at'
-                )
-                """
-            )
-            exists = cur.fetchone()[0]
-        assert not exists, (
+    def test_set_updated_at_function_dropped(self, schema: SchemaService):
+        assert not schema.function_exists("set_updated_at"), (
             "Trigger function 'set_updated_at' still exists after running the DOWN migration."
         )
 
@@ -150,12 +131,8 @@ class TestTriggerFunctionDropped:
 class TestNoPublicTablesRemain:
     """After rollback the public schema must contain zero user-defined tables."""
 
-    def test_schema_is_empty(self, conn):
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public'"
-            )
-            count = cur.fetchone()[0]
+    def test_schema_is_empty(self, schema: SchemaService):
+        count = schema.public_table_count()
         assert count == 0, (
             f"Expected 0 tables in public schema after DOWN migration, found {count}."
         )
