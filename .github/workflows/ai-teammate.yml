@@ -162,6 +162,9 @@ jobs:
 
           # AI Service Configuration
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_DEFAULT_MODEL: ${{ vars.GEMINI_DEFAULT_MODEL }}
+          GEMINI_BASE_PATH: ${{ vars.GEMINI_BASE_PATH }}
           DEFAULT_LLM: "gemini"
 
           # Figma Configuration
