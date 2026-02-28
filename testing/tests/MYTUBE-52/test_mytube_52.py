@@ -12,11 +12,8 @@ for the transcoding process:
 The test inspects the YAML file directly (no deployment needed).
 """
 import os
-import sys
 import pytest
 import yaml
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 CLOUDJOBS_YAML = os.path.join(
     os.path.dirname(__file__),

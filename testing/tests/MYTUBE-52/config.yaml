@@ -1,5 +1,5 @@
 test_id: MYTUBE-52
-type: api
+type: infra
 framework: pytest
 platform: yaml
 dependencies: []
