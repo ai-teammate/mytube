@@ -53,6 +53,9 @@ jobs:
           submodules: true
           token: ${{ secrets.PAT_TOKEN }}
 
+      - name: Update agents submodule to latest main
+        run: git submodule update --remote --merge agents
+
       - name: Setup Java Environment
         uses: ./.github/actions/setup-java-only
         with:
