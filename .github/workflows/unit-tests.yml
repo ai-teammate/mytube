@@ -1,0 +1,42 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test-api:
+    name: API unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Run unit tests
+        working-directory: api
+        run: go test ./...
+
+  test-transcoder-trigger:
+    name: Transcoder trigger unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: infra/transcoder-trigger/go.mod
+          cache-dependency-path: infra/transcoder-trigger/go.mod
+
+      - name: Run unit tests
+        working-directory: infra/transcoder-trigger
+        run: go test ./...
