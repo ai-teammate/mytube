@@ -77,7 +77,9 @@ jobs:
         if: vars.AI_AGENT_PROVIDER == 'codemie'
         uses: actions/cache@v4
         with:
-          path: ~/.npm-global
+          path: |
+            ~/.npm-global
+            ~/.codemie
           key: ${{ runner.os }}-npm-global-${{ hashFiles('.github/workflows/ai-teammate.yml') }}
           restore-keys: |
             ${{ runner.os }}-npm-global-
