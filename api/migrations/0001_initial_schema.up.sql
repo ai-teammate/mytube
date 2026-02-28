@@ -9,9 +9,22 @@ CREATE TABLE IF NOT EXISTS users (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Trigger function: auto-update updated_at on every UPDATE to videos rows.
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ON DELETE RESTRICT is used for user-owned content (videos, playlists,
+-- comments, ratings) so that deleting a user with existing content raises an
+-- explicit FK violation.  Application code must clean up or transfer content
+-- before the user row can be removed.
 CREATE TABLE IF NOT EXISTS videos (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    uploader_id      UUID NOT NULL REFERENCES users(id),
+    uploader_id      UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     title            VARCHAR(255) NOT NULL,
     description      TEXT,
     status           VARCHAR(20) NOT NULL DEFAULT 'pending'
@@ -23,6 +36,12 @@ CREATE TABLE IF NOT EXISTS videos (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TRIGGER trg_videos_updated_at
+BEFORE UPDATE ON videos
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX idx_videos_uploader_id ON videos(uploader_id);
 
 CREATE TABLE IF NOT EXISTS categories (
     id   SERIAL PRIMARY KEY,
@@ -37,10 +56,12 @@ CREATE TABLE IF NOT EXISTS video_tags (
 
 CREATE TABLE IF NOT EXISTS playlists (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id   UUID NOT NULL REFERENCES users(id),
+    owner_id   UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     title      VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_playlists_owner_id ON playlists(owner_id);
 
 CREATE TABLE IF NOT EXISTS playlist_videos (
     playlist_id UUID NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
@@ -52,14 +73,18 @@ CREATE TABLE IF NOT EXISTS playlist_videos (
 CREATE TABLE IF NOT EXISTS comments (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     video_id   UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-    author_id  UUID NOT NULL REFERENCES users(id),
+    author_id  UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     body       TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX idx_comments_video_id ON comments(video_id);
+
 CREATE TABLE IF NOT EXISTS ratings (
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
-    user_id  UUID NOT NULL REFERENCES users(id),
+    user_id  UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     stars    SMALLINT NOT NULL CHECK (stars BETWEEN 1 AND 5),
     PRIMARY KEY (video_id, user_id)
 );
+
+CREATE INDEX idx_ratings_user_id ON ratings(user_id);

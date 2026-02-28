@@ -18,6 +18,7 @@ type mockPinger struct {
 func (m *mockPinger) Ping() error { return m.err }
 
 func TestNewHealthHandler_OK(t *testing.T) {
+	t.Setenv("HEALTH_TOKEN", "")
 	pinger := &mockPinger{err: nil}
 	h := handler.NewHealthHandler(pinger)
 
@@ -46,7 +47,8 @@ func TestNewHealthHandler_OK(t *testing.T) {
 }
 
 func TestNewHealthHandler_DBError(t *testing.T) {
-	dbErr := errors.New("connection refused")
+	t.Setenv("HEALTH_TOKEN", "")
+	dbErr := errors.New("dial tcp 10.0.0.5:5432: connect: connection refused")
 	pinger := &mockPinger{err: dbErr}
 	h := handler.NewHealthHandler(pinger)
 
@@ -66,7 +68,61 @@ func TestNewHealthHandler_DBError(t *testing.T) {
 	if body.Status != "error" {
 		t.Errorf("expected status error, got %s", body.Status)
 	}
-	if body.DB != dbErr.Error() {
-		t.Errorf("expected db %q, got %q", dbErr.Error(), body.DB)
+	// Internal error details must NOT be leaked to the caller.
+	if body.DB == dbErr.Error() {
+		t.Errorf("internal error details leaked to client: got %q", body.DB)
+	}
+	if body.DB != "unavailable" {
+		t.Errorf("expected db unavailable, got %q", body.DB)
+	}
+}
+
+func TestNewHealthHandler_TokenRequired(t *testing.T) {
+	t.Setenv("HEALTH_TOKEN", "supersecret")
+
+	pinger := &mockPinger{err: nil}
+	h := handler.NewHealthHandler(pinger)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when token missing, got %d", rec.Code)
+	}
+}
+
+func TestNewHealthHandler_TokenCorrect(t *testing.T) {
+	t.Setenv("HEALTH_TOKEN", "supersecret")
+
+	pinger := &mockPinger{err: nil}
+	h := handler.NewHealthHandler(pinger)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("X-Health-Token", "supersecret")
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with correct token, got %d", rec.Code)
+	}
+}
+
+func TestNewHealthHandler_NoTokenEnvSkipsCheck(t *testing.T) {
+	t.Setenv("HEALTH_TOKEN", "")
+
+	pinger := &mockPinger{err: nil}
+	h := handler.NewHealthHandler(pinger)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	// When HEALTH_TOKEN is unset, the auth check is skipped and request proceeds.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when HEALTH_TOKEN unset, got %d", rec.Code)
 	}
 }
