@@ -169,6 +169,7 @@ jobs:
           # GitHub Authentication for PR creation
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
           # AI Agent Provider
           AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
