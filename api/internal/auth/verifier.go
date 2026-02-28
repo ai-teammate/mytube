@@ -8,7 +8,6 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	firebaseAuth "firebase.google.com/go/v4/auth"
-	"google.golang.org/api/option"
 )
 
 // TokenClaims holds the verified claims extracted from a Firebase ID token.
@@ -41,7 +40,7 @@ func NewFirebaseVerifier(ctx context.Context) (*FirebaseVerifier, error) {
 		return nil, fmt.Errorf("FIREBASE_PROJECT_ID env var is not set")
 	}
 
-	app, err := firebase.NewApp(ctx, &firebase.Config{ProjectID: projectID}, option.WithoutAuthentication())
+	app, err := firebase.NewApp(ctx, &firebase.Config{ProjectID: projectID})
 	if err != nil {
 		return nil, fmt.Errorf("firebase app: %w", err)
 	}

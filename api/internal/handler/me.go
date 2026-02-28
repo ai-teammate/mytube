@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ai-teammate/mytube/api/internal/auth"
 	"github.com/ai-teammate/mytube/api/internal/middleware"
 	"github.com/ai-teammate/mytube/api/internal/repository"
 )
@@ -16,7 +15,6 @@ import (
 // Satisfied by *repository.UserRepository and allows tests to inject a stub.
 type UserProvider interface {
 	Upsert(ctx context.Context, firebaseUID, email string) (*repository.User, error)
-	GetByFirebaseUID(ctx context.Context, firebaseUID string) (*repository.User, error)
 }
 
 // MeResponse is the JSON body returned by GET /api/me.
@@ -39,7 +37,7 @@ func NewMeHandler(users UserProvider) http.HandlerFunc {
 			return
 		}
 
-		user, err := provisionAndFetch(r.Context(), users, claims)
+		user, err := users.Upsert(r.Context(), claims.UID, claims.Email)
 		if err != nil {
 			log.Printf("GET /api/me: provision user %s: %v", claims.UID, err)
 			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
@@ -63,9 +61,3 @@ func NewMeHandler(users UserProvider) http.HandlerFunc {
 	}
 }
 
-// provisionAndFetch attempts to upsert the user row and return it.
-// If the upsert is a no-op (conflict) it falls back to a plain SELECT so that
-// subsequent GET /api/me calls after provisioning always succeed.
-func provisionAndFetch(ctx context.Context, users UserProvider, claims *auth.TokenClaims) (*repository.User, error) {
-	return users.Upsert(ctx, claims.UID, claims.Email)
-}

@@ -39,9 +39,12 @@ type fakeQueryResult struct {
 }
 
 // registerResults stores results under a unique DSN and returns that DSN.
-func registerResults(results []fakeQueryResult) string {
+// It registers a t.Cleanup to delete the entry after the test completes.
+func registerResults(t *testing.T, results []fakeQueryResult) string {
+	t.Helper()
 	dsn := nextDSN()
 	resultRegistry[dsn] = results
+	t.Cleanup(func() { delete(resultRegistry, dsn) })
 	return dsn
 }
 
@@ -117,12 +120,13 @@ func emptyDB() *sql.DB {
 }
 
 // userDB returns a *sql.DB whose first QueryRowContext returns the given user.
-func userDB(u *repository.User) *sql.DB {
+func userDB(t *testing.T, u *repository.User) *sql.DB {
+	t.Helper()
 	avatarVal := driver.Value(nil)
 	if u.AvatarURL != nil {
 		avatarVal = *u.AvatarURL
 	}
-	dsn := registerResults([]fakeQueryResult{
+	dsn := registerResults(t, []fakeQueryResult{
 		{
 			columns: []string{"id", "firebase_uid", "username", "avatar_url", "created_at"},
 			rows:    [][]driver.Value{{u.ID, u.FirebaseUID, u.Username, avatarVal, u.CreatedAt}},
@@ -162,6 +166,7 @@ func (q *captureQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) 
 
 // rowQuerier returns a fully-populated row from QueryRowContext (for found tests).
 type rowQuerier struct {
+	t       *testing.T
 	user    *repository.User
 	execErr error
 }
@@ -177,7 +182,7 @@ func (q *rowQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql
 	if q.user == nil {
 		return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
 	}
-	return userDB(q.user).QueryRowContext(
+	return userDB(q.t, q.user).QueryRowContext(
 		context.Background(),
 		"SELECT id, firebase_uid, username, avatar_url, created_at FROM users WHERE firebase_uid = $1",
 		q.user.FirebaseUID,
@@ -267,7 +272,7 @@ func TestUpsert_ReturnsUserWhenFound(t *testing.T) {
 		CreatedAt:   now,
 	}
 
-	repo := repository.NewUserRepository(&rowQuerier{user: expected})
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: expected})
 	got, err := repo.Upsert(context.Background(), "firebase-uid-3", "carol@example.com")
 
 	if err != nil {
@@ -284,7 +289,7 @@ func TestUpsert_ReturnsUserWhenFound(t *testing.T) {
 // ─── GetByFirebaseUID tests ───────────────────────────────────────────────────
 
 func TestGetByFirebaseUID_NotFound(t *testing.T) {
-	repo := repository.NewUserRepository(&rowQuerier{user: nil})
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: nil})
 
 	user, err := repo.GetByFirebaseUID(context.Background(), "unknown-uid")
 
@@ -307,7 +312,7 @@ func TestGetByFirebaseUID_Found(t *testing.T) {
 		CreatedAt:   now,
 	}
 
-	repo := repository.NewUserRepository(&rowQuerier{user: expected})
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: expected})
 	got, err := repo.GetByFirebaseUID(context.Background(), "firebase-uid-1")
 
 	if err != nil {
@@ -337,7 +342,7 @@ func TestGetByFirebaseUID_NilAvatarURL(t *testing.T) {
 		CreatedAt:   now,
 	}
 
-	repo := repository.NewUserRepository(&rowQuerier{user: expected})
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: expected})
 	got, err := repo.GetByFirebaseUID(context.Background(), "firebase-uid-2")
 
 	if err != nil {

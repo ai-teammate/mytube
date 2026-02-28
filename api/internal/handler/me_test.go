@@ -25,10 +25,6 @@ func (s *stubUserProvider) Upsert(_ context.Context, _, _ string) (*repository.U
 	return s.user, s.err
 }
 
-func (s *stubUserProvider) GetByFirebaseUID(_ context.Context, _ string) (*repository.User, error) {
-	return s.user, s.err
-}
-
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 // withClaims injects *auth.TokenClaims into a request's context, mimicking
@@ -204,8 +200,4 @@ type recordingUserProvider struct {
 
 func (r *recordingUserProvider) Upsert(_ context.Context, firebaseUID, email string) (*repository.User, error) {
 	return r.onUpsert(firebaseUID, email)
-}
-
-func (r *recordingUserProvider) GetByFirebaseUID(_ context.Context, _ string) (*repository.User, error) {
-	return nil, nil
 }
