@@ -1,5 +1,5 @@
 test_id: MYTUBE-50
-type: api
+type: infrastructure
 framework: subprocess+gcloud
 platform: gcp
 dependencies: []

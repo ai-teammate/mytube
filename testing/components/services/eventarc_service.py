@@ -36,11 +36,15 @@ class EventarcService:
     Service object that queries GCP infrastructure via the gcloud CLI.
 
     Constructor injects project and region so tests never hard-code them.
+    Results are cached per name so repeated describe calls within a test
+    session do not issue redundant gcloud invocations.
     """
 
     def __init__(self, project: str, region: str):
         self._project = project
         self._region = region
+        self._job_cache: dict = {}
+        self._trigger_cache: dict = {}
 
     # ------------------------------------------------------------------
     # Cloud Run Jobs
@@ -50,9 +54,14 @@ class EventarcService:
         """
         Return metadata for a Cloud Run Job.
 
+        Results are cached; subsequent calls for the same job_name return
+        the cached value without issuing another gcloud invocation.
+
         Raises subprocess.CalledProcessError if the job does not exist or
         the caller lacks permissions.
         """
+        if job_name in self._job_cache:
+            return self._job_cache[job_name]
         result = subprocess.run(
             [
                 "gcloud", "run", "jobs", "describe", job_name,
@@ -65,12 +74,14 @@ class EventarcService:
             check=True,
         )
         raw = json.loads(result.stdout)
-        return CloudRunJobInfo(
+        info = CloudRunJobInfo(
             name=job_name,
             region=self._region,
             project=self._project,
             raw=raw,
         )
+        self._job_cache[job_name] = info
+        return info
 
     def cloud_run_job_exists(self, job_name: str) -> bool:
         """Return True if the Cloud Run Job exists in the configured region."""
@@ -88,8 +99,13 @@ class EventarcService:
         """
         Return metadata for an Eventarc trigger.
 
+        Results are cached; subsequent calls for the same trigger_name return
+        the cached value without issuing another gcloud invocation.
+
         Raises subprocess.CalledProcessError if the trigger does not exist.
         """
+        if trigger_name in self._trigger_cache:
+            return self._trigger_cache[trigger_name]
         result = subprocess.run(
             [
                 "gcloud", "eventarc", "triggers", "describe", trigger_name,
@@ -123,13 +139,15 @@ class EventarcService:
             # Full resource name: projects/.../services/<name>
             destination_service = svc_ref.split("/")[-1]
 
-        return EventarcTriggerInfo(
+        info = EventarcTriggerInfo(
             name=trigger_name,
             event_type=event_type,
             bucket_filter=bucket_filter,
             destination_service=destination_service,
             raw=raw,
         )
+        self._trigger_cache[trigger_name] = info
+        return info
 
     def eventarc_trigger_exists(self, trigger_name: str) -> bool:
         """Return True if the Eventarc trigger exists."""
