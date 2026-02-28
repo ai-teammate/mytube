@@ -1,5 +1,4 @@
 """Service object for inserting and querying video rows."""
-import psycopg2.errors
 
 
 class VideoService:

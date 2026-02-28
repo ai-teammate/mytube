@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
 from testing.components.services.video_service import VideoService
+from testing.components.services.user_service import UserService
 
 MIGRATION_SQL = os.path.join(
     os.path.dirname(__file__),
@@ -78,14 +79,14 @@ def video_service(conn) -> VideoService:
 
 
 @pytest.fixture(scope="module")
-def uploader_id(conn) -> str:
+def user_service(conn) -> UserService:
+    return UserService(conn)
+
+
+@pytest.fixture(scope="module")
+def uploader_id(user_service: UserService) -> str:
     """Insert a single user and return its id for use as uploader_id."""
-    with conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO users (firebase_uid, username) VALUES (%s, %s) RETURNING id",
-            ("test-firebase-uid-34", "testuser34"),
-        )
-        return str(cur.fetchone()[0])
+    return user_service.create_user("test-firebase-uid-34", "testuser34")
 
 
 # ---------------------------------------------------------------------------
