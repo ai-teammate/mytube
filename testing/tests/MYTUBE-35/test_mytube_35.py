@@ -13,70 +13,15 @@ import os
 import sys
 import uuid
 
-import psycopg2
 import psycopg2.errors
 import pytest
 
 # Ensure the testing root is importable regardless of where pytest is invoked.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.db_config import DBConfig
+from testing.components.services.ratings_service import RatingsService
 
-MIGRATION_SQL = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "..",
-    "..",
-    "api",
-    "migrations",
-    "0001_initial_schema.up.sql",
-)
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="module")
-def db_config() -> DBConfig:
-    return DBConfig()
-
-
-@pytest.fixture(scope="module")
-def conn(db_config: DBConfig):
-    """
-    Open a connection, apply the initial schema migration on a clean database,
-    insert the minimum prerequisite rows (one user, one video), yield the
-    connection, then clean up.
-    """
-    connection = psycopg2.connect(db_config.dsn())
-    connection.autocommit = True
-
-    # Start from a clean slate.
-    with connection.cursor() as cur:
-        cur.execute(
-            """
-            DO $$ DECLARE
-                r RECORD;
-            BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                END LOOP;
-            END $$;
-            """
-        )
-        cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
-
-    # Apply the migration.
-    with open(MIGRATION_SQL, "r") as fh:
-        migration_sql = fh.read()
-    with connection.cursor() as cur:
-        cur.execute(migration_sql)
-
-    yield connection
-
-    connection.close()
+# conn and db_config fixtures are provided by testing/tests/conftest.py
 
 
 @pytest.fixture(scope="module")
@@ -107,6 +52,12 @@ def prerequisite_ids(conn):
     return user_id, video_id
 
 
+@pytest.fixture(scope="module")
+def ratings_service(conn) -> RatingsService:
+    """Provide a RatingsService backed by the test database connection."""
+    return RatingsService(conn)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -115,45 +66,22 @@ def prerequisite_ids(conn):
 class TestRatingsStarsConstraint:
     """CHECK (stars BETWEEN 1 AND 5) on the ratings table."""
 
-    def test_stars_zero_rejected(self, conn, prerequisite_ids):
+    def test_stars_zero_rejected(self, ratings_service, prerequisite_ids):
         """Inserting stars = 0 must raise a CHECK constraint violation."""
         user_id, video_id = prerequisite_ids
         with pytest.raises(psycopg2.errors.CheckViolation):
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO ratings (video_id, user_id, stars) VALUES (%s, %s, %s)",
-                    (video_id, user_id, 0),
-                )
+            ratings_service.insert_rating(video_id, user_id, 0)
 
-    def test_stars_six_rejected(self, conn, prerequisite_ids):
+    def test_stars_six_rejected(self, ratings_service, prerequisite_ids):
         """Inserting stars = 6 must raise a CHECK constraint violation."""
         user_id, video_id = prerequisite_ids
-        # The connection may be in an aborted state after the previous failure;
-        # roll back before attempting the next statement.
-        conn.rollback()
         with pytest.raises(psycopg2.errors.CheckViolation):
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO ratings (video_id, user_id, stars) VALUES (%s, %s, %s)",
-                    (video_id, user_id, 6),
-                )
+            ratings_service.insert_rating(video_id, user_id, 6)
 
-    def test_stars_five_accepted(self, conn, prerequisite_ids):
+    def test_stars_five_accepted(self, ratings_service, prerequisite_ids):
         """Inserting stars = 5 must succeed."""
         user_id, video_id = prerequisite_ids
-        # Ensure connection is clean after previous failed transactions.
-        conn.rollback()
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO ratings (video_id, user_id, stars) VALUES (%s, %s, %s)",
-                (video_id, user_id, 5),
-            )
-        # Verify the row was actually stored.
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT stars FROM ratings WHERE video_id = %s AND user_id = %s",
-                (video_id, user_id),
-            )
-            row = cur.fetchone()
-        assert row is not None, "Rating row not found after successful insert"
-        assert row[0] == 5, f"Expected stars = 5, got {row[0]}"
+        ratings_service.insert_rating(video_id, user_id, 5)
+        stars = ratings_service.get_rating(video_id, user_id)
+        assert stars is not None, "Rating row not found after successful insert"
+        assert stars == 5, f"Expected stars = 5, got {stars}"
