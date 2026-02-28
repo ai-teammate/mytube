@@ -109,20 +109,10 @@ class TestRawUploadsBucketProvisioning:
         request to the GCS storage XML API endpoint and verifies that access
         is denied with 403 Forbidden.
         """
-        # Import here to keep it close to usage; no authenticated client needed.
-        from testing.components.services.gcs_bucket_service import GCSBucketService
-        import urllib.request, urllib.error
-
-        url = gcs_config.raw_bucket_public_url("probe.txt")
-        http_status = None
-        try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
-                http_status = resp.status
-        except urllib.error.HTTPError as exc:
-            http_status = exc.code
-
-        assert http_status == 403, (
-            f"Expected HTTP 403 (Forbidden) when accessing '{url}' without "
-            f"authentication, but got HTTP {http_status}. "
+        service = GCSBucketService(config=gcs_config, storage_client=None)
+        result = service.attempt_public_access("probe.txt")
+        assert result.http_status == 403, (
+            f"Expected HTTP 403 (Forbidden) when accessing '{result.url}' without "
+            f"authentication, but got HTTP {result.http_status}. "
             "The bucket may be publicly accessible, which is a security issue."
         )
