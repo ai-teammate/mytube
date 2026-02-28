@@ -112,16 +112,17 @@ jobs:
       - name: Install Codemie CLI
         if: vars.AI_AGENT_PROVIDER == 'codemie'
         run: |
-          if command -v codemie-claude &> /dev/null; then
-            echo "✅ Codemie CLI found in cache"
-            codemie-claude --version || echo "Version check failed"
-          else
+          if ! command -v codemie-claude &> /dev/null; then
             echo "📦 Installing Codemie CLI..."
             npm install -g @codemieai/code
-            codemie install claude --supported
-            echo "✅ Codemie CLI ready"
+          else
+            echo "✅ Codemie CLI found in cache"
             codemie-claude --version || echo "Version check failed"
           fi
+          # Always ensure Claude Code is installed (fast no-op if already cached)
+          codemie install claude --supported
+          echo "✅ Codemie CLI ready"
+          codemie-claude --version || echo "Version check failed"
 
       - name: Install DMTools CLI
         run: |
