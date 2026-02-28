@@ -2,8 +2,6 @@
 import json
 import subprocess
 
-import pytest
-
 from testing.core.config.gcp_config import GcpConfig
 
 
@@ -21,7 +19,7 @@ class GcpIamService:
         """Return IAM bindings for a GCS bucket.
 
         Returns a list of dicts: [{"role": "...", "members": [...]}, ...]
-        Fails the test (via pytest.fail) if gcloud returns a non-zero exit code.
+        Raises RuntimeError if gcloud returns a non-zero exit code.
         """
         result = self._run_gcloud(
             "storage", "buckets", "get-iam-policy",
@@ -30,7 +28,7 @@ class GcpIamService:
             "--format", "json",
         )
         if result.returncode != 0:
-            pytest.fail(
+            raise RuntimeError(
                 f"Failed to retrieve IAM policy for gs://{bucket}.\n"
                 f"stderr: {result.stderr.strip()}"
             )
@@ -41,7 +39,7 @@ class GcpIamService:
         """Return the full service account email attached to a Cloud Run Job.
 
         Falls back to constructing the email from the short name if no '@' is present.
-        Fails the test if gcloud returns a non-zero exit code or the key is absent.
+        Raises RuntimeError if gcloud returns a non-zero exit code or the key is absent.
         """
         result = self._run_gcloud(
             "run", "jobs", "describe", job_name,
@@ -50,7 +48,7 @@ class GcpIamService:
             "--format", "json",
         )
         if result.returncode != 0:
-            pytest.fail(
+            raise RuntimeError(
                 f"Failed to describe Cloud Run Job '{job_name}'.\n"
                 f"stderr: {result.stderr.strip()}"
             )
@@ -58,7 +56,7 @@ class GcpIamService:
         try:
             sa = job_config["spec"]["template"]["spec"]["serviceAccountName"]
         except KeyError:
-            pytest.fail(
+            raise RuntimeError(
                 f"Could not find serviceAccountName in Cloud Run Job spec.\n"
                 f"Job config keys: {list(job_config.keys())}"
             )
