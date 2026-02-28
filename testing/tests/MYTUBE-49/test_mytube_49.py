@@ -4,10 +4,12 @@ via Cloud CDN.
 
 Verifies that the `mytube-hls-output` GCS bucket:
   1. Exists in GCS.
-  2. Has public read access (allUsers roles/storage.objectViewer), satisfying
-     the CDN delivery requirement defined in infra/setup.sh.
-  3. Serves objects via the Cloud CDN frontend URL (CDN_BASE_URL), confirming
-     correct HLS delivery configuration end-to-end.
+  2. Has public read access (allUsers roles/storage.objectViewer).
+     NOTE: infra/setup.sh provisions CDN delivery via public GCS access —
+     there is no separate GCP Cloud CDN load balancer infrastructure.
+     This IAM binding IS the CDN-enablement step in the current infra.
+  3. Serves objects via the CDN endpoint URL (CDN_BASE_URL env var).
+     If CDN_BASE_URL is not set, the test skips with an explanatory message.
 """
 import os
 import sys
@@ -55,12 +57,16 @@ class TestHLSBucketProvisionedWithPublicAccess:
 
     def test_hls_bucket_has_public_read_iam(self, gcs_service: GCSService, gcs_config: GCSConfig):
         """
-        Step 2: allUsers must have roles/storage.objectViewer on the bucket,
-        confirming public read access required for CDN delivery.
+        Step 2: allUsers must have roles/storage.objectViewer on the bucket.
+
+        infra/setup.sh enables HLS delivery by granting this IAM binding —
+        there is no separate GCP Cloud CDN load balancer in this project.
+        This binding is the CDN-enablement configuration for the HLS bucket.
         """
         assert gcs_service.has_public_read_iam(gcs_config.hls_bucket), (
             f"Bucket '{gcs_config.hls_bucket}' does not grant allUsers "
-            "roles/storage.objectViewer. Cloud CDN delivery requires public read access."
+            "roles/storage.objectViewer. This IAM binding is required for "
+            "HLS delivery (see infra/setup.sh step 2)."
         )
 
     def test_object_served_via_cdn_url(self, gcs_service: GCSService, gcs_config: GCSConfig):
