@@ -78,7 +78,8 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_comments_video_id ON comments(video_id);
+CREATE INDEX idx_comments_video_id  ON comments(video_id);
+CREATE INDEX idx_comments_author_id ON comments(author_id);
 
 CREATE TABLE IF NOT EXISTS ratings (
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,

@@ -4,6 +4,7 @@
 DROP INDEX IF EXISTS idx_ratings_user_id;
 DROP TABLE IF EXISTS ratings;
 
+DROP INDEX IF EXISTS idx_comments_author_id;
 DROP INDEX IF EXISTS idx_comments_video_id;
 DROP TABLE IF EXISTS comments;
 
