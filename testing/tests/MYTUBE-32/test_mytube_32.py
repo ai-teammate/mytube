@@ -5,9 +5,6 @@ fails and logs error.
 Verifies the Go API's error-handling behaviour when DB credentials are invalid:
   1. The process exits with a non-zero exit code (log.Fatalf path).
   2. The log output contains an error referencing the DB connection.
-  3. The /health endpoint returns HTTP 500 when launched with an unreachable DB
-     host that allows the TCP handshake (so migration reaches the driver layer),
-     or we verify the health handler behaviour by starting with a valid DB.
 
 Architecture notes
 ------------------
@@ -17,11 +14,32 @@ Architecture notes
   individual fields to inject faults.
 - The Go binary path is resolved relative to the repo root via an env var
   (API_BINARY) or a sensible default build location.
+
+Note on ticket step 3 (/health endpoint)
+-----------------------------------------
+The ticket asks to "try to access the /health endpoint" when started with bad
+credentials.  The Go application architecture makes this impossible to exercise
+as a standalone step: main() calls database.Open() → RunMigrations() → (only
+then) http.ListenAndServe().  RunMigrations calls postgres.WithInstance() which
+pings the DB; if the DB is unreachable the function returns an error, main()
+calls log.Fatalf(), and the process exits **before** the HTTP server ever
+starts listening.
+
+Consequently there is no window in which a client can reach /health with an
+invalid DB.  The /health handler's HTTP-500 path (db.Ping() failure at request
+time) can only be triggered by a mid-flight DB disconnection **after** a
+successful startup.  That scenario is out of scope for this ticket.
+
+What this test suite does assert:
+- The application exits non-zero (not silently swallowing the error).
+- The log output contains a connection-related error string.
+These two assertions together confirm the expected behaviour described in the
+ticket ("The application logs a connection failure error. The API either fails
+to start or the /health endpoint returns an error status").
 """
 
 import os
 import sys
-import json
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -42,7 +60,7 @@ API_BINARY = os.getenv("API_BINARY", _DEFAULT_BINARY)
 # Ports chosen to avoid conflicts with the real service.
 _PORT_WRONG_PASSWORD = 18081
 _PORT_INVALID_HOST   = 18082
-_PORT_HEALTH_OK      = 18083
+_PORT_CLOSED_PORT    = 18083
 
 
 def _make_env(cfg: DBConfig, overrides: dict) -> dict:
@@ -76,12 +94,14 @@ class TestApiExitsOnBadCredentials:
         env = _make_env(cfg, {"DB_PASSWORD": "definitely_wrong_password_xyz"})
         svc = ApiProcessService(API_BINARY, port=_PORT_WRONG_PASSWORD, env=env, startup_timeout=5.0)
         svc.start()
-        exit_code = svc.wait_for_exit(timeout=8.0)
-
-        assert exit_code is not None, "Process did not exit within timeout"
-        assert exit_code != 0, (
-            f"Expected non-zero exit code on bad password, got {exit_code}"
-        )
+        try:
+            exit_code = svc.wait_for_exit(timeout=8.0)
+            assert exit_code is not None, "Process did not exit within timeout"
+            assert exit_code != 0, (
+                f"Expected non-zero exit code on bad password, got {exit_code}"
+            )
+        finally:
+            svc.stop()
 
     def test_wrong_password_logs_connection_error(self):
         """
@@ -93,15 +113,17 @@ class TestApiExitsOnBadCredentials:
         env = _make_env(cfg, {"DB_PASSWORD": "definitely_wrong_password_xyz"})
         svc = ApiProcessService(API_BINARY, port=_PORT_WRONG_PASSWORD + 10, env=env, startup_timeout=5.0)
         svc.start()
-        svc.wait_for_exit(timeout=8.0)
-        logs = svc.get_log_output()
-
-        # The app logs via log.Fatalf("migrate: %v", err) or
-        # log.Fatalf("db open: %v", err). Either prefix indicates startup
-        # failure due to a DB connection problem.
-        assert any(kw in logs.lower() for kw in ("migrate", "db open", "connect", "fatal")), (
-            f"Expected a DB connection error in logs, got:\n{logs}"
-        )
+        try:
+            svc.wait_for_exit(timeout=8.0)
+            logs = svc.get_log_output()
+            # The app logs via log.Fatalf("migrate: %v", err) or
+            # log.Fatalf("db open: %v", err). Either prefix indicates startup
+            # failure due to a DB connection problem.
+            assert any(kw in logs.lower() for kw in ("migrate", "db open", "connect", "fatal")), (
+                f"Expected a DB connection error in logs, got:\n{logs}"
+            )
+        finally:
+            svc.stop()
 
     def test_invalid_host_causes_nonzero_exit(self):
         """
@@ -111,12 +133,14 @@ class TestApiExitsOnBadCredentials:
         env = _make_env(cfg, {"DB_HOST": "invalid-host-does-not-exist.local"})
         svc = ApiProcessService(API_BINARY, port=_PORT_INVALID_HOST, env=env, startup_timeout=5.0)
         svc.start()
-        exit_code = svc.wait_for_exit(timeout=8.0)
-
-        assert exit_code is not None, "Process did not exit within timeout"
-        assert exit_code != 0, (
-            f"Expected non-zero exit code on invalid host, got {exit_code}"
-        )
+        try:
+            exit_code = svc.wait_for_exit(timeout=8.0)
+            assert exit_code is not None, "Process did not exit within timeout"
+            assert exit_code != 0, (
+                f"Expected non-zero exit code on invalid host, got {exit_code}"
+            )
+        finally:
+            svc.stop()
 
     def test_invalid_host_logs_connection_error(self):
         """
@@ -127,68 +151,63 @@ class TestApiExitsOnBadCredentials:
         env = _make_env(cfg, {"DB_HOST": "invalid-host-does-not-exist.local"})
         svc = ApiProcessService(API_BINARY, port=_PORT_INVALID_HOST + 10, env=env, startup_timeout=5.0)
         svc.start()
-        svc.wait_for_exit(timeout=8.0)
-        logs = svc.get_log_output()
-
-        assert any(kw in logs.lower() for kw in ("migrate", "db open", "connect", "fatal", "no such host")), (
-            f"Expected a DB connection error in logs, got:\n{logs}"
-        )
+        try:
+            svc.wait_for_exit(timeout=8.0)
+            logs = svc.get_log_output()
+            assert any(kw in logs.lower() for kw in ("migrate", "db open", "connect", "fatal", "no such host")), (
+                f"Expected a DB connection error in logs, got:\n{logs}"
+            )
+        finally:
+            svc.stop()
 
 
 # ---------------------------------------------------------------------------
-# Tests — /health endpoint behaviour (ticket step 3)
+# Tests — app exits before HTTP server starts with unreachable DB (ticket step 3)
 # ---------------------------------------------------------------------------
 
 
-class TestHealthEndpointWithBadConnection:
+class TestApiExitsBeforeServingWhenDbUnreachable:
     """
-    The /health endpoint must return HTTP 500 {"status":"error"} when
-    db.Ping() fails.
+    Verifies that the API exits before the HTTP server starts when the DB
+    is unreachable at boot time.
 
-    Because the Go API calls RunMigrations before starting the HTTP server,
-    it exits before listening if the DB is totally unreachable at startup.
-    This test therefore starts the API against a valid DB (so migrations pass
-    and the server starts), then issues GET /health.  The health handler calls
-    db.Ping() on every request; if the DB connection is lost after startup
-    it returns 500.  Here we verify the HTTP contract of the handler with a
-    live DB — the error path (500) is covered by TestApiExitsOnBadCredentials
-    which shows the app never reaches the handler when the DB is unavailable
-    from the start.
+    This covers the ticket's expected result: "The API either fails to start
+    or the /health endpoint returns an error status."  Because main() calls
+    RunMigrations() (which pings the DB) before http.ListenAndServe(), the
+    process always exits non-zero and never reaches a serving state when the
+    DB is unavailable.  There is therefore no window to call /health; the
+    fast-fail exit itself is the observable evidence of the error handling.
     """
 
-    def test_health_returns_500_when_db_unreachable_at_handler_time(self):
+    def test_api_exits_before_serving_when_db_unreachable_at_closed_port(self):
         """
-        Start the API with a valid-DSN but point Ping to an unreachable host.
+        Start the API with a closed local port as DB target.
 
-        sql.Open() in Go is lazy — it succeeds without a real connection.
-        The golang-migrate postgres driver calls db.Ping() during
-        WithInstance(), so migration WILL fail if the host is truly
-        unreachable.  We therefore use a localhost port that is closed
-        (connection refused is immediate) so that migration fails quickly,
-        exit code is non-zero, and the log contains the error.
-
-        This confirms: the application correctly fails fast with a non-zero
-        exit and logged error rather than silently starting in a broken state
-        when the DB is unavailable.
+        A closed local port gives an immediate "connection refused" so we
+        get a fast, deterministic result without a network timeout.  The
+        process must exit non-zero and its logs must contain the connection
+        error — confirming the application fails fast rather than silently
+        starting in a broken state.
         """
         cfg = DBConfig()
-        # A closed local port gives an immediate "connection refused" so we
-        # get a fast, deterministic result without a network timeout.
         env = _make_env(cfg, {
             "DB_HOST": "127.0.0.1",
             "DB_PORT": "19998",   # almost certainly no service listening here
             "SSL_MODE": "disable",
         })
-        svc = ApiProcessService(API_BINARY, port=_PORT_HEALTH_OK, env=env, startup_timeout=5.0)
+        svc = ApiProcessService(API_BINARY, port=_PORT_CLOSED_PORT, env=env, startup_timeout=5.0)
         svc.start()
-        exit_code = svc.wait_for_exit(timeout=8.0)
-        logs = svc.get_log_output()
+        try:
+            exit_code = svc.wait_for_exit(timeout=8.0)
+            logs = svc.get_log_output()
 
-        # The API must not silently swallow the error and start serving.
-        assert exit_code is not None, "Process did not exit — API started despite bad DB"
-        assert exit_code != 0, (
-            f"Expected non-zero exit when DB is unreachable, got exit_code={exit_code}"
-        )
-        assert any(kw in logs.lower() for kw in ("migrate", "db open", "connect", "refused")), (
-            f"Expected connection error in logs, got:\n{logs}"
-        )
+            # The API must not silently swallow the error and start serving.
+            assert exit_code is not None, "Process did not exit — API started despite bad DB"
+            assert exit_code != 0, (
+                f"Expected non-zero exit when DB is unreachable, got exit_code={exit_code}"
+            )
+            assert any(kw in logs.lower() for kw in ("migrate", "db open", "connect", "refused")), (
+                f"Expected connection error in logs, got:\n{logs}"
+            )
+        finally:
+            svc.stop()
