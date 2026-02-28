@@ -1,5 +1,5 @@
 test_id: MYTUBE-32
 type: api
-framework: psycopg2
-platform: postgresql
+framework: subprocess+http
+platform: go-binary
 dependencies: []
