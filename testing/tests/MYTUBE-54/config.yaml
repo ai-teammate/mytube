@@ -1,0 +1,5 @@
+test_id: MYTUBE-54
+type: infrastructure
+framework: pytest
+platform: static
+dependencies: []
