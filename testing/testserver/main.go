@@ -12,7 +12,7 @@
 //
 // Usage:
 //
-//	go run . -port 18650
+//	PORT=18650 go run .
 //
 // Endpoints:
 //
@@ -23,7 +23,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -70,8 +69,10 @@ func requireAuth(next http.Handler) http.Handler {
 }
 
 func main() {
-	port := flag.String("port", "18650", "TCP port to listen on")
-	flag.Parse()
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "18650"
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -81,7 +82,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})))
 
-	addr := "127.0.0.1:" + *port
+	addr := "127.0.0.1:" + port
 	srv := &http.Server{Addr: addr, Handler: mux}
 
 	go func() {
