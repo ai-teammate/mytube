@@ -15,3 +15,15 @@ class UserService:
                 (firebase_uid, username),
             )
             return str(cur.fetchone()[0])
+
+    def find_by_firebase_uid(self, firebase_uid: str) -> dict | None:
+        """Return a dict with id, firebase_uid, and username for the given UID, or None."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, firebase_uid, username FROM users WHERE firebase_uid = %s",
+                (firebase_uid,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return {"id": str(row[0]), "firebase_uid": row[1], "username": row[2]}

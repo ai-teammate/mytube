@@ -51,6 +51,7 @@ set_secret "JIRA_API_TOKEN"    "$(get JIRA_API_TOKEN)"
 set_secret "GEMINI_API_KEY"    "$(get GEMINI_API_KEY)"
 set_secret "FIGMA_TOKEN"       "$(get FIGMA_TOKEN)"
 set_secret "CODEMIE_API_KEY"   "$(get CODEMIE_API_KEY)"
+set_secret "COPILOT_GITHUB_TOKEN" "$(get COPILOT_GITHUB_TOKEN)"
 set_secret "DB_USER"           "$(get DB_USER)"
 set_secret "DB_PASSWORD"       "$(get DB_PASSWORD)"
 
