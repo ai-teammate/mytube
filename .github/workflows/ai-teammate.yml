@@ -62,32 +62,33 @@ jobs:
           cache-key-suffix: '-cursor'
 
       - name: Set up Node.js
-        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Configure npm global prefix
-        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         run: |
           npm config set prefix ~/.npm-global
           echo "$HOME/.npm-global/bin" >> $GITHUB_PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Cache npm global packages
-        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         uses: actions/cache@v4
         with:
           path: |
             ~/.npm-global
             ~/.codemie
             ~/.local/bin
-          key: ${{ runner.os }}-npm-global-${{ hashFiles('.github/workflows/ai-teammate.yml') }}
+          key: ${{ runner.os }}-npm-global-${{ vars.AI_AGENT_PROVIDER }}-${{ hashFiles('.github/workflows/ai-teammate.yml') }}
           restore-keys: |
+            ${{ runner.os }}-npm-global-${{ vars.AI_AGENT_PROVIDER }}-
             ${{ runner.os }}-npm-global-
 
       - name: Install Cursor CLI
-        if: vars.AI_AGENT_PROVIDER != 'codemie'
+        if: vars.AI_AGENT_PROVIDER != 'codemie' && vars.AI_AGENT_PROVIDER != 'copilot'
         run: |
           echo "Installing Cursor CLI..."
           curl https://cursor.com/install -fsS | bash
@@ -126,18 +127,38 @@ jobs:
           echo "✅ Codemie CLI ready"
           codemie-claude --version || echo "Version check failed"
 
+      - name: Install Copilot CLI
+        if: vars.AI_AGENT_PROVIDER == 'copilot'
+        run: |
+          if ! command -v github-copilot-cli &> /dev/null; then
+            echo "📦 Installing GitHub Copilot CLI..."
+            npm install -g @github/copilot
+          else
+            echo "✅ Copilot CLI already installed (from cache)"
+          fi
+          echo "✅ Copilot CLI ready"
+
+      - name: Verify Copilot CLI Installation
+        if: vars.AI_AGENT_PROVIDER == 'copilot'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.PAT_TOKEN }}
+        run: |
+          npx @github/copilot --version || echo "Copilot CLI verification - will be available with token"
+
       - name: Install DMTools CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.137/install.sh | bash -s v1.7.137
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.139/install.sh | bash -s v1.7.139
           echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
 
       - name: Verify CLI Installations
         run: |
-          dmtools || echo "dmtools verification failed"
-          if [ "${{ vars.AI_AGENT_PROVIDER }}" != "codemie" ]; then
-            cursor-agent --version || echo "cursor-agent version failed"
-          else
+          dmtools -v || echo "dmtools version check failed"
+          if [ "${{ vars.AI_AGENT_PROVIDER }}" = "codemie" ]; then
             codemie-claude --version || echo "codemie-claude version failed"
+          elif [ "${{ vars.AI_AGENT_PROVIDER }}" = "copilot" ]; then
+            npx @github/copilot --version || echo "copilot version check failed"
+          else
+            cursor-agent --version || echo "cursor-agent version failed"
           fi
 
       - name: Configure Git Author
@@ -186,6 +207,9 @@ jobs:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           SOURCE_GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+          # GitHub Copilot CLI Authentication
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.PAT_TOKEN }}
 
           # AI Agent Provider
           AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
