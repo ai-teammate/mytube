@@ -31,6 +31,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
+from testing.components.services.schema_service import SchemaService
 
 # ---------------------------------------------------------------------------
 # Migration paths
@@ -66,30 +67,10 @@ def conn(db_config: DBConfig):
     connection = psycopg2.connect(db_config.dsn())
     connection.autocommit = True
 
-    # Drop all public tables for a clean slate.
-    with connection.cursor() as cur:
-        cur.execute(
-            """
-            DO $$ DECLARE
-                r RECORD;
-            BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                END LOOP;
-            END $$;
-            """
-        )
-        cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
-
-    # Apply base schema migration.
-    with open(MIGRATION_SCHEMA, "r") as fh:
-        with connection.cursor() as cur:
-            cur.execute(fh.read())
-
-    # Apply search indexes migration.
-    with open(MIGRATION_INDEXES, "r") as fh:
-        with connection.cursor() as cur:
-            cur.execute(fh.read())
+    svc = SchemaService(connection)
+    svc.drop_all_public_tables()
+    svc.apply_sql_file(MIGRATION_SCHEMA)
+    svc.apply_sql_file(MIGRATION_INDEXES)
 
     # Seed a user to satisfy the FK on videos.uploader_id.
     user_id = str(uuid.uuid4())
