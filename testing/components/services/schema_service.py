@@ -2,6 +2,7 @@
 from typing import Optional, Union
 import psycopg2
 import psycopg2.extras
+from psycopg2 import sql
 
 
 class SchemaService:
@@ -201,5 +202,5 @@ class SchemaService:
     def count_rows(self, table_name: str) -> int:
         """Return the number of rows in the given table."""
         with self._conn.cursor() as cur:
-            cur.execute(f"SELECT COUNT(*) FROM {table_name}")  # noqa: S608
+            cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table_name)))
             return cur.fetchone()[0]
