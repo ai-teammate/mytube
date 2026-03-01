@@ -64,21 +64,6 @@ def indexes_applied_twice(conn, schema):
 
 
 # ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
-
-def index_exists(conn, index_name: str) -> bool:
-    """Return True if a pg_indexes entry with *index_name* exists."""
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = %s)",
-            (index_name,),
-        )
-        return cur.fetchone()[0]
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -99,8 +84,8 @@ class TestSearchIndexesExistAfterDoubleApplication:
     """All four search indexes must be present after two migration runs."""
 
     @pytest.mark.parametrize("index_name", EXPECTED_INDEXES)
-    def test_index_exists(self, conn, indexes_applied_twice, index_name: str):
-        assert index_exists(conn, index_name), (
+    def test_index_exists(self, schema: SchemaService, indexes_applied_twice, index_name: str):
+        assert schema.index_exists(index_name), (
             f"Index '{index_name}' is missing after double migration application."
         )
 
@@ -108,74 +93,30 @@ class TestSearchIndexesExistAfterDoubleApplication:
 class TestSearchIndexProperties:
     """Spot-check key properties of the created indexes."""
 
-    def test_videos_title_fts_is_gin(self, conn, indexes_applied_twice):
+    def test_videos_title_fts_is_gin(self, schema: SchemaService, indexes_applied_twice):
         """videos_title_fts must be a GIN index (used for full-text search)."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT am.amname
-                FROM pg_indexes pi
-                JOIN pg_class c ON c.relname = pi.indexname
-                JOIN pg_am    am ON am.oid    = c.relam
-                WHERE pi.indexname = 'videos_title_fts'
-                """,
-            )
-            row = cur.fetchone()
-        assert row is not None, "Index 'videos_title_fts' not found in pg_indexes."
-        assert row[0] == "gin", (
-            f"Expected 'videos_title_fts' to be GIN, got '{row[0]}'."
+        assert schema.get_index_access_method("videos_title_fts") == "gin", (
+            f"Expected 'videos_title_fts' to be GIN, "
+            f"got '{schema.get_index_access_method('videos_title_fts')}'."
         )
 
-    def test_video_tags_tag_idx_is_btree(self, conn, indexes_applied_twice):
+    def test_video_tags_tag_idx_is_btree(self, schema: SchemaService, indexes_applied_twice):
         """video_tags_tag_idx must be a B-tree index."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT am.amname
-                FROM pg_indexes pi
-                JOIN pg_class c ON c.relname = pi.indexname
-                JOIN pg_am    am ON am.oid    = c.relam
-                WHERE pi.indexname = 'video_tags_tag_idx'
-                """,
-            )
-            row = cur.fetchone()
-        assert row is not None, "Index 'video_tags_tag_idx' not found in pg_indexes."
-        assert row[0] == "btree", (
-            f"Expected 'video_tags_tag_idx' to be btree, got '{row[0]}'."
+        assert schema.get_index_access_method("video_tags_tag_idx") == "btree", (
+            f"Expected 'video_tags_tag_idx' to be btree, "
+            f"got '{schema.get_index_access_method('video_tags_tag_idx')}'."
         )
 
-    def test_videos_status_created_is_btree(self, conn, indexes_applied_twice):
+    def test_videos_status_created_is_btree(self, schema: SchemaService, indexes_applied_twice):
         """videos_status_created must be a B-tree composite index."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT am.amname
-                FROM pg_indexes pi
-                JOIN pg_class c ON c.relname = pi.indexname
-                JOIN pg_am    am ON am.oid    = c.relam
-                WHERE pi.indexname = 'videos_status_created'
-                """,
-            )
-            row = cur.fetchone()
-        assert row is not None, "Index 'videos_status_created' not found in pg_indexes."
-        assert row[0] == "btree", (
-            f"Expected 'videos_status_created' to be btree, got '{row[0]}'."
+        assert schema.get_index_access_method("videos_status_created") == "btree", (
+            f"Expected 'videos_status_created' to be btree, "
+            f"got '{schema.get_index_access_method('videos_status_created')}'."
         )
 
-    def test_videos_status_views_is_btree(self, conn, indexes_applied_twice):
+    def test_videos_status_views_is_btree(self, schema: SchemaService, indexes_applied_twice):
         """videos_status_views must be a B-tree composite index."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT am.amname
-                FROM pg_indexes pi
-                JOIN pg_class c ON c.relname = pi.indexname
-                JOIN pg_am    am ON am.oid    = c.relam
-                WHERE pi.indexname = 'videos_status_views'
-                """,
-            )
-            row = cur.fetchone()
-        assert row is not None, "Index 'videos_status_views' not found in pg_indexes."
-        assert row[0] == "btree", (
-            f"Expected 'videos_status_views' to be btree, got '{row[0]}'."
+        assert schema.get_index_access_method("videos_status_views") == "btree", (
+            f"Expected 'videos_status_views' to be btree, "
+            f"got '{schema.get_index_access_method('videos_status_views')}'."
         )
