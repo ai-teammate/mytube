@@ -1,0 +1,6 @@
+test_id: MYTUBE-66
+type: database
+framework: psycopg2
+platform: postgresql
+dependencies:
+  - 0001_initial_schema.up.sql
