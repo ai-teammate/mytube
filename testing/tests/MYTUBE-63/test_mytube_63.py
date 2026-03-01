@@ -31,10 +31,8 @@ Architecture notes
 
 import json
 import os
-import socket
 import subprocess
 import sys
-import time
 
 import pytest
 
@@ -100,25 +98,6 @@ def _build_binary() -> None:
         pytest.fail(f"Failed to build API binary:\n{result.stderr}")
 
 
-def _wait_for_port(host: str, port: int, proc: subprocess.Popen, timeout: float) -> None:
-    """Block until the TCP port accepts connections or raises on timeout/crash."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            out = proc.stdout.read() if proc.stdout else b""
-            pytest.fail(
-                f"API server exited before becoming ready.\nOutput: {out.decode(errors='replace')}"
-            )
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.3)
-            if sock.connect_ex((host, port)) == 0:
-                return
-        time.sleep(0.1)
-    proc.terminate()
-    proc.wait(timeout=5)
-    pytest.fail(f"API server did not become ready within {timeout}s.")
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -173,10 +152,7 @@ def api_server(api_config: APIConfig, db_config: DBConfig) -> ApiProcessService:
         startup_timeout=SERVER_STARTUP_TIMEOUT,
     )
     svc.start()
-
-    # Wait until the TCP port is accepting connections.
-    proc = svc._process  # access underlying Popen for crash detection
-    _wait_for_port("127.0.0.1", _PORT, proc, SERVER_STARTUP_TIMEOUT)
+    svc.wait_for_ready_or_crash()
 
     yield svc
 
