@@ -88,28 +88,10 @@ def conn(db_config: DBConfig):
     connection = psycopg2.connect(db_config.dsn())
     connection.autocommit = True
 
-    # Clean slate.
-    with connection.cursor() as cur:
-        cur.execute(
-            """
-            DO $$ DECLARE r RECORD; BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                END LOOP;
-            END $$;
-            """
-        )
-        cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
-
-    # Apply base schema.
-    with open(MIGRATION_SCHEMA, "r") as fh:
-        with connection.cursor() as cur:
-            cur.execute(fh.read())
-
-    # Apply search indexes migration.
-    with open(MIGRATION_SEARCH, "r") as fh:
-        with connection.cursor() as cur:
-            cur.execute(fh.read())
+    schema_svc = SchemaService(connection)
+    schema_svc.drop_all_public_tables()
+    schema_svc.apply_sql_file(MIGRATION_SCHEMA)
+    schema_svc.apply_sql_file(MIGRATION_SEARCH)
 
     # Insert test data.
     user_svc = UserService(connection)
@@ -122,11 +104,6 @@ def conn(db_config: DBConfig):
     yield connection
 
     connection.close()
-
-
-@pytest.fixture(scope="module")
-def schema(conn) -> SchemaService:
-    return SchemaService(conn)
 
 
 # ---------------------------------------------------------------------------
