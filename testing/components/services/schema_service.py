@@ -183,3 +183,37 @@ class SchemaService:
             sql = f.read()
         with self._conn.cursor() as cur:
             cur.execute(sql)
+
+    def index_exists(self, index_name: str, table_name: str | None = None) -> bool:
+        """Return True if the named index exists in the public schema."""
+        with self._conn.cursor() as cur:
+            if table_name:
+                cur.execute(
+                    "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+                    "WHERE schemaname = 'public' AND indexname = %s AND tablename = %s)",
+                    (index_name, table_name),
+                )
+            else:
+                cur.execute(
+                    "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+                    "WHERE schemaname = 'public' AND indexname = %s)",
+                    (index_name,),
+                )
+            return cur.fetchone()[0]
+
+    def index_access_method(self, index_name: str) -> str | None:
+        """Return the lowercase access method (e.g. 'gin', 'btree') for the index."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT am.amname
+                FROM pg_index idx
+                JOIN pg_class ci ON ci.oid = idx.indexrelid
+                JOIN pg_am    am ON am.oid = ci.relam
+                JOIN pg_namespace ns ON ns.oid = ci.relnamespace
+                WHERE ns.nspname = 'public' AND ci.relname = %s
+                """,
+                (index_name,),
+            )
+            row = cur.fetchone()
+            return row[0].lower() if row else None
