@@ -32,7 +32,7 @@ import os
 import socket
 import subprocess
 import sys
-import time
+import urllib.parse
 
 import pytest
 
@@ -321,6 +321,10 @@ def live_api_server(api_config: APIConfig, db_config: DBConfig):
             "— live integration test skipped."
         )
 
+    # Derive port from api_config.base_url (e.g. "http://localhost:8080").
+    parsed_url = urllib.parse.urlparse(api_config.base_url)
+    port = parsed_url.port if parsed_url.port is not None else _TEST_PORT
+
     # Build binary if missing.
     if not os.path.isfile(_SERVER_BINARY):
         build = subprocess.run(
@@ -340,12 +344,12 @@ def live_api_server(api_config: APIConfig, db_config: DBConfig):
         "DB_NAME": db_config.dbname,
         "SSL_MODE": db_config.sslmode,
         "FIREBASE_PROJECT_ID": os.environ["FIREBASE_PROJECT_ID"],
-        "PORT": str(_TEST_PORT),
+        "PORT": str(port),
     }
 
     svc = ApiProcessService(
         binary_path=_SERVER_BINARY,
-        port=_TEST_PORT,
+        port=port,
         env=env,
         startup_timeout=15.0,
     )
@@ -355,7 +359,7 @@ def live_api_server(api_config: APIConfig, db_config: DBConfig):
         logs = svc.get_log_output()
         svc.stop()
         pytest.fail(
-            f"API server did not become ready on port {_TEST_PORT}.\nLogs:\n{logs}"
+            f"API server did not become ready on port {port}.\nLogs:\n{logs}"
         )
 
     yield svc
