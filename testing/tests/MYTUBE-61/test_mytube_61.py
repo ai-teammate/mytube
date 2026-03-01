@@ -31,12 +31,11 @@ Why DB-integration (not full server test):
 import os
 import sys
 
-import psycopg2
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.db_config import DBConfig
+from testing.components.services.user_service import UserService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -65,51 +64,6 @@ _REPEAT_COUNT = 5
 
 
 @pytest.fixture(scope="module")
-def db_config() -> DBConfig:
-    return DBConfig()
-
-
-@pytest.fixture(scope="module")
-def conn(db_config: DBConfig):
-    """
-    Open a connection, rebuild the schema from scratch, yield, then close.
-
-    Module-scoped so all tests in this module share the same clean schema.
-    """
-    migration_sql_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "api", "migrations",
-        "0001_initial_schema.up.sql",
-    )
-
-    connection = psycopg2.connect(db_config.dsn())
-    connection.autocommit = True
-
-    # Drop all public tables and functions for a clean slate.
-    with connection.cursor() as cur:
-        cur.execute(
-            """
-            DO $$ DECLARE
-                r RECORD;
-            BEGIN
-                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                END LOOP;
-            END $$;
-            """
-        )
-        cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
-
-    with open(migration_sql_path, "r") as fh:
-        migration_sql = fh.read()
-    with connection.cursor() as cur:
-        cur.execute(migration_sql)
-
-    yield connection
-
-    connection.close()
-
-
-@pytest.fixture(scope="module")
 def pre_existing_user(conn) -> dict:
     """
     Pre-seed a user row that already exists in the database — the precondition
@@ -117,13 +71,7 @@ def pre_existing_user(conn) -> dict:
 
     Returns a dict with 'firebase_uid', 'username', and 'id'.
     """
-    with conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO users (firebase_uid, username) VALUES (%s, %s) RETURNING id",
-            (_FIREBASE_UID, _USERNAME),
-        )
-        user_id = str(cur.fetchone()[0])
-
+    user_id = UserService(conn).create_user(_FIREBASE_UID, _USERNAME)
     return {"id": user_id, "firebase_uid": _FIREBASE_UID, "username": _USERNAME}
 
 
