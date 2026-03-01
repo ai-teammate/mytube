@@ -177,6 +177,31 @@ class SchemaService:
             )
             cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
 
+    def index_exists(self, index_name: str) -> bool:
+        """Return True if a pg_indexes entry with *index_name* exists."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = %s)",
+                (index_name,),
+            )
+            return cur.fetchone()[0]
+
+    def get_index_access_method(self, index_name: str) -> Optional[str]:
+        """Return the access method name (e.g. 'gin', 'btree') for *index_name*, or None."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT am.amname
+                FROM pg_indexes pi
+                JOIN pg_class c ON c.relname = pi.indexname
+                JOIN pg_am    am ON am.oid    = c.relam
+                WHERE pi.indexname = %s
+                """,
+                (index_name,),
+            )
+            row = cur.fetchone()
+        return row[0] if row else None
+
     def apply_sql_file(self, path: str) -> None:
         """Read and execute a SQL file against the database."""
         with open(path, "r") as f:
