@@ -2,6 +2,7 @@
 from typing import Optional, Union
 import psycopg2
 import psycopg2.extras
+from psycopg2 import sql
 
 
 class SchemaService:
@@ -208,3 +209,23 @@ class SchemaService:
             sql = f.read()
         with self._conn.cursor() as cur:
             cur.execute(sql)
+
+    def index_exists(self, index_name: str, schema: str = "public") -> bool:
+        """Return True if the named index exists in the given schema."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_indexes
+                    WHERE schemaname = %s AND indexname = %s
+                )
+                """,
+                (schema, index_name),
+            )
+            return cur.fetchone()[0]
+
+    def count_rows(self, table_name: str) -> int:
+        """Return the number of rows in the given table."""
+        with self._conn.cursor() as cur:
+            cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table_name)))
+            return cur.fetchone()[0]
