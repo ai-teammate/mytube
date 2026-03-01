@@ -101,6 +101,23 @@ class ApiProcessService:
         self._collect_output()
         return self._process.poll()
 
+    def wait_for_ready_or_crash(self, host: str = "127.0.0.1", timeout: Optional[float] = None) -> None:
+        """Block until the TCP port accepts connections. Raises on crash or timeout."""
+        import socket as _socket
+        deadline = time.monotonic() + (timeout or self._startup_timeout)
+        while time.monotonic() < deadline:
+            if self._process is not None and self._process.poll() is not None:
+                out = self._process.stdout.read() if self._process and self._process.stdout else ""
+                raise RuntimeError(
+                    f"API server exited unexpectedly.\nOutput: {out}"
+                )
+            with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.3)
+                if sock.connect_ex((host, self._port)) == 0:
+                    return
+            time.sleep(0.1)
+        raise TimeoutError(f"API server did not become ready within {timeout or self._startup_timeout}s.")
+
     def wait_for_ready(self, path: str = "/health") -> bool:
         """Poll the given path until the server responds or startup_timeout expires.
 
