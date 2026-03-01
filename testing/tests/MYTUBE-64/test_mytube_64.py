@@ -70,7 +70,6 @@ _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
 )
 _API_DIR = os.path.join(_REPO_ROOT, "api")
-_MIDDLEWARE_PKG = "github.com/ai-teammate/mytube/api/internal/middleware"
 _MIDDLEWARE_IMPORT_PATH = "./internal/middleware/"
 
 
@@ -245,9 +244,9 @@ class TestMiddlewareContextInjection:
             f"STDOUT:\n{result.stdout}\n"
             f"STDERR:\n{result.stderr}"
         )
-        # All 9 test functions must appear as PASS
+        # All test functions must appear as PASS (minimum 9; safe as new tests are added)
         pass_count = result.stdout.count("--- PASS")
-        assert pass_count == 9, (
-            f"Expected 9 passing tests, got {pass_count}.\n"
+        assert pass_count >= 9, (
+            f"Expected at least 9 passing tests, got {pass_count}.\n"
             f"STDOUT:\n{result.stdout}"
         )
