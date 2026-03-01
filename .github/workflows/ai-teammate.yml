@@ -147,7 +147,7 @@ jobs:
 
       - name: Install DMTools CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.137/install.sh | bash -s v1.7.137
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.139/install.sh | bash -s v1.7.139
           echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
 
       - name: Verify CLI Installations
