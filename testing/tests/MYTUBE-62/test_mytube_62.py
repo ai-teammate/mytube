@@ -36,7 +36,7 @@ Environment variables
 Architecture notes
 ------------------
 - All subprocess / HTTP I/O is encapsulated in ApiProcessService.
-- UserService provides the direct-DB user insertion helper.
+- Direct psycopg2 SQL is used for idempotent test-user setup (ON CONFLICT DO NOTHING).
 - No hardcoded waits; ApiProcessService.wait_for_ready() polls /health.
 """
 import json
@@ -49,10 +49,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.api_config import APIConfig
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
-from testing.components.services.user_service import UserService
 
 import psycopg2
 
@@ -202,8 +200,6 @@ def seeded_user(api_server, db_conn):
 
     Returns a dict with the inserted user's id, firebase_uid, and username.
     """
-    user_svc = UserService(db_conn)
-
     # Derive a deterministic username from the firebase_uid.
     username = "testuser62"
 
