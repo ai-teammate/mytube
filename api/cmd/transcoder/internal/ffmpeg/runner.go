@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
+	"strings"
 )
 
 // Rendition describes a single HLS output stream.
@@ -81,6 +83,11 @@ func (r *Runner) TranscodeHLS(ctx context.Context, inputPath, outputDir string, 
 		)
 	}
 
+	streamMap, err := buildStreamMap(renditions)
+	if err != nil {
+		return fmt.Errorf("build stream map: %w", err)
+	}
+
 	// HLS muxer settings.
 	args = append(args,
 		"-f", "hls",
@@ -90,7 +97,7 @@ func (r *Runner) TranscodeHLS(ctx context.Context, inputPath, outputDir string, 
 		"-hls_segment_type", "mpegts",
 		"-hls_segment_filename", outputDir+"/%v_%03d.ts",
 		"-master_pl_name", "index.m3u8",
-		"-var_stream_map", buildStreamMap(renditions),
+		"-var_stream_map", streamMap,
 		outputDir+"/%v.m3u8",
 	)
 
@@ -111,15 +118,23 @@ func (r *Runner) ExtractThumbnail(ctx context.Context, inputPath, destPath strin
 	return r.Cmd.Run(ctx, "ffmpeg", args...)
 }
 
+// nameRe restricts rendition names to alphanumeric characters, hyphens, and
+// underscores, preventing argument injection into the FFmpeg -var_stream_map flag.
+var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 // buildStreamMap produces the -var_stream_map value, e.g.:
-// "v:0,a:0 v:1,a:1 v:2,a:2"
-func buildStreamMap(renditions []Rendition) string {
-	result := ""
-	for i := range renditions {
-		if i > 0 {
-			result += " "
+// "v:0,a:0,name:360p v:1,a:1,name:720p v:2,a:2,name:1080p"
+// It returns an error if any rendition name contains characters outside [a-zA-Z0-9_-].
+func buildStreamMap(renditions []Rendition) (string, error) {
+	var b strings.Builder
+	for i, rend := range renditions {
+		if !nameRe.MatchString(rend.Name) {
+			return "", fmt.Errorf("invalid rendition name %q: must match [a-zA-Z0-9_-]+", rend.Name)
 		}
-		result += fmt.Sprintf("v:%d,a:%d,name:%s", i, i, renditions[i].Name)
+		if i > 0 {
+			b.WriteString(" ")
+		}
+		fmt.Fprintf(&b, "v:%d,a:%d,name:%s", i, i, rend.Name)
 	}
-	return result
+	return b.String(), nil
 }

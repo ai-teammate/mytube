@@ -206,6 +206,35 @@ func TestTranscodeHLS_FFmpegError_Propagated(t *testing.T) {
 	}
 }
 
+func TestTranscodeHLS_InvalidRenditionName_ReturnsError(t *testing.T) {
+	stub := &stubRunner{}
+	r := &ffmpeg.Runner{Cmd: stub}
+
+	bad := []ffmpeg.Rendition{
+		{Name: "bad name!", Height: 360, VideoBitrate: "500k", AudioBitrate: "64k"},
+	}
+	err := r.TranscodeHLS(context.Background(), "in.mp4", "/out", bad)
+	if err == nil {
+		t.Fatal("expected error for invalid rendition name")
+	}
+	if len(stub.calls) != 0 {
+		t.Error("FFmpeg must not be called when rendition name is invalid")
+	}
+}
+
+func TestTranscodeHLS_RenditionNameWithComma_ReturnsError(t *testing.T) {
+	stub := &stubRunner{}
+	r := &ffmpeg.Runner{Cmd: stub}
+
+	bad := []ffmpeg.Rendition{
+		{Name: "360p,bad", Height: 360, VideoBitrate: "500k", AudioBitrate: "64k"},
+	}
+	err := r.TranscodeHLS(context.Background(), "in.mp4", "/out", bad)
+	if err == nil {
+		t.Fatal("expected error for rendition name containing comma")
+	}
+}
+
 // ── ExtractThumbnail ──────────────────────────────────────────────────────────
 
 func TestExtractThumbnail_CallsFFmpeg(t *testing.T) {

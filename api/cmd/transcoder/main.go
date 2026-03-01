@@ -22,6 +22,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"cloud.google.com/go/storage"
 	"github.com/ai-teammate/mytube/api/cmd/transcoder/internal/ffmpeg"
@@ -146,6 +147,24 @@ func transcode(
 	return err
 }
 
+// sanitiseExt returns a safe, lower-cased file extension for the given path.
+// Only a known allowlist of video container extensions is accepted; any other
+// value (including crafted paths with special characters) falls back to ".mp4".
+func sanitiseExt(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	allowed := map[string]bool{
+		".mp4":  true,
+		".mov":  true,
+		".mkv":  true,
+		".webm": true,
+		".avi":  true,
+	}
+	if allowed[ext] {
+		return ext
+	}
+	return ".mp4" // safe default
+}
+
 // doTranscode contains the core pipeline steps.
 func doTranscode(
 	ctx context.Context,
@@ -163,7 +182,7 @@ func doTranscode(
 	defer os.RemoveAll(workDir)
 
 	// ── Step 1: Download raw file ─────────────────────────────────────────────
-	rawPath := filepath.Join(workDir, "raw_input"+filepath.Ext(cfg.RawObjectPath))
+	rawPath := filepath.Join(workDir, "raw_input"+sanitiseExt(cfg.RawObjectPath))
 	log.Printf("downloading gs://%s/%s → %s", cfg.RawBucket, cfg.RawObjectPath, rawPath)
 	if err := dl.Download(ctx, cfg.RawBucket, cfg.RawObjectPath, rawPath); err != nil {
 		return fmt.Errorf("download raw file: %w", err)

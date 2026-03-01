@@ -46,9 +46,10 @@ spec:
                   value: mytube-hls-output
                 - name: RAW_BUCKET
                   value: mytube-raw-uploads
-                # CDN_BASE_URL: set to your Cloud CDN hostname, e.g. https://cdn.example.com
+                # CDN_BASE_URL: Cloud CDN hostname for thumbnail URLs written to the DB.
+                # Set via: export CDN_BASE_URL=https://cdn.example.com before deploying.
                 - name: CDN_BASE_URL
-                  value: ""
+                  value: "${CDN_BASE_URL}"
                 # Cloud SQL Unix socket — same pattern as the API service.
                 - name: INSTANCE_UNIX_SOCKET
                   value: /cloudsql/${CLOUD_SQL_CONNECTION_NAME}

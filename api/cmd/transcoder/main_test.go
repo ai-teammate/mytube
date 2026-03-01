@@ -413,6 +413,44 @@ func TestConfigFromEnv_MissingCDNBaseURL(t *testing.T) {
 	}
 }
 
+// ── sanitiseExt ───────────────────────────────────────────────────────────────
+
+func TestSanitiseExt_KnownExtensions(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"raw/video.mp4", ".mp4"},
+		{"raw/video.MP4", ".mp4"}, // case-insensitive
+		{"raw/video.mov", ".mov"},
+		{"raw/video.mkv", ".mkv"},
+		{"raw/video.webm", ".webm"},
+		{"raw/video.avi", ".avi"},
+	}
+	for _, tc := range cases {
+		got := sanitiseExt(tc.input)
+		if got != tc.want {
+			t.Errorf("sanitiseExt(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestSanitiseExt_UnknownExtension_DefaultsToMp4(t *testing.T) {
+	cases := []string{
+		"raw/video.flv",
+		"raw/video.wmv",
+		"raw/video",
+		"raw/video.mp4/../../../etc/shadow",
+		"",
+	}
+	for _, input := range cases {
+		got := sanitiseExt(input)
+		if got != ".mp4" {
+			t.Errorf("sanitiseExt(%q) = %q, want .mp4", input, got)
+		}
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func contains(slice []string, s string) bool {
