@@ -1,0 +1,5 @@
+test_id: MYTUBE-36
+type: database
+framework: psycopg2
+platform: postgresql
+dependencies: [MYTUBE-29]

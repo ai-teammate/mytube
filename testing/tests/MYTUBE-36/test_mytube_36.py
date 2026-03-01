@@ -1,0 +1,120 @@
+"""
+MYTUBE-36: Perform migration rollback — down scripts remove all schema objects
+successfully.
+
+Verifies that running 0001_initial_schema.down.sql against a database that has
+had 0001_initial_schema.up.sql applied drops all 8 core tables and leaves the
+schema in its pre-migration state (no tables, no trigger function).
+"""
+import os
+import sys
+import pytest
+
+# Ensure the testing root is importable regardless of where pytest is invoked.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+from testing.core.config.db_config import DBConfig
+from testing.components.services.schema_service import SchemaService
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+MIGRATION_UP_SQL = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "api",
+    "migrations",
+    "0001_initial_schema.up.sql",
+)
+
+MIGRATION_DOWN_SQL = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "api",
+    "migrations",
+    "0001_initial_schema.down.sql",
+)
+
+TABLES_CREATED_BY_UP = [
+    "users",
+    "videos",
+    "categories",
+    "video_tags",
+    "playlists",
+    "playlist_videos",
+    "comments",
+    "ratings",
+]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def db_config() -> DBConfig:
+    return DBConfig()
+
+
+@pytest.fixture(scope="module")
+def schema(db_config: DBConfig) -> SchemaService:
+    """
+    Instantiate SchemaService from DBConfig (connection owned by the service),
+    apply the UP migration to establish a known good state, then run the DOWN
+    migration, and yield the service for assertions.
+    """
+    svc = SchemaService(db_config)
+
+    # Start from a clean slate — drop everything that might exist from a
+    # previous run.
+    svc.drop_all_public_tables()
+
+    # Apply UP migration so the schema is in the expected post-migration state.
+    svc.apply_sql_file(MIGRATION_UP_SQL)
+
+    # Apply DOWN migration — this is what we are testing.
+    svc.apply_sql_file(MIGRATION_DOWN_SQL)
+
+    yield svc
+
+    svc.close()
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAllTablesDropped:
+    """All 8 tables created by the UP migration must be absent after rollback."""
+
+    @pytest.mark.parametrize("table_name", TABLES_CREATED_BY_UP)
+    def test_table_does_not_exist(self, schema: SchemaService, table_name: str):
+        assert not schema.table_exists(table_name), (
+            f"Table '{table_name}' still exists after running the DOWN migration."
+        )
+
+
+class TestTriggerFunctionDropped:
+    """The set_updated_at() trigger function must be removed by the DOWN migration."""
+
+    def test_set_updated_at_function_dropped(self, schema: SchemaService):
+        assert not schema.function_exists("set_updated_at"), (
+            "Trigger function 'set_updated_at' still exists after running the DOWN migration."
+        )
+
+
+class TestNoPublicTablesRemain:
+    """After rollback the public schema must contain zero user-defined tables."""
+
+    def test_schema_is_empty(self, schema: SchemaService):
+        count = schema.public_table_count()
+        assert count == 0, (
+            f"Expected 0 tables in public schema after DOWN migration, found {count}."
+        )
