@@ -1,0 +1,6 @@
+test_id: MYTUBE-128
+type: integration
+framework: pytest+psycopg2
+platform: postgresql
+dependencies:
+  - MYTUBE-80

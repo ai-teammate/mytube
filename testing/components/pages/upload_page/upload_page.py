@@ -114,3 +114,7 @@ class UploadPage:
     def get_current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    def is_on_login_page(self) -> bool:
+        """Return True if the browser has been redirected to the /login page."""
+        return "/login" in self._page.url
