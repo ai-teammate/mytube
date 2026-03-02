@@ -96,7 +96,7 @@ class TestRegisterPageLoads:
         register_page.navigate(web_config.base_url)
         assert register_page.is_on_register_page(), (
             "Registration form heading 'Create an account' was not found on the page. "
-            f"Current URL: {register_page._page.url}"
+            f"Current URL: {register_page.current_url()}"
         )
 
 

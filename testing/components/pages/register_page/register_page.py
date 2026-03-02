@@ -61,6 +61,10 @@ class RegisterPage:
     # Assertions (state queries)
     # ------------------------------------------------------------------
 
+    def current_url(self) -> str:
+        """Return the current URL of the page."""
+        return self._page.url
+
     def is_on_register_page(self) -> bool:
         """Return True if the register form heading is visible."""
         return self._page.locator("h1").filter(has_text="Create an account").is_visible()
@@ -139,10 +143,8 @@ class RegisterPage:
                     self.submit()
             except Exception:
                 # Navigation may not have occurred (e.g., error shown instead).
-                pass
-
-            # Give a moment for any pending /api/me calls to complete.
-            self._page.wait_for_timeout(2_000)
+                # Wait for the network to become idle so any /api/me calls finish.
+                self._page.wait_for_load_state("networkidle", timeout=timeout_ms)
 
             final_url = self._page.url
             redirected_away = register_url_fragment not in final_url
