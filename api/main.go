@@ -55,17 +55,37 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	videoRepo := repository.NewVideoRepository(db)
+	searchRepo := repository.NewSearchRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
 	cdnBaseURL := os.Getenv("CDN_BASE_URL")
 
+	// /api/videos (exact) handles both:
+	//   GET  ?category_id=<id>  — public category browse
+	//   POST                    — auth-protected video creation
+	createHandler := authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner))
+	browseHandler := handler.NewBrowseVideosHandler(searchRepo)
+	videosHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			createHandler.ServeHTTP(w, r)
+		} else {
+			browseHandler.ServeHTTP(w, r)
+		}
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
+	// /api/videos/recent and /api/videos/popular must be registered before
+	// the generic /api/videos/ prefix handler so they are matched first.
+	mux.Handle("/api/videos/recent", handler.NewRecentVideosHandler(searchRepo))
+	mux.Handle("/api/videos/popular", handler.NewPopularVideosHandler(searchRepo))
 	mux.Handle("/api/videos/", handler.NewVideoHandler(videoRepo, cdnBaseURL))
-	mux.Handle("/api/videos", authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner)))
+	mux.Handle("/api/videos", videosHandler)
+	mux.Handle("/api/search", handler.NewSearchHandler(searchRepo))
+	mux.Handle("/api/categories", handler.NewCategoriesHandler(searchRepo))
 	// Catch-all: return 404 for any path not matched above.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
