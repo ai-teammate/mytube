@@ -1,6 +1,7 @@
 **.env
 **.token
 **-key.json
+gha-creds-*.json
 cache**
 outputs
 input
