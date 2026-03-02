@@ -35,6 +35,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.gcp_config import GcpConfig
+from testing.core.config.gcs_config import GCSConfig
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -93,12 +94,15 @@ def video_id_for_smoke_test() -> str:
 
 
 @pytest.fixture(scope="module")
-def gcs_client(gcp_project):
-    """Authenticated google-cloud-storage Client."""
+def gcs_service(gcp_config: GcpConfig, gcp_project: str):
+    """GCSService component backed by an authenticated storage client."""
     try:
-        from google.cloud import storage as gcs
+        from google.cloud import storage
+        from testing.components.services.gcs_service import GCSService
 
-        return gcs.Client(project=gcp_project)
+        gcs_config = GCSConfig()
+        client = storage.Client(project=gcp_project)
+        return GCSService(config=gcs_config, storage_client=client)
     except ImportError:
         pytest.skip("google-cloud-storage not installed")
 
@@ -265,19 +269,18 @@ class TestThumbnailInfrastructure:
     environment variables are not set.
     """
 
-    def test_hls_bucket_is_accessible(self, gcs_client, hls_bucket):
+    def test_hls_bucket_is_accessible(self, gcs_service, hls_bucket):
         """
         The `mytube-hls-output` GCS bucket must be accessible to the
         authenticated caller.
         """
-        bucket = gcs_client.bucket(hls_bucket)
-        assert bucket.exists(), (
+        assert gcs_service.bucket_exists(hls_bucket), (
             f"HLS output bucket '{hls_bucket}' does not exist or is not accessible. "
             "Ensure the bucket is provisioned and credentials are valid."
         )
 
     def test_thumbnail_object_exists_in_bucket(
-        self, gcs_client, hls_bucket, video_id_for_smoke_test
+        self, gcs_service, hls_bucket, video_id_for_smoke_test
     ):
         """
         A `thumbnail.jpg` must exist at
@@ -289,14 +292,13 @@ class TestThumbnailInfrastructure:
         object_path = THUMBNAIL_OBJECT_TEMPLATE.format(
             video_id=video_id_for_smoke_test
         )
-        blob = gcs_client.bucket(hls_bucket).blob(object_path)
-        assert blob.exists(), (
+        assert gcs_service.blob_exists(hls_bucket, object_path), (
             f"Thumbnail not found at gs://{hls_bucket}/{object_path}. "
             "The transcoder may not have run, or the VIDEO_ID is incorrect."
         )
 
     def test_thumbnail_is_valid_jpeg(
-        self, gcs_client, hls_bucket, video_id_for_smoke_test
+        self, gcs_service, hls_bucket, video_id_for_smoke_test
     ):
         """
         The thumbnail object must be a valid JPEG file.
@@ -308,9 +310,8 @@ class TestThumbnailInfrastructure:
         object_path = THUMBNAIL_OBJECT_TEMPLATE.format(
             video_id=video_id_for_smoke_test
         )
-        blob = gcs_client.bucket(hls_bucket).blob(object_path)
         # Download only the first 3 bytes to avoid unnecessary data transfer.
-        first_bytes = blob.download_as_bytes(start=0, end=2)
+        first_bytes = gcs_service.download_object_bytes(hls_bucket, object_path, start=0, end=2)
         assert first_bytes == JPEG_MAGIC, (
             f"Thumbnail at gs://{hls_bucket}/{object_path} is not a valid JPEG. "
             f"First 3 bytes: {first_bytes!r}, expected: {JPEG_MAGIC!r}. "
