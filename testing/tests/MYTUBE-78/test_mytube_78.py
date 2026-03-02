@@ -123,6 +123,7 @@ def job_result(
 @pytest.fixture(scope="module")
 def master_playlist(
     transcoder_service: HLSTranscoderService,
+    gcp_config: GcpConfig,
     job_result,
     video_id: str,
 ) -> HLSMasterPlaylist:
@@ -130,7 +131,7 @@ def master_playlist(
     raw_content = transcoder_service.download_master_playlist(video_id)
     assert raw_content is not None, (
         f"Master playlist 'videos/{video_id}/index.m3u8' not found in bucket "
-        f"'{transcoder_service._config.hls_bucket}' after job execution."
+        f"'{gcp_config.hls_bucket}' after job execution."
     )
     return transcoder_service.parse_master_playlist(raw_content)
 
@@ -157,28 +158,28 @@ class TestHLSTranscoding:
     # ---- Step 2: Output bucket inspection ----------------------------
 
     def test_output_bucket_contains_video_folder(
-        self, transcoder_service: HLSTranscoderService, job_result, video_id: str
+        self, transcoder_service: HLSTranscoderService, gcp_config: GcpConfig, job_result, video_id: str
     ):
         """Step 2 — HLS output bucket must contain objects under videos/{VIDEO_ID}/."""
         objects = transcoder_service.list_output_objects(video_id)
         assert len(objects) > 0, (
             f"No objects found under 'videos/{video_id}/' in bucket "
-            f"'{transcoder_service._config.hls_bucket}'. "
+            f"'{gcp_config.hls_bucket}'. "
             "The transcoding job may not have produced any output."
         )
 
     def test_master_playlist_exists(
-        self, transcoder_service: HLSTranscoderService, job_result, video_id: str
+        self, transcoder_service: HLSTranscoderService, gcp_config: GcpConfig, job_result, video_id: str
     ):
         """Step 2 — Master playlist index.m3u8 must be present in the output folder."""
         raw_content = transcoder_service.download_master_playlist(video_id)
         assert raw_content is not None, (
             f"Master playlist 'videos/{video_id}/index.m3u8' not found in bucket "
-            f"'{transcoder_service._config.hls_bucket}'."
+            f"'{gcp_config.hls_bucket}'."
         )
 
     def test_segment_files_exist(
-        self, transcoder_service: HLSTranscoderService, job_result, video_id: str
+        self, transcoder_service: HLSTranscoderService, gcp_config: GcpConfig, job_result, video_id: str
     ):
         """Step 2 — At least one .ts or .m3u8 segment/rendition file must be present."""
         objects = transcoder_service.list_output_objects(video_id)
@@ -188,7 +189,7 @@ class TestHLSTranscoding:
         ]
         assert len(segment_files) > 0, (
             f"No segment (.ts) or rendition playlist (.m3u8) files found under "
-            f"'videos/{video_id}/' in bucket '{transcoder_service._config.hls_bucket}'. "
+            f"'videos/{video_id}/' in bucket '{gcp_config.hls_bucket}'. "
             f"Objects present: {objects}"
         )
 
