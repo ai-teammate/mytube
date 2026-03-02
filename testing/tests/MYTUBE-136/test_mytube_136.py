@@ -35,8 +35,8 @@ Environment variables
 Architecture notes
 ------------------
 - Layer A invokes `go test ./internal/handler/ -run ...` via subprocess.
-- Layer B uses ApiProcessService (subprocess + HTTP) and a local _post_json
-  helper (AuthService only exposes GET; POST needs a local helper).
+- Layer B uses ApiProcessService (subprocess + HTTP) and AuthService.post()
+  to issue authenticated POST requests without raw HTTP calls in the test.
 - Mock GCP credentials (testing/fixtures/mock_service_account.json) allow the
   GCS client to initialise without real GCP project access.
 - No hardcoded values — all config comes from environment variables or the
@@ -48,8 +48,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 
 import pytest
 
@@ -57,6 +55,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.auth_service import AuthService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -119,31 +118,6 @@ def _run_go_test(test_name: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
     )
-
-
-def _post_json(
-    port: int, path: str, payload: dict, token: str
-) -> tuple[int, str]:
-    """Issue an authenticated POST request with a JSON body.
-
-    Returns (status_code, response_body).
-    """
-    url = f"http://127.0.0.1:{port}{path}"
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status, resp.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode()
 
 
 # ---------------------------------------------------------------------------
@@ -252,35 +226,41 @@ def api_server(db_config: DBConfig):
 
 
 @pytest.fixture(scope="module")
-def empty_title_response(api_server: ApiProcessService, firebase_token: str) -> tuple[int, str]:
+def auth_client(firebase_token: str) -> AuthService:
+    """Return an AuthService configured for the local test server."""
+    return AuthService(base_url=f"http://127.0.0.1:{_PORT}", token=firebase_token)
+
+
+@pytest.fixture(scope="module")
+def empty_title_response(api_server: ApiProcessService, auth_client: AuthService) -> tuple[int, str]:
     """POST /api/videos with an empty title string; capture (status, body)."""
-    return _post_json(_PORT, "/api/videos", {
+    return auth_client.post("/api/videos", {
         "title": "",
         "description": "A video with no title",
         "category_id": 1,
         "mime_type": "video/mp4",
-    }, firebase_token)
+    })
 
 
 @pytest.fixture(scope="module")
-def null_title_response(api_server: ApiProcessService, firebase_token: str) -> tuple[int, str]:
+def null_title_response(api_server: ApiProcessService, auth_client: AuthService) -> tuple[int, str]:
     """POST /api/videos with title explicitly null; capture (status, body)."""
-    return _post_json(_PORT, "/api/videos", {
+    return auth_client.post("/api/videos", {
         "title": None,
         "description": "A video with null title",
         "category_id": 1,
         "mime_type": "video/mp4",
-    }, firebase_token)
+    })
 
 
 @pytest.fixture(scope="module")
-def missing_title_response(api_server: ApiProcessService, firebase_token: str) -> tuple[int, str]:
+def missing_title_response(api_server: ApiProcessService, auth_client: AuthService) -> tuple[int, str]:
     """POST /api/videos without a title key; capture (status, body)."""
-    return _post_json(_PORT, "/api/videos", {
+    return auth_client.post("/api/videos", {
         "description": "A video with missing title key",
         "category_id": 1,
         "mime_type": "video/mp4",
-    }, firebase_token)
+    })
 
 
 class TestSubmitVideoWithoutTitle_Integration:

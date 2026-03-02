@@ -33,15 +33,20 @@ pytest testing/tests/MYTUBE-136/test_mytube_136.py -v
 ## Expected output when passing
 
 ```
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_empty_title_returns_4xx_status PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_empty_title_response_is_valid_json PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_empty_title_response_contains_error_field PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_empty_title_error_mentions_title PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_null_title_returns_4xx_status PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_null_title_response_contains_error_field PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_missing_title_returns_4xx_status PASSED
-testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle::test_missing_title_response_contains_error_field PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_GoUnit::test_empty_title_returns_422_unit PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_GoUnit::test_whitespace_title_returns_422_unit PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_GoUnit::test_full_title_validation_suite_passes PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_empty_title_returns_4xx_status PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_empty_title_response_is_valid_json PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_empty_title_response_contains_error_field PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_empty_title_error_mentions_title PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_null_title_returns_4xx_status PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_null_title_response_contains_error_field PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_missing_title_returns_4xx_status PASSED
+testing/tests/MYTUBE-136/test_mytube_136.py::TestSubmitVideoWithoutTitle_Integration::test_missing_title_response_contains_error_field PASSED
 ```
+
+Layer B (Integration) tests are skipped when `FIREBASE_TEST_TOKEN` is not set.
 
 ## Notes
 
