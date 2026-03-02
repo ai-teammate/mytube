@@ -170,12 +170,7 @@ def seeded_user(api_server, db_conn):
         user_id = user_svc.create_user(_TEST_FIREBASE_UID, _TEST_USERNAME)
 
     # Count existing ready videos to keep the fixture idempotent.
-    with db_conn.cursor() as cur:
-        cur.execute(
-            "SELECT COUNT(*) FROM videos WHERE uploader_id = %s AND status = 'ready'",
-            (user_id,),
-        )
-        existing_count = cur.fetchone()[0]
+    existing_count = video_svc.count_ready_videos(user_id)
 
     videos_to_add = _VIDEO_INSERT_COUNT - existing_count
     for i in range(videos_to_add):
