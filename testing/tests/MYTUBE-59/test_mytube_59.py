@@ -102,12 +102,54 @@ def firebase_credentials() -> dict:
 
 
 @pytest.fixture(scope="module")
+def raw_conn(db_config: DBConfig):
+    """Open a plain psycopg2 connection without dropping or recreating the schema.
+
+    This is intentionally separate from the shared ``conn`` fixture in conftest.py,
+    which drops all tables.  MYTUBE-59 must NOT drop tables after the API server has
+    already inserted a user row — that would destroy the data we are trying to verify.
+    Instead this fixture only opens a connection and closes it on teardown.
+    """
+    import psycopg2
+    connection = psycopg2.connect(db_config.dsn())
+    connection.autocommit = True
+    yield connection
+    connection.close()
+
+
+@pytest.fixture(scope="module")
 def api_server(api_config: APIConfig, db_config: DBConfig, firebase_credentials: dict):
-    """Build (if needed) and start the Go API server via ApiProcessService; yield; stop."""
+    """Build (if needed) and start the Go API server via ApiProcessService; yield; stop.
+
+    The server is responsible for running its own DB migrations on startup.
+    The database must be in a fully clean state before this fixture runs so
+    that golang-migrate can apply all migrations from scratch without
+    encountering pre-existing objects.
+    """
+    import psycopg2
+
+    # --- Clean the database so the API server's own migrations start fresh ---
+    conn = psycopg2.connect(db_config.dsn())
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DO $$ DECLARE
+                r RECORD;
+            BEGIN
+                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                END LOOP;
+            END $$;
+            """
+        )
+        cur.execute("DROP FUNCTION IF EXISTS set_updated_at() CASCADE;")
+    conn.close()
+
+    # --- Build binary if needed ---
     api_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "api")
     binary = SERVER_BINARY
 
-    # Build the binary if it doesn't exist yet.
     if not os.path.isfile(binary):
         build_result = subprocess.run(
             ["go", "build", "-o", binary, "."],
@@ -155,9 +197,14 @@ def me_response(api_server, auth_service: AuthService) -> tuple[int, str]:
 
 
 @pytest.fixture(scope="module")
-def user_row(me_response, conn, firebase_credentials):
-    """Retrieve the auto-provisioned user row via UserService."""
-    return UserService(conn).find_by_firebase_uid(firebase_credentials["uid"])
+def user_row(me_response, raw_conn, firebase_credentials):
+    """Retrieve the auto-provisioned user row via UserService.
+
+    Uses ``raw_conn`` (a plain connection with no schema mutations) so the
+    user row written by the API server during ``me_response`` is still present
+    when we query it here.
+    """
+    return UserService(raw_conn).find_by_firebase_uid(firebase_credentials["uid"])
 
 
 # ---------------------------------------------------------------------------
