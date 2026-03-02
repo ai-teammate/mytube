@@ -14,12 +14,23 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.components.services.schema_service import SchemaService
+from testing.tests.conftest import make_conn_fixture
 
 # conn and db_config fixtures are provided by testing/tests/conftest.py
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+_MIGRATION_SQL = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "api",
+    "migrations",
+    "0001_initial_schema.up.sql",
+)
 
 REQUIRED_TABLES = [
     "users",
@@ -31,6 +42,9 @@ REQUIRED_TABLES = [
     "comments",
     "ratings",
 ]
+
+# Shared connection fixture: drop all → apply schema migration.
+conn = make_conn_fixture([_MIGRATION_SQL])
 
 
 @pytest.fixture(scope="module")

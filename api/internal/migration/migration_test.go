@@ -13,10 +13,21 @@ import (
 
 // stubMigrator is a test double for Migrator.
 type stubMigrator struct {
-	upErr error
+	upErr    error
+	forceErr error
+	upCalls  int
 }
 
-func (s *stubMigrator) Up() error { return s.upErr }
+func (s *stubMigrator) Up() error {
+	s.upCalls++
+	// After Force is called (upCalls > 1) succeed by default unless forceErr set.
+	if s.upCalls > 1 {
+		return nil
+	}
+	return s.upErr
+}
+
+func (s *stubMigrator) Force(_ int) error { return s.forceErr }
 
 // noopMaker returns a stubMigrator regardless of inputs.
 func noopMaker(upErr error) migrateMaker {
@@ -86,5 +97,33 @@ func TestRunMigrations_MakerError(t *testing.T) {
 	}
 	if !errors.Is(err, makeErr) {
 		t.Errorf("expected wrapped makeErr, got %v", err)
+	}
+}
+
+func TestRunMigrations_DirtyState_RecoversAndSucceeds(t *testing.T) {
+	// Simulate a dirty DB at version 1: Up() returns ErrDirty on first call,
+	// Force clears it, second Up() succeeds.
+	dirtyErr := migrate.ErrDirty{Version: 1}
+	maker := func(_ *sql.DB, _ fs.ReadDirFS) (Migrator, error) {
+		return &stubMigrator{upErr: dirtyErr}, nil
+	}
+	if err := runMigrations(nil, emptyFS, maker); err != nil {
+		t.Fatalf("expected recovery from dirty state, got %v", err)
+	}
+}
+
+func TestRunMigrations_DirtyState_ForceError(t *testing.T) {
+	// When Force itself fails, the error is propagated.
+	dirtyErr := migrate.ErrDirty{Version: 1}
+	forceErr := errors.New("force failed")
+	maker := func(_ *sql.DB, _ fs.ReadDirFS) (Migrator, error) {
+		return &stubMigrator{upErr: dirtyErr, forceErr: forceErr}, nil
+	}
+	err := runMigrations(nil, emptyFS, maker)
+	if err == nil {
+		t.Fatal("expected error from Force, got nil")
+	}
+	if !errors.Is(err, forceErr) {
+		t.Errorf("expected wrapped forceErr, got %v", err)
 	}
 }

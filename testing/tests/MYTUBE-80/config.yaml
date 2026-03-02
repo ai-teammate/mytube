@@ -1,0 +1,5 @@
+test_id: MYTUBE-80
+type: integration
+framework: pytest+go-test+psycopg2
+platform: go-binary+postgresql
+dependencies: []

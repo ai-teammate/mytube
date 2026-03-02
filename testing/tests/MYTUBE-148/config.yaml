@@ -1,0 +1,7 @@
+test_id: MYTUBE-148
+type: api
+framework: subprocess+http
+platform: go-binary
+dependencies:
+  - CDN_BASE_URL
+  - FIREBASE_PROJECT_ID
