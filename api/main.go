@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 
+	gcstorage "cloud.google.com/go/storage"
 	"github.com/ai-teammate/mytube/api/internal/auth"
 	"github.com/ai-teammate/mytube/api/internal/database"
 	"github.com/ai-teammate/mytube/api/internal/handler"
 	"github.com/ai-teammate/mytube/api/internal/middleware"
 	"github.com/ai-teammate/mytube/api/internal/migration"
 	"github.com/ai-teammate/mytube/api/internal/repository"
+	"github.com/ai-teammate/mytube/api/internal/storage"
 )
 
 //go:embed migrations/*.sql
@@ -42,13 +44,21 @@ func main() {
 		log.Fatalf("firebase verifier: %v", err)
 	}
 
+	gcsClient, err := gcstorage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("gcs client: %v", err)
+	}
+
 	userRepo := repository.NewUserRepository(db)
+	videoRepo := repository.NewVideoRepository(db)
+	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
+	mux.Handle("/api/videos", authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner)))
 	// Catch-all: return 404 for any path not matched above.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
