@@ -51,6 +51,7 @@ set_secret "JIRA_API_TOKEN"    "$(get JIRA_API_TOKEN)"
 set_secret "GEMINI_API_KEY"    "$(get GEMINI_API_KEY)"
 set_secret "FIGMA_TOKEN"       "$(get FIGMA_TOKEN)"
 set_secret "CODEMIE_API_KEY"   "$(get CODEMIE_API_KEY)"
+set_secret "COPILOT_GITHUB_TOKEN" "$(get COPILOT_GITHUB_TOKEN)"
 set_secret "DB_USER"           "$(get DB_USER)"
 set_secret "DB_PASSWORD"       "$(get DB_PASSWORD)"
 
@@ -60,6 +61,14 @@ if [ -f "gcp-key.json" ]; then
   gh secret set "GCP_SA_KEY" --body "$(cat gcp-key.json)" --repo "$REPO"
 else
   echo "  skip   GCP_SA_KEY (gcp-key.json not found — see instruction.md)"
+fi
+
+# GCP_AI_TEAMMATE_SA_KEY — read-only SA for ai-teammate workflow (logging/run/cloudsql viewer)
+if [ -f "ai-teammate-gcp-key.json" ]; then
+  echo "  secret: GCP_AI_TEAMMATE_SA_KEY (from ai-teammate-gcp-key.json)"
+  gh secret set "GCP_AI_TEAMMATE_SA_KEY" --body "$(cat ai-teammate-gcp-key.json)" --repo "$REPO"
+else
+  echo "  skip   GCP_AI_TEAMMATE_SA_KEY (ai-teammate-gcp-key.json not found)"
 fi
 
 echo ""

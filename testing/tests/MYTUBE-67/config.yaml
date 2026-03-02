@@ -1,0 +1,5 @@
+test_id: MYTUBE-67
+type: database
+framework: pytest
+platform: postgresql
+dependencies: []

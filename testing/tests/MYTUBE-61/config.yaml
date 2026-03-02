@@ -1,0 +1,5 @@
+test_id: MYTUBE-61
+type: api
+framework: db-integration
+platform: postgresql
+dependencies: []
