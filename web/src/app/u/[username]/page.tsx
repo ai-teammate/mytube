@@ -1,20 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { use, useState, useEffect } from "react";
 import Image from "next/image";
-import type { UserProfile } from "@/domain/userProfile";
+import type { UserProfile, UserProfileRepository } from "@/domain/userProfile";
 import { ApiUserProfileRepository } from "@/data/userProfileRepository";
 
-// Singleton repository instance — injected via module-level constant so tests
-// can mock the data module without touching the component itself.
-const profileRepository = new ApiUserProfileRepository();
+// Default singleton repository used in production.
+const defaultRepository: UserProfileRepository = new ApiUserProfileRepository();
 
 interface UserProfilePageProps {
-  params: { username: string };
+  // Next.js 15+ passes params as a Promise; unwrap with React.use().
+  params: Promise<{ username: string }>;
+  // Optional repository for dependency injection (e.g. in tests).
+  repository?: UserProfileRepository;
 }
 
-export default function UserProfilePage({ params }: UserProfilePageProps) {
-  const { username } = params;
+export default function UserProfilePage({
+  params,
+  repository = defaultRepository,
+}: UserProfilePageProps) {
+  const { username } = use(params);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -26,7 +31,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
 
     async function loadProfile() {
       try {
-        const data = await profileRepository.getByUsername(username);
+        const data = await repository.getByUsername(username);
         if (cancelled) return;
         if (data === null) {
           setNotFound(true);
@@ -46,7 +51,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     return () => {
       cancelled = true;
     };
-  }, [username]);
+  }, [username, repository]);
 
   if (loading) {
     return (
@@ -102,7 +107,11 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
           </h1>
         </div>
 
-        {/* Cap notice: shown only when 50 videos are returned */}
+        {/* Cap notice: shown only when exactly 50 videos are returned.
+            NOTE: This heuristic will also trigger for users who genuinely have
+            exactly 50 videos.  This is the accepted MVP behaviour per MYTUBE-91
+            Option B.  A follow-up ticket should add a `has_more` field to the
+            API response to eliminate the ambiguity. */}
         {profile.videos.length === 50 && (
           <p className="text-sm text-gray-500 mb-4">
             Showing the 50 most recent videos

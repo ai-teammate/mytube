@@ -66,6 +66,14 @@ func (v *FirebaseVerifier) VerifyIDToken(ctx context.Context, idToken string) (*
 	}
 
 	email, _ := t.Claims["email"].(string)
+	// The "picture" claim is a user-controlled URL from the Firebase/Google ID
+	// token.  Firebase verifies the token signature so the URL cannot be forged
+	// by a third party, but a user may point their Google profile picture at any
+	// external host.  The URL is stored as avatar_url and rendered client-side
+	// via <Image src={avatarUrl}>.  For the current static-export frontend this
+	// is low risk (no server-side proxying).  If server-side image optimisation
+	// is ever enabled, this should be validated against an allowed-domain list
+	// (e.g. lh3.googleusercontent.com) to prevent SSRF.
 	picture, _ := t.Claims["picture"].(string)
 
 	return &TokenClaims{

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,9 +35,26 @@ type UserProfileResponse struct {
 	Videos    []VideoSummary `json:"videos"`
 }
 
+// usernameRE matches valid usernames: alphanumerics and underscores only.
+// This mirrors the character set used when auto-deriving usernames from email
+// prefixes and the deduplication logic in migration 0005.
+var usernameRE = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+// isValidUsername returns true when username is non-empty, at most 100
+// characters (matching the users.username VARCHAR(100) column), and contains
+// only alphanumeric characters and underscores.
+func isValidUsername(username string) bool {
+	return len(username) > 0 && len(username) <= 100 && usernameRE.MatchString(username)
+}
+
 // NewUsersHandler returns an http.Handler for GET /api/users/:username.
 // It resolves the username path segment, fetches the user and their ready
 // videos, and returns the public profile JSON.  No authentication is required.
+//
+// NOTE: This endpoint requires no authentication and performs two DB queries per
+// request.  Rate limiting is currently deferred to infrastructure-level controls
+// (Cloud Run concurrency limits + Cloud Armor).  Username enumeration via
+// 200/404 responses is inherent to the feature.
 func NewUsersHandler(users PublicUserProvider) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -51,6 +69,14 @@ func NewUsersHandler(users PublicUserProvider) http.Handler {
 		username = strings.TrimRight(username, "/")
 		if username == "" {
 			writeJSONError(w, "username is required", http.StatusBadRequest)
+			return
+		}
+
+		// Validate username format and length before hitting the database.
+		// This prevents oversized inputs from causing DB errors and rejects
+		// path segments that could not be valid usernames (e.g. "../..").
+		if !isValidUsername(username) {
+			writeJSONError(w, "invalid username", http.StatusBadRequest)
 			return
 		}
 

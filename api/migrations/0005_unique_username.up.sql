@@ -26,6 +26,11 @@ BEGIN
     LOOP
         suffix := 2;
         LOOP
+            -- Safety guard: if more than 10000 suffixed variants already exist
+            -- for this username, raise an exception instead of looping forever.
+            IF suffix > 10000 THEN
+                RAISE EXCEPTION 'Too many duplicate usernames for "%": cannot deduplicate safely', r.username;
+            END IF;
             candidate := r.username || '_' || suffix;
             EXIT WHEN NOT EXISTS (SELECT 1 FROM users WHERE username = candidate);
             suffix := suffix + 1;

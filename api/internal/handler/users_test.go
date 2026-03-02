@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -305,4 +306,30 @@ func (r *recordingPublicUserProvider) GetVideosByUserID(_ context.Context, userI
 		return r.onGetVideosByUserID(userID)
 	}
 	return nil, nil
+}
+
+func TestNewUsersHandler_GET_TooLongUsername_Returns400(t *testing.T) {
+	p := &stubPublicUserProvider{}
+	h := handler.NewUsersHandler(p)
+
+	longUsername := strings.Repeat("a", 101)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/"+longUsername, nil)
+	rec := serveUsers(h, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for oversized username, got %d", rec.Code)
+	}
+}
+
+func TestNewUsersHandler_GET_InvalidUsernameChars_Returns400(t *testing.T) {
+	p := &stubPublicUserProvider{}
+	h := handler.NewUsersHandler(p)
+
+	// Path traversal attempt
+	req := httptest.NewRequest(http.MethodGet, "/api/users/../etc", nil)
+	rec := serveUsers(h, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid username chars, got %d", rec.Code)
+	}
 }
