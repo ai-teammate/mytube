@@ -85,7 +85,7 @@ class UploadPage:
     ) -> None:
         """High-level action: fill the entire form and click Upload video.
 
-        Does NOT wait for navigation — the caller is responsible for asserting
+        Does NOT wait for navigation -- the caller is responsible for asserting
         the post-upload state.
         """
         self.set_video_file(file_path)
@@ -106,10 +106,18 @@ class UploadPage:
         """Return the current browser URL."""
         return self._page.url
 
+    def get_current_url(self) -> str:
+        """Return the current browser URL."""
+        return self._page.url
+
     def is_on_upload_page(self) -> bool:
         """Return True if the upload form heading is visible."""
         heading = self._page.locator(self._HEADING)
         return heading.count() > 0 and "Upload video" in (heading.text_content() or "")
+
+    def is_on_login_page(self) -> bool:
+        """Return True if the browser has been redirected to the /login page."""
+        return "/login" in self._page.url
 
     def get_error_message(self) -> Optional[str]:
         """Return the visible error alert text, or None if absent."""
