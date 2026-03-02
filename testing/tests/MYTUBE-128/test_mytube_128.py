@@ -22,6 +22,7 @@ Strategy:
 """
 
 import os
+import re
 import subprocess
 import sys
 
@@ -129,9 +130,12 @@ class TestDBIntegrationWithPostgres:
             f"STDERR:\n{result.stderr}"
         )
 
-        # All 3 individual tests must be reported as PASSED
+        # All 3 individual tests must be reported as PASSED (co-located on the same line)
         for test_name in _EXPECTED_TESTS:
-            assert f"PASSED" in output and test_name in output, (
+            assert re.search(
+                rf"PASSED.*{re.escape(test_name)}|{re.escape(test_name)}.*PASSED",
+                output,
+            ), (
                 f"Expected test '{test_name}' to appear as PASSED in output.\n"
                 f"STDOUT:\n{result.stdout}"
             )

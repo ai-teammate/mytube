@@ -15,3 +15,12 @@ class VideoService:
                 (uploader_id, title, status),
             )
             return cur.fetchone()
+
+    def count_ready_videos(self, uploader_id: str) -> int:
+        """Return the number of videos with status 'ready' for the given uploader."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM videos WHERE uploader_id = %s AND status = 'ready'",
+                (uploader_id,),
+            )
+            return cur.fetchone()[0]
