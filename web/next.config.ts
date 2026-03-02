@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
 
+const basePath = process.env.GITHUB_PAGES === "true" ? "/mytube" : "";
+
 const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
+  basePath,
+  assetPrefix: basePath,
   images: {
     remotePatterns: [
       // Google profile photos (Firebase/Google Sign-in avatar_url)

@@ -38,6 +38,8 @@ jobs:
       - name: Build Next.js static export
         working-directory: web
         run: npm run build
+        env:
+          GITHUB_PAGES: true
 
       - name: Copy index.html to 404.html for SPA routing
         working-directory: web
