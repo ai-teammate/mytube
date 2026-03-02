@@ -70,8 +70,6 @@ from testing.components.services.video_service import VideoService
 _PAGE_LOAD_TIMEOUT = 30_000   # ms
 _METADATA_TIMEOUT = 20_000    # ms — max time for metadata section to appear
 
-_API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8081")
-
 _TEST_FIREBASE_UID = "test-uid-mytube-150"
 _TEST_USERNAME = "testuser_mytube150"
 _VIDEO_TITLE = "MYTUBE-150 Test Video"
@@ -201,27 +199,14 @@ def seeded_video(db_conn) -> dict:
     else:
         user_id = user_svc.create_user(_TEST_FIREBASE_UID, _TEST_USERNAME)
 
-    # Insert a fresh video with description set via direct SQL
-    # (VideoService.insert_video does not support description/tags, so we
-    # use direct SQL for those columns).
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO videos (uploader_id, title, description, status)
-            VALUES (%s, %s, %s, 'ready')
-            RETURNING id
-            """,
-            (user_id, _VIDEO_TITLE, _VIDEO_DESCRIPTION),
-        )
-        video_id = str(cur.fetchone()[0])
-
-    # Insert tags for the video.
-    with db_conn.cursor() as cur:
-        for tag in _VIDEO_TAGS:
-            cur.execute(
-                "INSERT INTO video_tags (video_id, tag) VALUES (%s, %s)",
-                (video_id, tag),
-            )
+    # Insert a fresh video with description and tags via the VideoService component.
+    video_id = video_svc.insert_video_with_details(
+        uploader_id=user_id,
+        title=_VIDEO_TITLE,
+        description=_VIDEO_DESCRIPTION,
+        status="ready",
+        tags=_VIDEO_TAGS,
+    )
 
     return {
         "video_id": video_id,
@@ -245,7 +230,7 @@ def browser(web_config: WebConfig):
 
 
 @pytest.fixture(scope="module")
-def browser_context(browser: Browser) -> BrowserContext:
+def browser_context(browser: Browser, web_config: WebConfig) -> BrowserContext:
     """Open a browser context with an API proxy route to handle CORS.
 
     The watch page fetches video data from the API URL baked into the build.
@@ -257,8 +242,8 @@ def browser_context(browser: Browser) -> BrowserContext:
     context = browser.new_context()
     # Proxy all requests to the API base URL to avoid CORS issues
     context.route(
-        f"{_API_BASE_URL}/**",
-        _make_api_proxy_handler(_API_BASE_URL),
+        f"{web_config.api_base_url}/**",
+        _make_api_proxy_handler(web_config.api_base_url),
     )
     yield context
     context.close()
@@ -370,12 +355,12 @@ class TestWatchPageUploaderRedirect:
     """MYTUBE-150: Clicking the uploader link navigates to the user profile page."""
 
     @pytest.fixture(scope="class")
-    def page_for_redirect(self, browser: Browser) -> Page:
+    def page_for_redirect(self, browser: Browser, web_config: WebConfig) -> Page:
         """Open a separate page (with API proxy) for the redirect test."""
         context = browser.new_context()
         context.route(
-            f"{_API_BASE_URL}/**",
-            _make_api_proxy_handler(_API_BASE_URL),
+            f"{web_config.api_base_url}/**",
+            _make_api_proxy_handler(web_config.api_base_url),
         )
         pg = context.new_page()
         pg.set_default_timeout(_PAGE_LOAD_TIMEOUT)
