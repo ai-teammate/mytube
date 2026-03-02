@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -95,21 +95,8 @@ class TestGCSForbiddenErrorHandling:
         This confirms the system distinguishes authentication failure
         (DefaultCredentialsError) from authorization failure (Forbidden/403).
         """
-        from google.auth.exceptions import DefaultCredentialsError
-
         with pytest.raises(Forbidden):
             forbidden_gcs_service.bucket_exists(gcs_config.hls_bucket)
-
-        # Explicitly confirm DefaultCredentialsError is NOT raised
-        try:
-            forbidden_gcs_service.bucket_exists(gcs_config.hls_bucket)
-        except Forbidden:
-            pass  # Expected — this is the correct error
-        except DefaultCredentialsError as exc:
-            pytest.fail(
-                f"Expected Forbidden (403) but got DefaultCredentialsError: {exc}. "
-                "The system should report an authorization failure, not a credentials failure."
-            )
 
     def test_has_public_read_iam_raises_forbidden_not_credentials_error(
         self, forbidden_gcs_service: GCSService, gcs_config: GCSConfig
@@ -118,19 +105,8 @@ class TestGCSForbiddenErrorHandling:
         has_public_read_iam() must raise Forbidden (403) when the SA lacks
         storage.buckets.getIamPolicy permission.
         """
-        from google.auth.exceptions import DefaultCredentialsError
-
         with pytest.raises(Forbidden):
             forbidden_gcs_service.has_public_read_iam(gcs_config.hls_bucket)
-
-        try:
-            forbidden_gcs_service.has_public_read_iam(gcs_config.hls_bucket)
-        except Forbidden:
-            pass
-        except DefaultCredentialsError as exc:
-            pytest.fail(
-                f"Expected Forbidden (403) but got DefaultCredentialsError: {exc}."
-            )
 
     def test_upload_test_object_raises_forbidden_not_credentials_error(
         self, forbidden_gcs_service: GCSService, gcs_config: GCSConfig
@@ -139,31 +115,19 @@ class TestGCSForbiddenErrorHandling:
         upload_test_object() must raise Forbidden (403) when the SA lacks
         storage.objects.create permission.
         """
-        from google.auth.exceptions import DefaultCredentialsError
-
         with pytest.raises(Forbidden):
             forbidden_gcs_service.upload_test_object(gcs_config.hls_bucket)
-
-        try:
-            forbidden_gcs_service.upload_test_object(gcs_config.hls_bucket)
-        except Forbidden:
-            pass
-        except DefaultCredentialsError as exc:
-            pytest.fail(
-                f"Expected Forbidden (403) but got DefaultCredentialsError: {exc}."
-            )
 
     def test_forbidden_error_is_http_403(
         self, forbidden_gcs_service: GCSService, gcs_config: GCSConfig
     ):
         """
-        Confirm the Forbidden exception represents an HTTP 403 status code,
-        not a network or authentication error class.
+        Confirm the Forbidden exception carries HTTP status code 403,
+        not just a class name match.
         """
         with pytest.raises(Forbidden) as exc_info:
             forbidden_gcs_service.bucket_exists(gcs_config.hls_bucket)
 
-        assert isinstance(exc_info.value, Forbidden), (
-            f"Expected google.api_core.exceptions.Forbidden but got "
-            f"{type(exc_info.value).__name__}"
+        assert exc_info.value.code == 403, (
+            f"Expected HTTP status 403 but got {exc_info.value.code}"
         )
