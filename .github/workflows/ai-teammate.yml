@@ -53,6 +53,16 @@ jobs:
           submodules: true
           token: ${{ secrets.PAT_TOKEN }}
 
+      - name: Authenticate to GCP
+        if: ${{ secrets.GCP_AI_TEAMMATE_SA_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_AI_TEAMMATE_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        if: ${{ secrets.GCP_AI_TEAMMATE_SA_KEY != '' }}
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Update agents submodule to latest main
         run: git submodule update --remote --merge agents
 
