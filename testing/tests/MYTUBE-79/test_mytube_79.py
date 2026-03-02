@@ -21,7 +21,6 @@ Test sequence:
 """
 import os
 import sys
-import uuid
 
 import pytest
 
@@ -30,6 +29,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from testing.tests.conftest import make_conn_fixture
 from testing.core.config.gcp_config import GcpConfig
 from testing.core.config.gcs_config import GCSConfig
+from testing.components.services.user_service import UserService
+from testing.components.services.video_service import VideoService
 
 # ---------------------------------------------------------------------------
 # Migration path
@@ -60,9 +61,22 @@ def transcoded_video(conn) -> dict:
     gcp_cfg = GcpConfig()
     gcs_cfg = GCSConfig()
 
-    video_id = str(uuid.uuid4())
     hls_bucket = gcp_cfg.hls_bucket  # mytube-hls-output
     cdn_base_url = gcs_cfg.cdn_base_url  # may be empty in CI — handled below
+
+    # ── Precondition: insert a user (FK dependency) via UserService ───────
+    user_svc = UserService(conn)
+    user_id = user_svc.create_user("firebase-uid-mytube79", "testuser_mytube79")
+
+    # ── Precondition: insert video row with status 'processing' via VideoService
+    video_svc = VideoService(conn)
+    video_id, initial_status = video_svc.insert_video(user_id, "Test Transcoding Video", "processing")
+    video_id = str(video_id)
+
+    # Verify precondition
+    assert initial_status in ("processing", "pending"), (
+        f"Precondition failed: expected status 'processing' or 'pending', got '{initial_status}'."
+    )
 
     # Derive the expected values using the same logic as main.go / doTranscode.
     expected_hls_manifest_path = f"gs://{hls_bucket}/videos/{video_id}/index.m3u8"
@@ -70,33 +84,6 @@ def transcoded_video(conn) -> dict:
     # so the assertion still exercises the path-construction logic.
     effective_cdn = cdn_base_url.rstrip("/") if cdn_base_url else "https://cdn.example.com"
     expected_thumbnail_url = f"{effective_cdn}/videos/{video_id}/thumbnail.jpg"
-
-    # ── Precondition: insert a user (FK dependency) ───────────────────────
-    user_id = str(uuid.uuid4())
-    with conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO users (id, firebase_uid, username) VALUES (%s, %s, %s)",
-            (user_id, f"firebase-uid-{video_id}", "testuser_mytube79"),
-        )
-
-    # ── Precondition: insert video row with status 'processing' ───────────
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO videos (id, uploader_id, title, status)
-            VALUES (%s, %s, %s, 'processing')
-            """,
-            (video_id, user_id, "Test Transcoding Video"),
-        )
-
-    # Verify precondition
-    with conn.cursor() as cur:
-        cur.execute("SELECT status FROM videos WHERE id = %s", (video_id,))
-        row = cur.fetchone()
-    assert row is not None, "Precondition failed: video row not inserted."
-    assert row[0] in ("processing", "pending"), (
-        f"Precondition failed: expected status 'processing' or 'pending', got '{row[0]}'."
-    )
 
     # ── Simulate transcoder UpdateVideo (mirrors repository.go SQL) ───────
     with conn.cursor() as cur:
