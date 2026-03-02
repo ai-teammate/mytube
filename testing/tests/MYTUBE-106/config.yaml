@@ -1,0 +1,6 @@
+test_id: MYTUBE-106
+type: api
+framework: pytest+subprocess
+platform: gcp
+dependencies:
+  - GOOGLE_APPLICATION_CREDENTIALS

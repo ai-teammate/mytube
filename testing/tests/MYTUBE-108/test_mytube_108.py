@@ -15,14 +15,13 @@ The Jest tests mock Firebase's signInWithPopup and the AuthContext to confirm
 the component wires everything correctly:
   - Google button click → signInWithPopup is called (1 invocation)
   - Successful popup response → router.replace("/") is called
+  - signInWithPopup result user has getIdToken accessible in auth state
 
 Run from the repo root:
-    cd web && npm test -- --testPathPattern="__tests__/app/login/page.test.tsx" --verbose
+    pytest testing/tests/MYTUBE-108/test_mytube_108.py -v
 """
 import subprocess
-import sys
 import os
-import json
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -65,55 +64,13 @@ def _run_jest(extra_args: list[str] | None = None) -> subprocess.CompletedProces
 class TestGoogleSignIn:
     """MYTUBE-108: Verify Google Sign-In flow authenticates and redirects."""
 
-    def test_google_signin_button_visible(self):
-        """The login page renders a 'Sign in with Google' button."""
-        result = _run_jest()
-        combined = result.stdout + result.stderr
-        assert result.returncode == 0, (
-            f"Jest exited with code {result.returncode}.\n"
-            f"STDOUT:\n{result.stdout}\n"
-            f"STDERR:\n{result.stderr}"
-        )
-        # Confirm the specific test about button visibility passed
-        assert "renders the sign-in form when not loading and no user" in combined, (
-            "Expected test about login form visibility to run.\n"
-            f"Output:\n{combined}"
-        )
-
-    def test_google_signin_calls_sign_in_with_popup(self):
-        """Clicking 'Sign in with Google' calls Firebase signInWithPopup once."""
-        result = _run_jest()
-        combined = result.stdout + result.stderr
-        assert result.returncode == 0, (
-            f"Jest exited with code {result.returncode}.\n"
-            f"STDOUT:\n{result.stdout}\n"
-            f"STDERR:\n{result.stderr}"
-        )
-        assert "calls signInWithPopup on Google sign-in button click" in combined, (
-            "Expected test verifying signInWithPopup invocation to run.\n"
-            f"Output:\n{combined}"
-        )
-
-    def test_google_signin_redirects_to_home_on_success(self):
-        """After successful Google sign-in, the user is redirected to /."""
-        result = _run_jest()
-        combined = result.stdout + result.stderr
-        assert result.returncode == 0, (
-            f"Jest exited with code {result.returncode}.\n"
-            f"STDOUT:\n{result.stdout}\n"
-            f"STDERR:\n{result.stderr}"
-        )
-        assert "redirects to / on successful Google sign-in" in combined, (
-            "Expected test verifying home page redirect to run.\n"
-            f"Output:\n{combined}"
-        )
-
     def test_google_signin_full_suite_passes(self):
         """
         All Google sign-in related test cases pass:
           - signInWithPopup called once
           - router.replace('/') called on success
           - auth/popup-closed-by-user error shows user-friendly message
+          - signInWithPopup result user has getIdToken accessible in auth state
 
         This is the authoritative end-to-end assertion for MYTUBE-108.
         """
@@ -130,6 +87,7 @@ class TestGoogleSignIn:
             "calls signInWithPopup on Google sign-in button click",
             "redirects to / on successful Google sign-in",
             "shows error on Google sign-in popup closed",
+            "Google sign-in result user has getIdToken accessible in auth state",
         ]
         for case in google_cases:
             assert case in combined, (
