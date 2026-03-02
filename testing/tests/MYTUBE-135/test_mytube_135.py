@@ -1,0 +1,176 @@
+"""
+MYTUBE-135: Access POST /api/videos without authentication — 401 Unauthorized returned.
+
+Verifies that the video metadata creation endpoint is protected and requires a
+valid authentication token.
+
+Preconditions
+-------------
+- No Authorization header is sent in the request.
+
+Test steps
+----------
+1. Build and start the testserver (testing/testserver/) — no DB or Firebase
+   credentials required; the testserver implements the identical requireAuth
+   middleware logic as production.
+2. Send a POST request to /api/videos with valid metadata JSON.
+3. Do NOT include an Authorization header.
+4. Assert the response status is 401 Unauthorized.
+5. Assert the response body is valid JSON.
+6. Assert the JSON body contains an "error" key.
+7. Assert the Content-Type is application/json.
+
+Environment variables
+---------------------
+- TEST_SERVER_BINARY : Path to the pre-built testserver binary
+                       (default: testing/testserver/testserver).
+
+Architecture notes
+------------------
+- The auth rejection fires in the middleware before the handler body executes,
+  so no database or Firebase credentials are needed.
+- The testserver (testing/testserver/) implements the identical bearerToken()
+  and requireAuth() logic as api/internal/middleware/auth.go using only the
+  Go standard library.
+- ApiProcessService handles subprocess lifecycle and HTTP requests.
+- No hardcoded waits; wait_for_ready() polls /health.
+"""
+import json
+import os
+import subprocess
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+from testing.components.services.api_process_service import ApiProcessService
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
+_TESTSERVER_DIR = os.path.join(_REPO_ROOT, "testing", "testserver")
+_DEFAULT_BINARY = os.path.join(_TESTSERVER_DIR, "testserver")
+TEST_SERVER_BINARY = os.getenv("TEST_SERVER_BINARY", _DEFAULT_BINARY)
+
+_PORT = 18135
+_STARTUP_TIMEOUT = 15.0
+
+# Valid metadata body — auth check fires before body parsing, but a well-formed
+# payload keeps the test realistic.
+_VALID_PAYLOAD = json.dumps({
+    "title": "Test Video MYTUBE-135",
+    "description": "Auth guard test",
+    "mime_type": "video/mp4",
+    "tags": [],
+}).encode()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_testserver() -> None:
+    """Build the testserver binary if it does not already exist."""
+    if os.path.isfile(TEST_SERVER_BINARY):
+        return
+    result = subprocess.run(
+        ["go", "build", "-o", TEST_SERVER_BINARY, "."],
+        cwd=_TESTSERVER_DIR,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            f"Failed to build testserver:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def api_server():
+    """Build (if needed) and start the testserver, wait until /health responds.
+
+    Yields the running ApiProcessService; stops the process on teardown.
+    """
+    _build_testserver()
+
+    svc = ApiProcessService(
+        binary_path=TEST_SERVER_BINARY,
+        port=_PORT,
+        startup_timeout=_STARTUP_TIMEOUT,
+    )
+    svc.start()
+
+    ready = svc.wait_for_ready(path="/health")
+    if not ready:
+        logs = svc.get_log_output()
+        svc.stop()
+        pytest.fail(
+            f"Test server did not become ready within {_STARTUP_TIMEOUT}s.\n"
+            f"Logs:\n{logs}"
+        )
+
+    yield svc
+
+    svc.stop()
+
+
+@pytest.fixture(scope="module")
+def unauthenticated_post_response(api_server: ApiProcessService):
+    """POST /api/videos with valid metadata but NO Authorization header."""
+    status_code, body = api_server.post(
+        "/api/videos",
+        body=_VALID_PAYLOAD,
+        headers={"Content-Type": "application/json"},
+    )
+    return {"status_code": status_code, "body": body}
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+class TestPostVideosUnauthenticated:
+    """POST /api/videos without an Authorization header must return 401."""
+
+    def test_status_code_is_401(self, unauthenticated_post_response):
+        """The response status must be HTTP 401 Unauthorized."""
+        assert unauthenticated_post_response["status_code"] == 401, (
+            f"Expected HTTP 401, got {unauthenticated_post_response['status_code']}. "
+            f"Response body: {unauthenticated_post_response['body']}"
+        )
+
+    def test_response_body_is_valid_json(self, unauthenticated_post_response):
+        """The response body must be parseable JSON."""
+        try:
+            json.loads(unauthenticated_post_response["body"])
+        except json.JSONDecodeError as exc:
+            pytest.fail(
+                f"Response body is not valid JSON: {exc}\n"
+                f"Body: {unauthenticated_post_response['body']}"
+            )
+
+    def test_response_contains_error_key(self, unauthenticated_post_response):
+        """The JSON response must contain an 'error' key."""
+        body = json.loads(unauthenticated_post_response["body"])
+        assert "error" in body, (
+            f"Expected 'error' key in response, got keys: {list(body.keys())}"
+        )
+
+    def test_error_message_is_non_empty(self, unauthenticated_post_response):
+        """The 'error' value must be a non-empty string."""
+        body = json.loads(unauthenticated_post_response["body"])
+        assert isinstance(body["error"], str) and body["error"], (
+            f"Expected a non-empty error string, got: {body['error']!r}"
+        )
