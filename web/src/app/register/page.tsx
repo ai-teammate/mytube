@@ -37,10 +37,15 @@ export default function RegisterPage() {
       );
       // Trigger user upsert on the backend so the users row is created.
       const token = await credential.user.getIdToken();
-      await fetch(`${API_URL}/api/me`, {
+      const res = await fetch(`${API_URL}/api/me`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        // Log but don't block — the user is authenticated in Firebase;
+        // backend row can be created on next authenticated request.
+        console.warn("Backend user provisioning failed:", res.status);
+      }
       router.replace("/");
     } catch (err: unknown) {
       setError(getFirebaseErrorMessage(err));

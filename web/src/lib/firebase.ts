@@ -33,9 +33,9 @@ export function getFirebaseAuth(): Auth {
   const app = getFirebaseApp();
   const auth = getAuth(app);
 
-  setPersistence(auth, browserLocalPersistence).catch(() => {
-    // Persistence setup is best-effort; silently ignore errors.
-  });
+  // Assign early so that any re-entrant call returns the same instance
+  // and connectAuthEmulator cannot be called twice on the same auth object.
+  authInstance = auth;
 
   if (
     process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true" &&
@@ -44,7 +44,10 @@ export function getFirebaseAuth(): Auth {
     connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
   }
 
-  authInstance = auth;
+  setPersistence(auth, browserLocalPersistence).catch(() => {
+    // Persistence setup is best-effort; silently ignore errors.
+  });
+
   return auth;
 }
 

@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,6 +12,14 @@ import (
 	"github.com/ai-teammate/mytube/api/internal/middleware"
 	"github.com/ai-teammate/mytube/api/internal/repository"
 )
+
+// writeJSONError writes a JSON-encoded error response with the correct
+// Content-Type header. This avoids the text/plain MIME type set by http.Error.
+func writeJSONError(w http.ResponseWriter, msg string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = fmt.Fprintf(w, `{"error":%q}`, msg)
+}
 
 // UserProvider is the data-access interface used by the /api/me handlers.
 // Satisfied by *repository.UserRepository and allows tests to inject a stub.
@@ -43,7 +52,7 @@ func NewMeHandler(users UserProvider) http.Handler {
 			putMeHandler(users, w, r)
 		default:
 			w.Header().Set("Allow", "GET, PUT")
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 }
@@ -54,14 +63,14 @@ func NewMeHandler(users UserProvider) http.Handler {
 func getMeHandler(users UserProvider, w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	user, err := users.Upsert(r.Context(), claims.UID, claims.Email)
 	if err != nil {
 		log.Printf("GET /api/me: provision user %s: %v", claims.UID, err)
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -69,7 +78,7 @@ func getMeHandler(users UserProvider, w http.ResponseWriter, r *http.Request) {
 		// Provisioning succeeded but the row still isn't visible — treat as
 		// a transient failure rather than a 404 to avoid confusing clients.
 		log.Printf("GET /api/me: user row not found after upsert for uid %s", claims.UID)
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -88,33 +97,33 @@ func getMeHandler(users UserProvider, w http.ResponseWriter, r *http.Request) {
 func putMeHandler(users UserProvider, w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	var req UpdateMeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
 	if req.Username == "" {
-		http.Error(w, `{"error":"username is required"}`, http.StatusUnprocessableEntity)
+		writeJSONError(w, "username is required", http.StatusUnprocessableEntity)
 		return
 	}
 
 	user, err := users.UpdateProfile(r.Context(), claims.UID, req.Username, req.AvatarURL)
 	if err != nil {
 		log.Printf("PUT /api/me: update profile %s: %v", claims.UID, err)
-		http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if user == nil {
 		// The user row doesn't exist — should not normally occur after login,
 		// but return 404 rather than a misleading 500.
-		http.Error(w, `{"error":"user not found"}`, http.StatusNotFound)
+		writeJSONError(w, "user not found", http.StatusNotFound)
 		return
 	}
 

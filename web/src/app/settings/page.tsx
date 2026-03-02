@@ -47,7 +47,8 @@ export default function SettingsPage() {
           });
         }
       } catch {
-        // Profile fetch failure is non-fatal; the form will start empty.
+        // Profile fetch failure is non-fatal; form will start empty.
+        setSaveError("Could not load your current profile. You can still update your settings.");
       }
     }
 
