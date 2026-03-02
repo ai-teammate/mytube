@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 // Video.js is loaded dynamically to avoid SSR issues with the static export.
 // We import the types only here; the runtime import happens inside useEffect.
 import type videojs from "video.js";
+import "video.js/dist/video-js.css";
 
 interface VideoPlayerProps {
   src: string;
@@ -25,10 +26,7 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
     let isMounted = true;
 
     // Dynamically import video.js to ensure it runs client-side only.
-    Promise.all([
-      import("video.js"),
-      import("video.js/dist/video-js.css"),
-    ]).then(([{ default: videoJs }]) => {
+    import("video.js").then(({ default: videoJs }) => {
       if (!isMounted || !videoRef.current) return;
 
       playerRef.current = videoJs(videoRef.current, {

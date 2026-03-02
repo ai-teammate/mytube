@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS videos (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_videos_updated_at ON videos;
 CREATE TRIGGER trg_videos_updated_at
 BEFORE UPDATE ON videos
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();

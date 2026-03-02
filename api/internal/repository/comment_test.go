@@ -14,14 +14,13 @@ import (
 // ─── commentQuerier stub ──────────────────────────────────────────────────────
 
 type commentQuerier struct {
-	t            *testing.T
-	comment      *repository.Comment
-	comments     []repository.Comment
-	queryRowErr  bool
-	execErr      error
-	rowsAff      int64
-	queryErr     error
-	callCount    int // tracks QueryRowContext calls
+	t           *testing.T
+	comment     *repository.Comment
+	comments    []repository.Comment
+	queryRowErr bool
+	execErr     error
+	rowsAff     int64
+	queryErr    error
 }
 
 func (q *commentQuerier) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
@@ -32,36 +31,21 @@ func (q *commentQuerier) ExecContext(_ context.Context, _ string, _ ...any) (sql
 }
 
 func (q *commentQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
-	q.callCount++
 	if q.queryRowErr || q.comment == nil {
 		return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
 	}
-	// First call: INSERT returning id, body, author_id, created_at
-	// Second call: SELECT username, avatar_url FROM users
-	if q.callCount == 1 {
-		avatarVal := driver.Value(nil)
-		if q.comment.AuthorAvatarURL != nil {
-			avatarVal = *q.comment.AuthorAvatarURL
-		}
-		dsn := registerResults(q.t, []fakeQueryResult{
-			{
-				columns: []string{"id", "body", "author_id", "created_at"},
-				rows:    [][]driver.Value{{q.comment.ID, q.comment.Body, q.comment.AuthorID, q.comment.CreatedAt}},
-			},
-		})
-		db, _ := sql.Open("fakedb", dsn)
-		_ = avatarVal
-		return db.QueryRowContext(context.Background(), "SELECT 1")
-	}
-	// Second call: author info
+	// CTE query returns: id, body, author_id, username, avatar_url, created_at
 	avatarVal := driver.Value(nil)
 	if q.comment.AuthorAvatarURL != nil {
 		avatarVal = *q.comment.AuthorAvatarURL
 	}
 	dsn := registerResults(q.t, []fakeQueryResult{
 		{
-			columns: []string{"username", "avatar_url"},
-			rows:    [][]driver.Value{{q.comment.AuthorUsername, avatarVal}},
+			columns: []string{"id", "body", "author_id", "username", "avatar_url", "created_at"},
+			rows: [][]driver.Value{{
+				q.comment.ID, q.comment.Body, q.comment.AuthorID,
+				q.comment.AuthorUsername, avatarVal, q.comment.CreatedAt,
+			}},
 		},
 	})
 	db, _ := sql.Open("fakedb", dsn)

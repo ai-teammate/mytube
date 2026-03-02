@@ -50,6 +50,17 @@ func (s *stubCommentUserProvider) GetByFirebaseUID(_ context.Context, _ string) 
 	return s.user, s.userErr
 }
 
+// ─── stub CommentVideoChecker ────────────────────────────────────────────────
+
+type stubCommentVideoChecker struct {
+	exists    bool
+	existsErr error
+}
+
+func (s *stubCommentVideoChecker) Exists(_ context.Context, _ string) (bool, error) {
+	return s.exists, s.existsErr
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const commentTestVideoID = "00000000-0000-0000-0000-000000000002"
@@ -75,7 +86,7 @@ func authCommentRequest(r *http.Request) *http.Request {
 func TestVideoCommentsHandler_GET_ReturnsEmptyList(t *testing.T) {
 	store := &stubCommentStore{comments: []repository.Comment{}}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+commentTestVideoID+"/comments", nil)
 	rec := httptest.NewRecorder()
@@ -110,7 +121,7 @@ func TestVideoCommentsHandler_GET_ReturnsComments(t *testing.T) {
 		},
 	}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+commentTestVideoID+"/comments", nil)
 	rec := httptest.NewRecorder()
@@ -144,7 +155,7 @@ func TestVideoCommentsHandler_GET_ReturnsComments(t *testing.T) {
 func TestVideoCommentsHandler_GET_ListError_Returns500(t *testing.T) {
 	store := &stubCommentStore{listErr: errors.New("db error")}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+commentTestVideoID+"/comments", nil)
 	rec := httptest.NewRecorder()
@@ -158,7 +169,7 @@ func TestVideoCommentsHandler_GET_ListError_Returns500(t *testing.T) {
 func TestVideoCommentsHandler_GET_InvalidVideoID_Returns400(t *testing.T) {
 	store := &stubCommentStore{}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/not-a-uuid/comments", nil)
 	rec := httptest.NewRecorder()
@@ -172,7 +183,7 @@ func TestVideoCommentsHandler_GET_InvalidVideoID_Returns400(t *testing.T) {
 func TestVideoCommentsHandler_GET_EmptyVideoID_Returns400(t *testing.T) {
 	store := &stubCommentStore{}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos//comments", nil)
 	rec := httptest.NewRecorder()
@@ -186,7 +197,7 @@ func TestVideoCommentsHandler_GET_EmptyVideoID_Returns400(t *testing.T) {
 func TestVideoCommentsHandler_UnsupportedMethod_Returns405(t *testing.T) {
 	store := &stubCommentStore{}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/"+commentTestVideoID+"/comments", nil)
 	rec := httptest.NewRecorder()
@@ -205,7 +216,7 @@ func TestVideoCommentsHandler_UnsupportedMethod_Returns405(t *testing.T) {
 func TestVideoCommentsHandler_POST_NoAuth_Returns401(t *testing.T) {
 	store := &stubCommentStore{}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	body := strings.NewReader(`{"body":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", body)
@@ -221,7 +232,7 @@ func TestVideoCommentsHandler_POST_EmptyBody_Returns422(t *testing.T) {
 	store := &stubCommentStore{comment: makeComment("c1", "hello", "alice")}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": "   "})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -239,7 +250,7 @@ func TestVideoCommentsHandler_POST_BodyTooLong_Returns422(t *testing.T) {
 	store := &stubCommentStore{}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": longBody})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -257,7 +268,7 @@ func TestVideoCommentsHandler_POST_BodyAtMaxLength_Returns201(t *testing.T) {
 	store := &stubCommentStore{comment: makeComment("c1", maxBody, "alice")}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": maxBody})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -275,7 +286,7 @@ func TestVideoCommentsHandler_POST_Success_Returns201WithComment(t *testing.T) {
 	store := &stubCommentStore{comment: comment}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": "Great video!"})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -305,7 +316,7 @@ func TestVideoCommentsHandler_POST_Success_Returns201WithComment(t *testing.T) {
 func TestVideoCommentsHandler_POST_UserNotFound_Returns404(t *testing.T) {
 	store := &stubCommentStore{}
 	users := &stubCommentUserProvider{user: nil}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": "hello"})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -321,7 +332,7 @@ func TestVideoCommentsHandler_POST_UserNotFound_Returns404(t *testing.T) {
 func TestVideoCommentsHandler_POST_UserProviderError_Returns500(t *testing.T) {
 	store := &stubCommentStore{}
 	users := &stubCommentUserProvider{userErr: errors.New("db error")}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": "hello"})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -338,7 +349,7 @@ func TestVideoCommentsHandler_POST_CreateError_Returns500(t *testing.T) {
 	store := &stubCommentStore{createErr: errors.New("create failed")}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]string{"body": "hello"})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
@@ -355,7 +366,7 @@ func TestVideoCommentsHandler_POST_InvalidJSON_Returns400(t *testing.T) {
 	store := &stubCommentStore{}
 	user := &repository.User{ID: "user-1"}
 	users := &stubCommentUserProvider{user: user}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", strings.NewReader("not-json"))
 	req = authCommentRequest(req)
@@ -510,7 +521,7 @@ func TestDeleteCommentHandler_WrongMethod_Returns405(t *testing.T) {
 func TestVideoCommentsHandler_GET_ContentType_IsJSON(t *testing.T) {
 	store := &stubCommentStore{comments: []repository.Comment{}}
 	users := &stubCommentUserProvider{}
-	h := handler.NewVideoCommentsHandler(store, users)
+	h := handler.NewVideoCommentsHandler(store, users, &stubCommentVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+commentTestVideoID+"/comments", nil)
 	rec := httptest.NewRecorder()
@@ -518,5 +529,53 @@ func TestVideoCommentsHandler_GET_ContentType_IsJSON(t *testing.T) {
 
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type: got %q, want application/json", ct)
+	}
+}
+
+func TestVideoCommentsHandler_GET_VideoNotFound_Returns404(t *testing.T) {
+	store := &stubCommentStore{}
+	users := &stubCommentUserProvider{}
+	videos := &stubCommentVideoChecker{exists: false}
+	h := handler.NewVideoCommentsHandler(store, users, videos)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+commentTestVideoID+"/comments", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-existent video, got %d", rec.Code)
+	}
+}
+
+func TestVideoCommentsHandler_GET_VideoCheckerError_Returns500(t *testing.T) {
+	store := &stubCommentStore{}
+	users := &stubCommentUserProvider{}
+	videos := &stubCommentVideoChecker{existsErr: errors.New("db error")}
+	h := handler.NewVideoCommentsHandler(store, users, videos)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+commentTestVideoID+"/comments", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on video checker error, got %d", rec.Code)
+	}
+}
+
+func TestVideoCommentsHandler_POST_VideoNotFound_Returns404(t *testing.T) {
+	store := &stubCommentStore{}
+	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
+	users := &stubCommentUserProvider{user: user}
+	videos := &stubCommentVideoChecker{exists: false}
+	h := handler.NewVideoCommentsHandler(store, users, videos)
+
+	bodyBytes, _ := json.Marshal(map[string]string{"body": "hello"})
+	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+commentTestVideoID+"/comments", bytes.NewReader(bodyBytes))
+	req = authCommentRequest(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-existent video on POST, got %d", rec.Code)
 	}
 }

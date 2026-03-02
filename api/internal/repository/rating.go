@@ -63,9 +63,11 @@ WHERE  video_id = $1`
 	var count int64
 	var myRating *int
 
-	var uid interface{}
+	// Use a typed nil (*string) so that the pq driver encodes it as SQL NULL
+	// instead of receiving an untyped interface{}(nil) which some drivers reject.
+	var uid *string
 	if userID != nil {
-		uid = *userID
+		uid = userID
 	}
 
 	row := r.db.QueryRowContext(ctx, selectSQL, videoID, uid)

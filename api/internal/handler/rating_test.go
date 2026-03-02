@@ -42,6 +42,17 @@ func (s *stubRatingUserProvider) GetByFirebaseUID(_ context.Context, _ string) (
 	return s.user, s.userErr
 }
 
+// ─── stub RatingVideoChecker ─────────────────────────────────────────────────
+
+type stubRatingVideoChecker struct {
+	exists    bool
+	existsErr error
+}
+
+func (s *stubRatingVideoChecker) Exists(_ context.Context, _ string) (bool, error) {
+	return s.exists, s.existsErr
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 func makeRatingSummary(avg float64, count int64, myRating *int) *repository.RatingSummary {
@@ -66,7 +77,7 @@ func TestRatingHandler_GET_ReturnsSummary(t *testing.T) {
 	myRating := 3
 	store := &stubRatingStore{summary: makeRatingSummary(3.5, 10, &myRating)}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
 	rec := httptest.NewRecorder()
@@ -94,7 +105,7 @@ func TestRatingHandler_GET_ReturnsSummary(t *testing.T) {
 func TestRatingHandler_GET_StoreError_Returns500(t *testing.T) {
 	store := &stubRatingStore{summaryErr: errors.New("db error")}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
 	rec := httptest.NewRecorder()
@@ -108,7 +119,7 @@ func TestRatingHandler_GET_StoreError_Returns500(t *testing.T) {
 func TestRatingHandler_GET_InvalidVideoID_Returns400(t *testing.T) {
 	store := &stubRatingStore{}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/not-a-uuid/rating", nil)
 	rec := httptest.NewRecorder()
@@ -122,7 +133,7 @@ func TestRatingHandler_GET_InvalidVideoID_Returns400(t *testing.T) {
 func TestRatingHandler_GET_EmptyVideoID_Returns400(t *testing.T) {
 	store := &stubRatingStore{}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos//rating", nil)
 	rec := httptest.NewRecorder()
@@ -136,7 +147,7 @@ func TestRatingHandler_GET_EmptyVideoID_Returns400(t *testing.T) {
 func TestRatingHandler_UnsupportedMethod_Returns405(t *testing.T) {
 	store := &stubRatingStore{}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/videos/"+ratingTestVideoID+"/rating", nil)
 	rec := httptest.NewRecorder()
@@ -155,7 +166,7 @@ func TestRatingHandler_UnsupportedMethod_Returns405(t *testing.T) {
 func TestRatingHandler_POST_NoAuth_Returns401(t *testing.T) {
 	store := &stubRatingStore{}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	body := strings.NewReader(`{"stars":4}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", body)
@@ -171,7 +182,7 @@ func TestRatingHandler_POST_InvalidStars_Returns422(t *testing.T) {
 	store := &stubRatingStore{}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubRatingUserProvider{user: user}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	for _, stars := range []int{0, 6, -1} {
 		bodyBytes, _ := json.Marshal(map[string]int{"stars": stars})
@@ -191,7 +202,7 @@ func TestRatingHandler_POST_ValidStars_ReturnsUpdatedSummary(t *testing.T) {
 	store := &stubRatingStore{summary: makeRatingSummary(4.0, 5, &myRating)}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubRatingUserProvider{user: user}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]int{"stars": 4})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", bytes.NewReader(bodyBytes))
@@ -218,7 +229,7 @@ func TestRatingHandler_POST_ValidStars_ReturnsUpdatedSummary(t *testing.T) {
 func TestRatingHandler_POST_UserNotFound_Returns404(t *testing.T) {
 	store := &stubRatingStore{}
 	users := &stubRatingUserProvider{user: nil}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]int{"stars": 3})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", bytes.NewReader(bodyBytes))
@@ -234,7 +245,7 @@ func TestRatingHandler_POST_UserNotFound_Returns404(t *testing.T) {
 func TestRatingHandler_POST_UserProviderError_Returns500(t *testing.T) {
 	store := &stubRatingStore{}
 	users := &stubRatingUserProvider{userErr: errors.New("db error")}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]int{"stars": 3})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", bytes.NewReader(bodyBytes))
@@ -251,7 +262,7 @@ func TestRatingHandler_POST_UpsertError_Returns500(t *testing.T) {
 	store := &stubRatingStore{upsertErr: errors.New("upsert failed")}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubRatingUserProvider{user: user}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	bodyBytes, _ := json.Marshal(map[string]int{"stars": 3})
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", bytes.NewReader(bodyBytes))
@@ -268,7 +279,7 @@ func TestRatingHandler_POST_InvalidJSON_Returns400(t *testing.T) {
 	store := &stubRatingStore{}
 	user := &repository.User{ID: "user-1"}
 	users := &stubRatingUserProvider{user: user}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", strings.NewReader("not-json"))
 	req = authRequest(req)
@@ -287,7 +298,7 @@ func TestRatingHandler_POST_AllValidStarValues(t *testing.T) {
 		store := &stubRatingStore{summary: makeRatingSummary(float64(s), 1, &myRating)}
 		user := &repository.User{ID: "user-1"}
 		users := &stubRatingUserProvider{user: user}
-		h := handler.NewRatingHandler(store, users)
+		h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 		bodyBytes, _ := json.Marshal(map[string]int{"stars": stars})
 		req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", bytes.NewReader(bodyBytes))
@@ -304,7 +315,7 @@ func TestRatingHandler_POST_AllValidStarValues(t *testing.T) {
 func TestRatingHandler_GET_ContentType_IsJSON(t *testing.T) {
 	store := &stubRatingStore{summary: makeRatingSummary(0, 0, nil)}
 	users := &stubRatingUserProvider{}
-	h := handler.NewRatingHandler(store, users)
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
 	rec := httptest.NewRecorder()
@@ -312,5 +323,53 @@ func TestRatingHandler_GET_ContentType_IsJSON(t *testing.T) {
 
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type: got %q, want application/json", ct)
+	}
+}
+
+func TestRatingHandler_GET_VideoNotFound_Returns404(t *testing.T) {
+	store := &stubRatingStore{}
+	users := &stubRatingUserProvider{}
+	videos := &stubRatingVideoChecker{exists: false}
+	h := handler.NewRatingHandler(store, users, videos)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-existent video, got %d", rec.Code)
+	}
+}
+
+func TestRatingHandler_GET_VideoCheckerError_Returns500(t *testing.T) {
+	store := &stubRatingStore{}
+	users := &stubRatingUserProvider{}
+	videos := &stubRatingVideoChecker{existsErr: errors.New("db error")}
+	h := handler.NewRatingHandler(store, users, videos)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on video checker error, got %d", rec.Code)
+	}
+}
+
+func TestRatingHandler_POST_VideoNotFound_Returns404(t *testing.T) {
+	store := &stubRatingStore{}
+	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
+	users := &stubRatingUserProvider{user: user}
+	videos := &stubRatingVideoChecker{exists: false}
+	h := handler.NewRatingHandler(store, users, videos)
+
+	bodyBytes, _ := json.Marshal(map[string]int{"stars": 3})
+	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+ratingTestVideoID+"/rating", bytes.NewReader(bodyBytes))
+	req = authRequest(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-existent video on POST, got %d", rec.Code)
 	}
 }

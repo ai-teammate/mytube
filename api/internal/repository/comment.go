@@ -45,31 +45,27 @@ func NewCommentRepository(db CommentQuerier) *CommentRepository {
 }
 
 // Create inserts a new comment row and returns it with author info.
+// A single CTE query is used to avoid the N+1 round-trip and the theoretical
+// race condition between a two-query approach.
 func (r *CommentRepository) Create(ctx context.Context, p CreateCommentParams) (*Comment, error) {
 	const insertSQL = `
-INSERT INTO comments (video_id, author_id, body)
-VALUES ($1, $2, $3)
-RETURNING id, body, author_id, created_at`
+WITH inserted AS (
+    INSERT INTO comments (video_id, author_id, body)
+    VALUES ($1, $2, $3)
+    RETURNING id, body, author_id, created_at
+)
+SELECT i.id, i.body, i.author_id, u.username, u.avatar_url, i.created_at
+FROM   inserted i
+JOIN   users    u ON u.id = i.author_id`
 
 	row := r.db.QueryRowContext(ctx, insertSQL, p.VideoID, p.AuthorID, p.Body)
 
 	var c Comment
-	if err := row.Scan(&c.ID, &c.Body, &c.AuthorID, &c.CreatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.Body, &c.AuthorID, &c.AuthorUsername, &c.AuthorAvatarURL, &c.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("create comment: no row returned")
 		}
 		return nil, fmt.Errorf("create comment: %w", err)
-	}
-
-	// Fetch author info.
-	const authorSQL = `
-SELECT username, avatar_url
-FROM   users
-WHERE  id = $1`
-
-	authorRow := r.db.QueryRowContext(ctx, authorSQL, c.AuthorID)
-	if err := authorRow.Scan(&c.AuthorUsername, &c.AuthorAvatarURL); err != nil {
-		return nil, fmt.Errorf("fetch comment author: %w", err)
 	}
 
 	return &c, nil

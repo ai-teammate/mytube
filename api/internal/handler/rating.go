@@ -24,6 +24,12 @@ type RatingUserProvider interface {
 	GetByFirebaseUID(ctx context.Context, firebaseUID string) (*repository.User, error)
 }
 
+// RatingVideoChecker checks whether a video exists.
+// Satisfied by *repository.VideoRepository and allows tests to inject a stub.
+type RatingVideoChecker interface {
+	Exists(ctx context.Context, videoID string) (bool, error)
+}
+
 // RatingResponse is the JSON body returned by the rating endpoints.
 type RatingResponse struct {
 	AverageRating float64 `json:"average_rating"`
@@ -41,20 +47,20 @@ type PostRatingRequest struct {
 //
 // GET is unauthenticated; POST requires a valid Firebase token.
 // authMiddleware wraps only the POST path.
-func NewRatingHandler(ratings RatingStore, users RatingUserProvider) http.Handler {
+func NewRatingHandler(ratings RatingStore, users RatingUserProvider, videos RatingVideoChecker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract video ID from /api/videos/<id>/rating
 		videoID := extractRatingVideoID(r.URL.Path)
-		if videoID == "" || !isValidVideoID(videoID) {
+		if videoID == "" || !isValidUUID(videoID) {
 			writeJSONError(w, "invalid video id", http.StatusBadRequest)
 			return
 		}
 
 		switch r.Method {
 		case http.MethodGet:
-			getRatingHandler(ratings, videoID, w, r)
+			getRatingHandler(ratings, videos, videoID, w, r)
 		case http.MethodPost:
-			postRatingHandler(ratings, users, videoID, w, r)
+			postRatingHandler(ratings, users, videos, videoID, w, r)
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -71,8 +77,28 @@ func extractRatingVideoID(path string) string {
 	return path
 }
 
+// checkVideoExists performs a lightweight video existence check and writes a
+// 404 or 500 response when appropriate. Returns false if the caller should stop.
+func checkVideoExists(videos RatingVideoChecker, videoID string, w http.ResponseWriter, r *http.Request) bool {
+	exists, err := videos.Exists(r.Context(), videoID)
+	if err != nil {
+		log.Printf("check video exists %s: %v", videoID, err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return false
+	}
+	if !exists {
+		writeJSONError(w, "video not found", http.StatusNotFound)
+		return false
+	}
+	return true
+}
+
 // getRatingHandler handles GET /api/videos/:id/rating.
-func getRatingHandler(ratings RatingStore, videoID string, w http.ResponseWriter, r *http.Request) {
+func getRatingHandler(ratings RatingStore, videos RatingVideoChecker, videoID string, w http.ResponseWriter, r *http.Request) {
+	if !checkVideoExists(videos, videoID, w, r) {
+		return
+	}
+
 	// Optionally resolve the caller's user ID for my_rating.
 	var userID *string
 	if claims := middleware.ClaimsFromContext(r.Context()); claims != nil {
@@ -97,7 +123,7 @@ func getRatingHandler(ratings RatingStore, videoID string, w http.ResponseWriter
 
 // postRatingHandler handles POST /api/videos/:id/rating.
 // Requires authentication.
-func postRatingHandler(ratings RatingStore, users RatingUserProvider, videoID string, w http.ResponseWriter, r *http.Request) {
+func postRatingHandler(ratings RatingStore, users RatingUserProvider, videos RatingVideoChecker, videoID string, w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
 		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
@@ -112,6 +138,10 @@ func postRatingHandler(ratings RatingStore, users RatingUserProvider, videoID st
 
 	if req.Stars < 1 || req.Stars > 5 {
 		writeJSONError(w, "stars must be between 1 and 5", http.StatusUnprocessableEntity)
+		return
+	}
+
+	if !checkVideoExists(videos, videoID, w, r) {
 		return
 	}
 

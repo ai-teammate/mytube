@@ -164,6 +164,22 @@ ORDER BY tag`
 	return tags, nil
 }
 
+// Exists reports whether a video row with the given ID exists in the database,
+// regardless of its status. Use this for a lightweight existence check before
+// operating on video sub-resources (ratings, comments).
+func (r *VideoRepository) Exists(ctx context.Context, videoID string) (bool, error) {
+	const selectSQL = `SELECT 1 FROM videos WHERE id = $1 LIMIT 1`
+	row := r.db.QueryRowContext(ctx, selectSQL, videoID)
+	var dummy int
+	if err := row.Scan(&dummy); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check video exists: %w", err)
+	}
+	return true, nil
+}
+
 // Create inserts a new video row with status=pending and the given GCS raw path,
 // then inserts any provided tags into the video_tags table.
 // Returns the created VideoRecord.

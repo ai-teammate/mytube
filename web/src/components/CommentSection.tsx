@@ -34,9 +34,16 @@ export default function CommentSection({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Resolve auth state once on mount (and when authLoading changes).
+  // The cancellation guard prevents setState calls on an unmounted component.
   useEffect(() => {
     if (authLoading) return;
-    getToken().then((t) => setIsAuthenticated(t !== null));
+    let cancelled = false;
+    getToken().then((t) => {
+      if (!cancelled) setIsAuthenticated(t !== null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, getToken]);
 
   // Load comments.
@@ -94,11 +101,16 @@ export default function CommentSection({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Add a comment…"
-            maxLength={2000}
             rows={3}
             disabled={submitting}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 resize-none"
           />
+          {/* Character counter using Array.from to count Unicode code points
+              (matching the server-side utf8.RuneCountInString check) rather
+              than UTF-16 code units as would be used by String.length / maxLength. */}
+          <p className="text-xs text-gray-400 text-right">
+            {Array.from(body).length} / 2000
+          </p>
           {submitError && (
             <p role="alert" className="text-sm text-red-600">
               {submitError}
@@ -107,7 +119,7 @@ export default function CommentSection({
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={submitting || body.trim() === ""}
+              disabled={submitting || body.trim() === "" || Array.from(body).length > 2000}
               className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {submitting ? "Posting…" : "Comment"}

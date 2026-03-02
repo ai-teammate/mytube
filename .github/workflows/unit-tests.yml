@@ -60,6 +60,10 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Build
+        working-directory: web
+        run: npm run build
+
       - name: Run unit tests
         working-directory: web
         run: npm test
