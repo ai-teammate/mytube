@@ -1,5 +1,6 @@
 **.env
 **.token
+**-key.json
 cache**
 outputs
 input
