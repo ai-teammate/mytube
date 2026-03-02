@@ -55,6 +55,8 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	videoRepo := repository.NewVideoRepository(db)
+	ratingRepo := repository.NewRatingRepository(db)
+	commentRepo := repository.NewCommentRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
@@ -64,6 +66,12 @@ func main() {
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
+	// Rating and comment sub-resources are registered with wildcard patterns
+	// (Go 1.22+ ServeMux), so they take precedence over the /api/videos/ subtree.
+	mux.Handle("/api/videos/{id}/rating", handler.NewRatingHandler(ratingRepo, userRepo))
+	mux.Handle("/api/videos/{id}/comments", handler.NewVideoCommentsHandler(commentRepo, userRepo))
+	// Delete comment: authenticated
+	mux.Handle("/api/comments/", authMiddleware(handler.NewDeleteCommentHandler(commentRepo, userRepo)))
 	mux.Handle("/api/videos/", handler.NewVideoHandler(videoRepo, cdnBaseURL))
 	mux.Handle("/api/videos", authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner)))
 	// Catch-all: return 404 for any path not matched above.

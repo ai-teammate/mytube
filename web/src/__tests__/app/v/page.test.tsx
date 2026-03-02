@@ -4,6 +4,17 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
+import type { RatingRepository } from "@/domain/rating";
+import type { CommentRepository } from "@/domain/comment";
+
+// ─── Mock useAuth ─────────────────────────────────────────────────────────────
+jest.mock("@/context/AuthContext", () => ({
+  useAuth: () => ({
+    user: null,
+    loading: false,
+    getIdToken: jest.fn().mockResolvedValue(null),
+  }),
+}));
 
 // ─── Mock React.use to unwrap Promise synchronously in tests ──────────────────
 jest.mock("react", () => {
@@ -67,6 +78,41 @@ function makeRepo(
   return { getByID: impl };
 }
 
+function makeRatingRepo(): RatingRepository {
+  return {
+    getSummary: jest.fn().mockResolvedValue({
+      averageRating: 0,
+      ratingCount: 0,
+      myRating: null,
+    }),
+    submitRating: jest.fn().mockResolvedValue({
+      averageRating: 0,
+      ratingCount: 0,
+      myRating: null,
+    }),
+  };
+}
+
+function makeCommentRepo(): CommentRepository {
+  return {
+    listByVideoID: jest.fn().mockResolvedValue([]),
+    create: jest.fn().mockResolvedValue({}),
+    deleteComment: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+// Render WatchPage with default stub repos to avoid real fetch calls.
+function renderWatchPage(repo: VideoRepository, videoID = "vid-1") {
+  return render(
+    <WatchPage
+      params={makeParams(videoID)}
+      repository={repo}
+      ratingRepository={makeRatingRepo()}
+      commentRepository={makeCommentRepo()}
+    />
+  );
+}
+
 function makeVideo(overrides: Partial<VideoDetail> = {}): VideoDetail {
   return {
     id: "vid-1",
@@ -92,7 +138,7 @@ describe("WatchPage", () => {
   it("shows loading state initially", () => {
     const repo = makeRepo(() => new Promise(() => {}));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
@@ -100,7 +146,7 @@ describe("WatchPage", () => {
   it("shows not-found message when video is null", async () => {
     const repo = makeRepo(() => Promise.resolve(null));
 
-    render(<WatchPage params={makeParams("nonexistent")} repository={repo} />);
+    renderWatchPage(repo, "nonexistent");
 
     await waitFor(() => {
       expect(screen.getByText(/video not found/i)).toBeInTheDocument();
@@ -110,7 +156,7 @@ describe("WatchPage", () => {
   it("shows error message when repository throws", async () => {
     const repo = makeRepo(() => Promise.reject(new Error("network failure")));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
@@ -122,7 +168,7 @@ describe("WatchPage", () => {
   it("renders video title as heading when loaded", async () => {
     const repo = makeRepo(() => Promise.resolve(makeVideo()));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(
@@ -134,7 +180,7 @@ describe("WatchPage", () => {
   it("renders VideoPlayer with hls_manifest_url as src", async () => {
     const repo = makeRepo(() => Promise.resolve(makeVideo()));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       const player = screen.getByTestId("video-player");
@@ -150,7 +196,7 @@ describe("WatchPage", () => {
       Promise.resolve(makeVideo({ hlsManifestUrl: null }))
     );
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(
@@ -162,7 +208,7 @@ describe("WatchPage", () => {
   it("renders uploader username as a link to /u/:username", async () => {
     const repo = makeRepo(() => Promise.resolve(makeVideo()));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       const link = screen.getByRole("link", { name: "alice" });
@@ -173,7 +219,7 @@ describe("WatchPage", () => {
   it("renders uploader avatar when avatarUrl is set", async () => {
     const repo = makeRepo(() => Promise.resolve(makeVideo()));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       const avatar = screen.getByAltText("alice's avatar");
@@ -190,7 +236,7 @@ describe("WatchPage", () => {
       )
     );
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(screen.getByLabelText("bob's avatar")).toHaveTextContent("B");
@@ -202,7 +248,7 @@ describe("WatchPage", () => {
       Promise.resolve(makeVideo({ tags: ["golang", "tutorial"] }))
     );
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(screen.getByText("golang")).toBeInTheDocument();
@@ -213,7 +259,7 @@ describe("WatchPage", () => {
   it("renders no tags section when tags is empty", async () => {
     const repo = makeRepo(() => Promise.resolve(makeVideo({ tags: [] })));
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       // Title should render but no tag chips
@@ -228,7 +274,7 @@ describe("WatchPage", () => {
       Promise.resolve(makeVideo({ description: "This is my description" }))
     );
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(
@@ -242,7 +288,7 @@ describe("WatchPage", () => {
       Promise.resolve(makeVideo({ description: null }))
     );
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Test Video" })).toBeInTheDocument();
@@ -255,7 +301,7 @@ describe("WatchPage", () => {
       Promise.resolve(makeVideo({ viewCount: 1234567 }))
     );
 
-    render(<WatchPage params={makeParams("vid-1")} repository={repo} />);
+    renderWatchPage(repo, "vid-1");
 
     await waitFor(() => {
       // toLocaleString formats large numbers with commas
@@ -269,7 +315,7 @@ describe("WatchPage", () => {
     );
     const repo: VideoRepository = { getByID };
 
-    render(<WatchPage params={makeParams("my-video-id")} repository={repo} />);
+    renderWatchPage(repo, "my-video-id");
 
     await waitFor(() => {
       expect(getByID).toHaveBeenCalledWith("my-video-id");
