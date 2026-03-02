@@ -1,0 +1,5 @@
+test_id: MYTUBE-103
+type: ci-cd
+framework: github-api+static-analysis
+platform: github-actions
+dependencies: []

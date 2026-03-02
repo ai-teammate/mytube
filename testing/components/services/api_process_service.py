@@ -101,6 +101,23 @@ class ApiProcessService:
         self._collect_output()
         return self._process.poll()
 
+    def wait_for_ready_or_crash(self, host: str = "127.0.0.1", timeout: Optional[float] = None) -> None:
+        """Block until the TCP port accepts connections. Raises on crash or timeout."""
+        import socket as _socket
+        deadline = time.monotonic() + (timeout or self._startup_timeout)
+        while time.monotonic() < deadline:
+            if self._process is not None and self._process.poll() is not None:
+                out = self._process.stdout.read() if self._process and self._process.stdout else ""
+                raise RuntimeError(
+                    f"API server exited unexpectedly.\nOutput: {out}"
+                )
+            with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.3)
+                if sock.connect_ex((host, self._port)) == 0:
+                    return
+            time.sleep(0.1)
+        raise TimeoutError(f"API server did not become ready within {timeout or self._startup_timeout}s.")
+
     def wait_for_ready(self, path: str = "/health") -> bool:
         """Poll the given path until the server responds or startup_timeout expires.
 
@@ -134,6 +151,26 @@ class ApiProcessService:
         """Issue GET *path* and return (status_code, response_body)."""
         url = f"http://127.0.0.1:{self._port}{path}"
         req = urllib.request.Request(url, headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    def put(self, path: str, body: bytes, headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue PUT *path* with *body* and return (status_code, response_body)."""
+        url = f"http://127.0.0.1:{self._port}{path}"
+        req = urllib.request.Request(url, data=body, method="PUT", headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    def post(self, path: str, body: bytes, headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue POST *path* with *body* and return (status_code, response_body)."""
+        url = f"http://127.0.0.1:{self._port}{path}"
+        req = urllib.request.Request(url, data=body, method="POST", headers=headers or {})
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status, resp.read().decode()

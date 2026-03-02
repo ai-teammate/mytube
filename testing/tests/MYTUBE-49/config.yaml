@@ -1,0 +1,5 @@
+test_id: MYTUBE-49
+type: api
+framework: google-cloud-storage
+platform: gcp
+dependencies: []

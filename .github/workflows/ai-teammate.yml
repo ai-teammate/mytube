@@ -53,8 +53,22 @@ jobs:
           submodules: true
           token: ${{ secrets.PAT_TOKEN }}
 
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_AI_TEAMMATE_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Update agents submodule to latest main
         run: git submodule update --remote --merge agents
+
+      - name: Cache JDK 23
+        uses: actions/cache@v4
+        with:
+          path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/
+          key: jdk-temurin-23-linux
 
       - name: Setup Java Environment
         uses: ./.github/actions/setup-java-only
@@ -62,32 +76,33 @@ jobs:
           cache-key-suffix: '-cursor'
 
       - name: Set up Node.js
-        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Configure npm global prefix
-        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         run: |
           npm config set prefix ~/.npm-global
           echo "$HOME/.npm-global/bin" >> $GITHUB_PATH
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Cache npm global packages
-        if: vars.AI_AGENT_PROVIDER == 'codemie'
+        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         uses: actions/cache@v4
         with:
           path: |
             ~/.npm-global
             ~/.codemie
             ~/.local/bin
-          key: ${{ runner.os }}-npm-global-${{ hashFiles('.github/workflows/ai-teammate.yml') }}
+          key: ${{ runner.os }}-npm-global-${{ vars.AI_AGENT_PROVIDER }}-${{ hashFiles('.github/workflows/ai-teammate.yml') }}
           restore-keys: |
+            ${{ runner.os }}-npm-global-${{ vars.AI_AGENT_PROVIDER }}-
             ${{ runner.os }}-npm-global-
 
       - name: Install Cursor CLI
-        if: vars.AI_AGENT_PROVIDER != 'codemie'
+        if: vars.AI_AGENT_PROVIDER != 'codemie' && vars.AI_AGENT_PROVIDER != 'copilot'
         run: |
           echo "Installing Cursor CLI..."
           curl https://cursor.com/install -fsS | bash
@@ -126,18 +141,48 @@ jobs:
           echo "✅ Codemie CLI ready"
           codemie-claude --version || echo "Version check failed"
 
-      - name: Install DMTools CLI
+      - name: Install Copilot CLI
+        if: vars.AI_AGENT_PROVIDER == 'copilot'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.137/install.sh | bash -s v1.7.137
-          echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
+          if ! command -v github-copilot-cli &> /dev/null; then
+            echo "📦 Installing GitHub Copilot CLI..."
+            npm install -g @github/copilot
+          else
+            echo "✅ Copilot CLI already installed (from cache)"
+          fi
+          echo "✅ Copilot CLI ready"
+
+      - name: Verify Copilot CLI Installation
+        if: vars.AI_AGENT_PROVIDER == 'copilot'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.PAT_TOKEN }}
+        run: |
+          npx @github/copilot --version || echo "Copilot CLI verification - will be available with token"
+
+      - name: Cache DMTools CLI
+        id: cache-dmtools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dmtools
+          key: dmtools-v1.7.139
+
+      - name: Install DMTools CLI
+        if: steps.cache-dmtools.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.139/install.sh | bash -s v1.7.139
+
+      - name: Add DMTools to PATH
+        run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
 
       - name: Verify CLI Installations
         run: |
-          dmtools || echo "dmtools verification failed"
-          if [ "${{ vars.AI_AGENT_PROVIDER }}" != "codemie" ]; then
-            cursor-agent --version || echo "cursor-agent version failed"
-          else
+          dmtools -v || echo "dmtools version check failed"
+          if [ "${{ vars.AI_AGENT_PROVIDER }}" = "codemie" ]; then
             codemie-claude --version || echo "codemie-claude version failed"
+          elif [ "${{ vars.AI_AGENT_PROVIDER }}" = "copilot" ]; then
+            npx @github/copilot --version || echo "copilot version check failed"
+          else
+            cursor-agent --version || echo "cursor-agent version failed"
           fi
 
       - name: Configure Git Author
@@ -145,6 +190,22 @@ jobs:
           git config --global user.name "AI Teammate"
           git config --global user.email "agent.ai.native@gmail.com"
           echo "✅ Git author configured as AI Teammate"
+
+      - name: Get Firebase test token
+        run: |
+          RESP=$(curl -s -X POST \
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${{ vars.FIREBASE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"${{ vars.FIREBASE_TEST_EMAIL }}\",\"password\":\"${{ secrets.FIREBASE_TEST_PASSWORD }}\",\"returnSecureToken\":true}")
+          TOKEN=$(echo $RESP | jq -r .idToken)
+          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "⚠️ Firebase token not obtained (credentials may not be set) — skipping"
+          else
+            echo "FIREBASE_TEST_TOKEN=${TOKEN}" >> $GITHUB_ENV
+            echo "✅ Firebase test token obtained"
+          fi
+          echo "FIREBASE_TEST_UID=${{ vars.FIREBASE_TEST_UID }}" >> $GITHUB_ENV
+          echo "FIREBASE_TEST_EMAIL=${{ vars.FIREBASE_TEST_EMAIL }}" >> $GITHUB_ENV
 
       - name: Run AI Teammate
         env:
@@ -187,6 +248,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           SOURCE_GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
+          # GitHub Copilot CLI Authentication
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.PAT_TOKEN }}
+
           # AI Agent Provider
           AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
 
@@ -198,6 +262,30 @@ jobs:
 
           # DMTools Advanced Configuration
           PROMPT_CHUNK_TOKEN_LIMIT: ${{ vars.PROMPT_CHUNK_TOKEN_LIMIT }}
+
+          # GCP Configuration (for test automation)
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_CONNECTION_NAME: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
+          GCP_DB_USER_SECRET: ${{ vars.GCP_DB_USER_SECRET }}
+          GCP_DB_PASSWORD_SECRET: ${{ vars.GCP_DB_PASSWORD_SECRET }}
+          RAW_OBJECT_PATH: ${{ vars.RAW_OBJECT_PATH }}
+
+          # Database (for test automation)
+          DB_NAME: ${{ vars.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+
+          # Firebase Configuration (for test automation)
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          FIREBASE_AUTH_DOMAIN: ${{ vars.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ vars.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_TEST_EMAIL: ${{ env.FIREBASE_TEST_EMAIL }}
+          FIREBASE_TEST_UID: ${{ env.FIREBASE_TEST_UID }}
+          FIREBASE_TEST_TOKEN: ${{ env.FIREBASE_TEST_TOKEN }}
 
         run: |
           echo "Using configuration: ${{ inputs.config_file }}"
