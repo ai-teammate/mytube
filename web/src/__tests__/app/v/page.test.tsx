@@ -51,7 +51,7 @@ jest.mock("next/dynamic", () => ({
 }));
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
-import WatchPage from "@/app/v/[id]/page";
+import WatchPage from "@/app/v/[id]/WatchPageClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

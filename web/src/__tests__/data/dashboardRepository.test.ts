@@ -41,6 +41,9 @@ describe("ApiDashboardVideoRepository", () => {
           thumbnail_url: "https://cdn.example.com/thumb.jpg",
           view_count: 42,
           created_at: "2024-01-15T10:00:00Z",
+          description: "A test description",
+          category_id: 2,
+          tags: ["go", "tutorial"],
         },
       ],
     });
@@ -55,6 +58,9 @@ describe("ApiDashboardVideoRepository", () => {
       thumbnailUrl: "https://cdn.example.com/thumb.jpg",
       viewCount: 42,
       createdAt: "2024-01-15T10:00:00Z",
+      description: "A test description",
+      categoryId: 2,
+      tags: ["go", "tutorial"],
     });
   });
 
@@ -79,6 +85,9 @@ describe("ApiDashboardVideoRepository", () => {
           thumbnail_url: null,
           view_count: 0,
           created_at: "2024-01-15T10:00:00Z",
+          description: null,
+          category_id: null,
+          tags: [],
         },
       ],
     });

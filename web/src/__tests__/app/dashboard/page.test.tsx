@@ -65,6 +65,9 @@ function makeDashboardVideo(
     thumbnailUrl: "https://cdn.example.com/thumb.jpg",
     viewCount: 42,
     createdAt: "2024-01-15T10:00:00Z",
+    description: null,
+    categoryId: null,
+    tags: [],
     ...overrides,
   };
 }

@@ -102,6 +102,10 @@ func (q *videoDetailQuerier) QueryContext(_ context.Context, _ string, _ ...any)
 	return db.QueryContext(context.Background(), "SELECT tag FROM video_tags")
 }
 
+func (q *videoDetailQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return emptyDB().BeginTx(ctx, opts)
+}
+
 // ─── GetByID tests ────────────────────────────────────────────────────────────
 
 func TestGetByID_NotFound(t *testing.T) {
@@ -365,6 +369,10 @@ func (q *videoCreateQuerier) ExecContext(_ context.Context, _ string, _ ...any) 
 
 func (q *videoCreateQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
 	return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
+}
+
+func (q *videoCreateQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return emptyDB().BeginTx(ctx, opts)
 }
 
 // videoRowDB returns a *sql.DB configured to return one VideoRecord row.

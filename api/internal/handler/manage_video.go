@@ -17,10 +17,8 @@ import (
 // DELETE /api/videos/:id.
 // Satisfied by *repository.VideoRepository and allows tests to inject a stub.
 type VideoManager interface {
-	GetUploaderIDByVideoID(ctx context.Context, videoID string) (string, error)
-	Update(ctx context.Context, videoID string, p repository.UpdateVideoParams) (*repository.VideoDetail, error)
-	SoftDelete(ctx context.Context, videoID string) (bool, error)
-	GetTagsByVideoID(ctx context.Context, videoID string) ([]string, error)
+	Update(ctx context.Context, videoID string, uploaderID string, p repository.UpdateVideoParams) (*repository.VideoDetail, error)
+	SoftDelete(ctx context.Context, videoID string, uploaderID string) (bool, error)
 }
 
 // UpdateVideoRequest is the JSON body accepted by PUT /api/videos/:id.
@@ -80,7 +78,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		return
 	}
 
-	// Verify ownership.
+	// Resolve the caller's internal user ID.
 	user, err := users.GetByFirebaseUID(r.Context(), claims.UID)
 	if err != nil {
 		log.Printf("PUT /api/videos/%s: get user %s: %v", videoID, claims.UID, err)
@@ -89,21 +87,6 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 	}
 	if user == nil {
 		writeJSONError(w, "user not found", http.StatusNotFound)
-		return
-	}
-
-	uploaderID, err := manager.GetUploaderIDByVideoID(r.Context(), videoID)
-	if err != nil {
-		log.Printf("PUT /api/videos/%s: get uploader: %v", videoID, err)
-		writeJSONError(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	if uploaderID == "" {
-		writeJSONError(w, "video not found", http.StatusNotFound)
-		return
-	}
-	if uploaderID != user.ID {
-		writeJSONError(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -140,7 +123,8 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		desc = &d
 	}
 
-	updated, err := manager.Update(r.Context(), videoID, repository.UpdateVideoParams{
+	// Ownership is enforced atomically inside Update via the WHERE clause.
+	updated, err := manager.Update(r.Context(), videoID, user.ID, repository.UpdateVideoParams{
 		Title:       req.Title,
 		Description: desc,
 		CategoryID:  req.CategoryID,
@@ -152,17 +136,13 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		return
 	}
 	if updated == nil {
+		// Update returned nil: either the video doesn't exist or the caller is not
+		// the owner. Return 404 — do not reveal ownership information.
 		writeJSONError(w, "video not found", http.StatusNotFound)
 		return
 	}
 
-	fetchedTags, err := manager.GetTagsByVideoID(r.Context(), videoID)
-	if err != nil {
-		log.Printf("PUT /api/videos/%s: get tags: %v", videoID, err)
-		writeJSONError(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
+	// Use the validated tags slice directly — no extra DB round-trip needed.
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(UpdateVideoResponse{
 		ID:           updated.ID,
@@ -171,7 +151,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		Status:       updated.Status,
 		ThumbnailURL: updated.ThumbnailURL,
 		ViewCount:    updated.ViewCount,
-		Tags:         fetchedTags,
+		Tags:         tags,
 		Uploader: UploaderInfo{
 			Username:  updated.UploaderUsername,
 			AvatarURL: updated.UploaderAvatarURL,
@@ -194,7 +174,7 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 		return
 	}
 
-	// Verify ownership.
+	// Resolve the caller's internal user ID.
 	user, err := users.GetByFirebaseUID(r.Context(), claims.UID)
 	if err != nil {
 		log.Printf("DELETE /api/videos/%s: get user %s: %v", videoID, claims.UID, err)
@@ -206,28 +186,16 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 		return
 	}
 
-	uploaderID, err := manager.GetUploaderIDByVideoID(r.Context(), videoID)
-	if err != nil {
-		log.Printf("DELETE /api/videos/%s: get uploader: %v", videoID, err)
-		writeJSONError(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	if uploaderID == "" {
-		writeJSONError(w, "video not found", http.StatusNotFound)
-		return
-	}
-	if uploaderID != user.ID {
-		writeJSONError(w, "forbidden", http.StatusForbidden)
-		return
-	}
-
-	deleted, err := manager.SoftDelete(r.Context(), videoID)
+	// Ownership is enforced atomically inside SoftDelete via the WHERE clause.
+	deleted, err := manager.SoftDelete(r.Context(), videoID, user.ID)
 	if err != nil {
 		log.Printf("DELETE /api/videos/%s: soft delete: %v", videoID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if !deleted {
+		// SoftDelete returned false: either the video doesn't exist or the caller
+		// is not the owner. Return 404 — do not reveal ownership information.
 		writeJSONError(w, "video not found", http.StatusNotFound)
 		return
 	}

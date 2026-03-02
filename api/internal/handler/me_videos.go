@@ -26,6 +26,9 @@ type DashboardVideoListItem struct {
 	ThumbnailURL *string   `json:"thumbnail_url"`
 	ViewCount    int64     `json:"view_count"`
 	CreatedAt    time.Time `json:"created_at"`
+	Description  *string   `json:"description"`
+	CategoryID   *int      `json:"category_id"`
+	Tags         []string  `json:"tags"`
 }
 
 // NewMeVideosHandler returns an http.Handler for GET /api/me/videos.
@@ -72,6 +75,9 @@ func NewMeVideosHandler(videos DashboardVideoProvider, users UserIDProvider) htt
 				ThumbnailURL: v.ThumbnailURL,
 				ViewCount:    v.ViewCount,
 				CreatedAt:    v.CreatedAt,
+				Description:  v.Description,
+				CategoryID:   v.CategoryID,
+				Tags:         v.Tags,
 			}
 		}
 

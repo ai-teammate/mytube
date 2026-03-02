@@ -42,6 +42,7 @@ func makeDashboardVideo(id, title, status string) repository.DashboardVideo {
 		ThumbnailURL: &thumb,
 		ViewCount:    10,
 		CreatedAt:    time.Now().Truncate(time.Second),
+		Tags:         []string{},
 	}
 }
 

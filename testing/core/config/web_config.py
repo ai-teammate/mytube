@@ -27,6 +27,7 @@ class WebConfig:
             "APP_URL",
             os.getenv("WEB_BASE_URL", "https://ai-teammate.github.io/mytube"),
         ).rstrip("/")
+        self.api_base_url: str = os.getenv("API_BASE_URL", "http://localhost:8081").rstrip("/")
         self.test_email: str = os.getenv("FIREBASE_TEST_EMAIL", "")
         self.test_password: str = os.getenv("FIREBASE_TEST_PASSWORD", "")
         self.headless: bool = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false"

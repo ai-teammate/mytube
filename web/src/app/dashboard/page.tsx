@@ -4,14 +4,17 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { ApiDashboardVideoRepository } from "@/data/dashboardRepository";
-import { ApiVideoManagementRepository } from "@/data/dashboardRepository";
+import {
+  ApiDashboardVideoRepository,
+  ApiVideoManagementRepository,
+} from "@/data/dashboardRepository";
 import type {
   DashboardVideo,
   DashboardVideoRepository,
   UpdateVideoParams,
   VideoManagementRepository,
 } from "@/domain/dashboard";
+import { CATEGORIES } from "@/domain/categories";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -80,9 +83,9 @@ interface EditModalProps {
 function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
   const [form, setForm] = useState<EditFormState>({
     title: video.title,
-    description: "",
-    categoryId: "",
-    tags: "",
+    description: video.description ?? "",
+    categoryId: video.categoryId !== null ? String(video.categoryId) : "",
+    tags: video.tags.join(", "),
   });
 
   function handleChange(
@@ -185,13 +188,12 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
               disabled={saving}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 bg-white"
             >
-              {/* Category IDs match seeds in api/migrations/0002_seed_categories.up.sql. */}
               <option value="">— Select a category —</option>
-              <option value="1">Education</option>
-              <option value="2">Entertainment</option>
-              <option value="3">Gaming</option>
-              <option value="4">Music</option>
-              <option value="5">Other</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -346,6 +348,8 @@ export default function DashboardPage({
                 title: updated.title,
                 status: updated.status as DashboardVideo["status"],
                 thumbnailUrl: updated.thumbnailUrl,
+                description: updated.description,
+                tags: updated.tags,
               }
             : v
         )

@@ -19,30 +19,18 @@ import (
 // ─── stubs ────────────────────────────────────────────────────────────────────
 
 type stubVideoManager struct {
-	uploaderID    string
-	uploaderErr   error
-	updateResult  *repository.VideoDetail
-	updateErr     error
-	deleteResult  bool
-	deleteErr     error
-	tags          []string
-	tagsErr       error
+	updateResult *repository.VideoDetail
+	updateErr    error
+	deleteResult bool
+	deleteErr    error
 }
 
-func (s *stubVideoManager) GetUploaderIDByVideoID(_ context.Context, _ string) (string, error) {
-	return s.uploaderID, s.uploaderErr
-}
-
-func (s *stubVideoManager) Update(_ context.Context, _ string, _ repository.UpdateVideoParams) (*repository.VideoDetail, error) {
+func (s *stubVideoManager) Update(_ context.Context, _ string, _ string, _ repository.UpdateVideoParams) (*repository.VideoDetail, error) {
 	return s.updateResult, s.updateErr
 }
 
-func (s *stubVideoManager) SoftDelete(_ context.Context, _ string) (bool, error) {
+func (s *stubVideoManager) SoftDelete(_ context.Context, _ string, _ string) (bool, error) {
 	return s.deleteResult, s.deleteErr
-}
-
-func (s *stubVideoManager) GetTagsByVideoID(_ context.Context, _ string) ([]string, error) {
-	return s.tags, s.tagsErr
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -153,7 +141,7 @@ func TestPutVideo_InvalidVideoID_Returns400(t *testing.T) {
 
 func TestPutVideo_UserNotFound_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{user: nil}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -172,7 +160,7 @@ func TestPutVideo_UserNotFound_Returns404(t *testing.T) {
 
 func TestPutVideo_GetUserError_Returns500(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{err: errors.New("db error")}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -189,10 +177,12 @@ func TestPutVideo_GetUserError_Returns500(t *testing.T) {
 	}
 }
 
-func TestPutVideo_VideoNotFound_Returns404(t *testing.T) {
+// TestPutVideo_VideoNotFoundOrNotOwner_Returns404 verifies that when Update()
+// returns nil (video not found or caller is not the owner), the handler returns
+// 404. Ownership is enforced atomically in the DB WHERE clause.
+func TestPutVideo_VideoNotFoundOrNotOwner_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	// GetUploaderIDByVideoID returns "" (no video)
-	manager := &stubVideoManager{uploaderID: ""}
+	manager := &stubVideoManager{updateResult: nil}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -209,29 +199,9 @@ func TestPutVideo_VideoNotFound_Returns404(t *testing.T) {
 	}
 }
 
-func TestPutVideo_NotOwner_Returns403(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	// Video belongs to a different user.
-	manager := &stubVideoManager{uploaderID: "00000000-0000-0000-0000-000000000777"}
-	users := &stubUserIDProvider{user: makeOwnerUser()} // owner has ID testOwnerUserID, not 777
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
-			bytes.NewBufferString(`{"title":"New Title"}`)),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rec.Code)
-	}
-}
-
 func TestPutVideo_InvalidJSON_Returns400(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -250,7 +220,7 @@ func TestPutVideo_InvalidJSON_Returns400(t *testing.T) {
 
 func TestPutVideo_EmptyTitle_Returns422(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -269,7 +239,7 @@ func TestPutVideo_EmptyTitle_Returns422(t *testing.T) {
 
 func TestPutVideo_TitleTooLong_Returns422(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -293,7 +263,7 @@ func TestPutVideo_TitleTooLong_Returns422(t *testing.T) {
 
 func TestPutVideo_TooManyTags_Returns422(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -314,30 +284,10 @@ func TestPutVideo_TooManyTags_Returns422(t *testing.T) {
 	}
 }
 
-func TestPutVideo_GetUploaderError_Returns500(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderErr: errors.New("db error")}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
-			bytes.NewBufferString(`{"title":"New Title"}`)),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
-	}
-}
-
 func TestPutVideo_UpdateError_Returns500(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
-		uploaderID: testOwnerUserID,
-		updateErr:  errors.New("db error"),
+		updateErr: errors.New("db error"),
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
@@ -358,8 +308,7 @@ func TestPutVideo_UpdateError_Returns500(t *testing.T) {
 func TestPutVideo_UpdateReturnsNil_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
-		uploaderID:   testOwnerUserID,
-		updateResult: nil, // row not found in Update
+		updateResult: nil, // row not found or not owner
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
@@ -377,35 +326,10 @@ func TestPutVideo_UpdateReturnsNil_Returns404(t *testing.T) {
 	}
 }
 
-func TestPutVideo_GetTagsError_Returns500(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{
-		uploaderID:   testOwnerUserID,
-		updateResult: makeUpdatedVideoDetail(),
-		tagsErr:      errors.New("tags error"),
-	}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
-			bytes.NewBufferString(`{"title":"Updated Title"}`)),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
-	}
-}
-
 func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
-		uploaderID:   testOwnerUserID,
 		updateResult: makeUpdatedVideoDetail(),
-		tags:         []string{"go", "tutorial"},
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
@@ -439,6 +363,7 @@ func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	if resp.Title != "Updated Title" {
 		t.Errorf("Title: got %q, want Updated Title", resp.Title)
 	}
+	// Tags come directly from the validated request tags slice.
 	if len(resp.Tags) != 2 {
 		t.Errorf("Tags: expected 2, got %d", len(resp.Tags))
 	}
@@ -481,7 +406,7 @@ func TestDeleteVideo_InvalidVideoID_Returns400(t *testing.T) {
 
 func TestDeleteVideo_UserNotFound_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{user: nil}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -499,7 +424,7 @@ func TestDeleteVideo_UserNotFound_Returns404(t *testing.T) {
 
 func TestDeleteVideo_GetUserError_Returns500(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: testOwnerUserID}
+	manager := &stubVideoManager{}
 	users := &stubUserIDProvider{err: errors.New("db error")}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -515,9 +440,12 @@ func TestDeleteVideo_GetUserError_Returns500(t *testing.T) {
 	}
 }
 
-func TestDeleteVideo_VideoNotFound_Returns404(t *testing.T) {
+// TestDeleteVideo_VideoNotFoundOrNotOwner_Returns404 verifies that when
+// SoftDelete() returns false (video not found or caller is not the owner),
+// the handler returns 404. Ownership is enforced atomically in the DB WHERE clause.
+func TestDeleteVideo_VideoNotFoundOrNotOwner_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: ""}
+	manager := &stubVideoManager{deleteResult: false}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -533,47 +461,10 @@ func TestDeleteVideo_VideoNotFound_Returns404(t *testing.T) {
 	}
 }
 
-func TestDeleteVideo_NotOwner_Returns403(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderID: "00000000-0000-0000-0000-000000000777"}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rec.Code)
-	}
-}
-
-func TestDeleteVideo_GetUploaderError_Returns500(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{uploaderErr: errors.New("db error")}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
-	}
-}
-
 func TestDeleteVideo_SoftDeleteError_Returns500(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
-		uploaderID: testOwnerUserID,
-		deleteErr:  errors.New("db error"),
+		deleteErr: errors.New("db error"),
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
@@ -593,7 +484,6 @@ func TestDeleteVideo_SoftDeleteError_Returns500(t *testing.T) {
 func TestDeleteVideo_SoftDeleteReturnsFalse_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
-		uploaderID:   testOwnerUserID,
 		deleteResult: false, // no rows updated
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
@@ -614,7 +504,6 @@ func TestDeleteVideo_SoftDeleteReturnsFalse_Returns404(t *testing.T) {
 func TestDeleteVideo_Success_Returns204(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
-		uploaderID:   testOwnerUserID,
 		deleteResult: true,
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}

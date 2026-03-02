@@ -39,6 +39,9 @@ export class ApiDashboardVideoRepository implements DashboardVideoRepository {
       thumbnail_url: string | null;
       view_count: number;
       created_at: string;
+      description: string | null;
+      category_id: number | null;
+      tags: string[];
     }> = await res.json();
 
     return data.map((v) => ({
@@ -48,6 +51,9 @@ export class ApiDashboardVideoRepository implements DashboardVideoRepository {
       thumbnailUrl: v.thumbnail_url,
       viewCount: v.view_count,
       createdAt: v.created_at,
+      description: v.description ?? null,
+      categoryId: v.category_id ?? null,
+      tags: v.tags ?? [],
     }));
   }
 }

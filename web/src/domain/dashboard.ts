@@ -9,6 +9,9 @@ export interface DashboardVideo {
   thumbnailUrl: string | null;
   viewCount: number;
   createdAt: string; // ISO-8601
+  description: string | null;
+  categoryId: number | null;
+  tags: string[];
 }
 
 /** Repository interface for listing the authenticated user's videos. */
