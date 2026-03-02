@@ -56,10 +56,7 @@ No environment variables are required. Firebase is fully mocked in the Jest suit
 ## Expected output when the test passes
 
 ```
-testing/tests/MYTUBE-108/test_mytube_108.py::TestGoogleSignIn::test_google_signin_button_visible PASSED
-testing/tests/MYTUBE-108/test_mytube_108.py::TestGoogleSignIn::test_google_signin_calls_sign_in_with_popup PASSED
-testing/tests/MYTUBE-108/test_mytube_108.py::TestGoogleSignIn::test_google_signin_redirects_to_home_on_success PASSED
 testing/tests/MYTUBE-108/test_mytube_108.py::TestGoogleSignIn::test_google_signin_full_suite_passes PASSED
 
-4 passed in Xs
+1 passed in Xs
 ```
