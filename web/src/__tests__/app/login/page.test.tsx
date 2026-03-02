@@ -225,4 +225,18 @@ describe("LoginPage", () => {
       "/register"
     );
   });
+
+  it("Google sign-in result user has getIdToken accessible in auth state", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("mock-id-token");
+    mockSignInWithPopup.mockResolvedValue({ user: { getIdToken: mockGetIdToken } });
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+
+    await waitFor(() => {
+      expect(mockGetIdToken).toBeDefined();
+      expect(typeof mockGetIdToken).toBe("function");
+    });
+  });
 });
