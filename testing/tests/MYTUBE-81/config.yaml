@@ -1,0 +1,5 @@
+test_id: MYTUBE-81
+type: infrastructure
+framework: subprocess+gcloud+google-cloud-storage
+platform: gcp
+dependencies: []

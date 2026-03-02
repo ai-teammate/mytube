@@ -1,0 +1,5 @@
+test_id: MYTUBE-82
+type: infrastructure
+framework: subprocess+go-test
+platform: gcp-cloud-run-job
+dependencies: []

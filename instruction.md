@@ -51,6 +51,35 @@ agents/           — git submodule: AI Teammate workflows
     └── setup-java-only/  — reusable Java + Gradle cache action
 ```
 
+## Infrastructure Inspection
+
+The AI Teammate service account has **read-only GCP access**. Agents can use the `gcloud` CLI to inspect live infrastructure when needed for analysis, debugging, or understanding the current deployment state.
+
+### Available read commands (examples)
+
+```bash
+# Cloud Run
+gcloud run services describe mytube-api --region=us-central1
+gcloud run services list --region=us-central1
+gcloud run revisions list --service=mytube-api --region=us-central1
+
+# Cloud SQL
+gcloud sql instances list
+gcloud sql databases list --instance=<instance-name>
+
+# Google Cloud Storage
+gcloud storage buckets list
+gcloud storage ls gs://<bucket-name>/
+
+# Secret Manager (list only — values are not readable)
+gcloud secrets list
+
+# IAM
+gcloud projects get-iam-policy <project-id>
+```
+
+> **Read-only**: The service account cannot create, update, or delete any GCP resources. Use `gcloud` only for inspection and diagnostics.
+
 ## Configuration
 
 All environment-specific values live in `dmtools.env` (gitignored) and are provisioned to GitHub via `./setup-github.sh`.

@@ -84,6 +84,18 @@ class GCSService:
         url = self._config.cdn_object_url(object_name)
         return httpx.get(url, follow_redirects=True, timeout=30.0)
 
+    def blob_exists(self, bucket_name: str, object_name: str) -> bool:
+        """Return True if the object exists in the bucket."""
+        blob = self._client.bucket(bucket_name).blob(object_name)
+        return blob.exists()
+
+    def download_object_bytes(
+        self, bucket_name: str, object_name: str, start: int = 0, end: Optional[int] = None
+    ) -> bytes:
+        """Download bytes from a GCS object, optionally restricted to a byte range."""
+        blob = self._client.bucket(bucket_name).blob(object_name)
+        return blob.download_as_bytes(start=start, end=end)
+
     def delete_object(self, bucket_name: str, object_name: str) -> None:
         """Delete an object from the bucket (cleanup helper)."""
         bucket = self._client.bucket(bucket_name)

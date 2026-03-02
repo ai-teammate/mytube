@@ -1,5 +1,7 @@
 **.env
 **.token
+**-key.json
+gha-creds-*.json
 cache**
 outputs
 input
@@ -8,3 +10,4 @@ node_modules
 **/__pycache__/
 **.pyc
 .serena
+testing/testserver/testserver

@@ -1,0 +1,5 @@
+test_id: MYTUBE-87
+type: infrastructure
+framework: static-analysis+yaml
+platform: github-actions
+dependencies: []

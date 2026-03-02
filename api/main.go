@@ -48,6 +48,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
+	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
 	// Catch-all: return 404 for any path not matched above.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)

@@ -63,6 +63,14 @@ else
   echo "  skip   GCP_SA_KEY (gcp-key.json not found — see instruction.md)"
 fi
 
+# GCP_AI_TEAMMATE_SA_KEY — read-only SA for ai-teammate workflow (logging/run/cloudsql viewer)
+if [ -f "ai-teammate-gcp-key.json" ]; then
+  echo "  secret: GCP_AI_TEAMMATE_SA_KEY (from ai-teammate-gcp-key.json)"
+  gh secret set "GCP_AI_TEAMMATE_SA_KEY" --body "$(cat ai-teammate-gcp-key.json)" --repo "$REPO"
+else
+  echo "  skip   GCP_AI_TEAMMATE_SA_KEY (ai-teammate-gcp-key.json not found)"
+fi
+
 echo ""
 echo "==> Variables"
 set_var "JIRA_BASE_PATH"                        "$(get JIRA_BASE_PATH)"
