@@ -164,9 +164,6 @@ class TestUploadUnsupportedMimeType:
             content=b"%PDF-1.4 fake pdf content",
         )
 
-        # Allow React state update to propagate
-        upload_page._page.wait_for_timeout(500)
-
         assert upload_page.has_mime_error(), (
             "Expected a MIME type validation error after selecting a PDF file, "
             "but no error alert was displayed."
@@ -196,8 +193,6 @@ class TestUploadUnsupportedMimeType:
             mime_type=_UNSUPPORTED_MIME_PNG,
             content=b"\x89PNG\r\n\x1a\n fake png content",
         )
-
-        upload_page._page.wait_for_timeout(500)
 
         assert upload_page.has_mime_error(), (
             "Expected a MIME type validation error after selecting a PNG image, "

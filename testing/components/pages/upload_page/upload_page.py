@@ -21,6 +21,9 @@ class UploadPage:
     _MIME_ERROR_ALERT = '[role="alert"]'
     _SUPPORTED_FORMATS_TEXT = "p.mt-1.text-sm.text-gray-500"
 
+    # Timeouts
+    _MIME_ERROR_TIMEOUT = 5_000  # ms — max time to wait for the error alert to appear
+
     def __init__(self, page: Page) -> None:
         self._page = page
 
@@ -41,11 +44,24 @@ class UploadPage:
 
         Uses Playwright's ``set_input_files`` to bypass the OS file picker and
         inject a synthetic file directly into the ``<input type="file">`` element.
+        Waits for the MIME error alert to become visible after the file is set,
+        so callers do not need any additional waits.
         """
         self._page.set_input_files(
             self._FILE_INPUT,
             files=[{"name": filename, "mimeType": mime_type, "buffer": content}],
         )
+        # Wait for the React state update to propagate and the alert to appear.
+        # This is an event-driven wait — it resolves as soon as the element is
+        # visible and times out (raising) if it never appears within the timeout.
+        try:
+            self._page.locator(self._MIME_ERROR_ALERT).first.wait_for(
+                state="visible", timeout=self._MIME_ERROR_TIMEOUT
+            )
+        except Exception:
+            # The alert may not always appear (e.g. for the accept-attribute test).
+            # Silently swallow the timeout so callers can make their own assertions.
+            pass
 
     # ------------------------------------------------------------------
     # State queries

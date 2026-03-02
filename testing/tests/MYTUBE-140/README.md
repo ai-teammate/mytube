@@ -27,11 +27,13 @@ playwright install chromium
 
 ## Environment variables
 
-| Variable            | Required | Default                                    | Description                          |
-|---------------------|----------|--------------------------------------------|--------------------------------------|
-| `WEB_BASE_URL`      | No       | `https://ai-teammate.github.io/mytube`     | Base URL of the deployed web app     |
-| `PLAYWRIGHT_HEADLESS` | No     | `true`                                     | Run browser headless (`true`/`false`)|
-| `PLAYWRIGHT_SLOW_MO`  | No     | `0`                                        | Slow-motion delay in ms              |
+| Variable              | Required | Default                                    | Description                          |
+|-----------------------|----------|--------------------------------------------|--------------------------------------|
+| `FIREBASE_TEST_EMAIL`    | **Yes**  | —                                       | Email of the registered Firebase test user |
+| `FIREBASE_TEST_PASSWORD` | **Yes**  | —                                       | Password of the registered Firebase test user |
+| `WEB_BASE_URL`           | No       | `https://ai-teammate.github.io/mytube`  | Base URL of the deployed web app     |
+| `PLAYWRIGHT_HEADLESS`    | No       | `true`                                  | Run browser headless (`true`/`false`)|
+| `PLAYWRIGHT_SLOW_MO`     | No       | `0`                                     | Slow-motion delay in ms              |
 
 ---
 
