@@ -53,8 +53,22 @@ jobs:
           submodules: true
           token: ${{ secrets.PAT_TOKEN }}
 
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_AI_TEAMMATE_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Update agents submodule to latest main
         run: git submodule update --remote --merge agents
+
+      - name: Cache JDK 23
+        uses: actions/cache@v4
+        with:
+          path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/
+          key: jdk-temurin-23-linux
 
       - name: Setup Java Environment
         uses: ./.github/actions/setup-java-only
@@ -145,10 +159,20 @@ jobs:
         run: |
           npx @github/copilot --version || echo "Copilot CLI verification - will be available with token"
 
+      - name: Cache DMTools CLI
+        id: cache-dmtools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dmtools
+          key: dmtools-v1.7.139
+
       - name: Install DMTools CLI
+        if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
           curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.139/install.sh | bash -s v1.7.139
-          echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
+
+      - name: Add DMTools to PATH
+        run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
 
       - name: Verify CLI Installations
         run: |

@@ -301,6 +301,19 @@ func TestTranscode_UpdateVideoError_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestTranscode_UploadDirError_MarksVideoFailed(t *testing.T) {
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{dirErr: errors.New("upload dir failed")}
+	tr := &stubTranscoder{}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+
+	if !repo.markFailed {
+		t.Error("expected MarkFailed to be called after upload dir error")
+	}
+}
+
 func TestTranscode_UpdateVideoError_MarksVideoFailed(t *testing.T) {
 	dl := &stubDownloader{content: "video"}
 	ul := &stubUploader{}

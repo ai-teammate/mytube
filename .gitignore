@@ -1,5 +1,7 @@
 **.env
 **.token
+**-key.json
+gha-creds-*.json
 cache**
 outputs
 input
@@ -9,3 +11,4 @@ node_modules
 **.pyc
 .serena
 testing/testserver/testserver
+api/transcoder
