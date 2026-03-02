@@ -11,7 +11,7 @@ live GCP credentials are required.
 
 - `GCP_SA_KEY` secret is referenced — missing/invalid key causes `google-github-actions/auth` to fail with a clear error.
 - Required repository variables (`GCP_PROJECT_ID`, `GCP_REGION`, `CLOUD_SQL_CONNECTION_NAME`, `FIREBASE_PROJECT_ID`, `DB_NAME`) are all referenced.
-- Required secrets (`GCP_DB_USER_SECRET`, `GCP_DB_PASSWORD_SECRET`) are wired via `--set-secrets`.
+- Required repository variables (`GCP_DB_USER_SECRET`, `GCP_DB_PASSWORD_SECRET`) hold GCP Secret Manager secret names and are referenced via `vars.` prefix and wired via `--set-secrets`.
 - Critical steps do **not** suppress exit codes (`|| true` or `continue-on-error: true`).
 - Cleanup steps intentionally use `|| true` (documented).
 - `Authenticate to GCP` step precedes all cloud operations.
@@ -48,7 +48,8 @@ testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidCo
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_gcp_sa_key_secret_is_referenced PASSED
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_db_user_secret_is_referenced PASSED
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_db_password_secret_is_referenced PASSED
-testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_all_required_secrets_referenced PASSED
+testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_all_required_gh_secrets_referenced PASSED
+testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_all_required_secret_name_vars_referenced PASSED
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_all_required_vars_referenced PASSED
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_auth_step_present PASSED
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_auth_step_uses_gcp_auth_action PASSED
@@ -61,5 +62,5 @@ testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidCo
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_workflow_triggers_on_main_branch_only PASSED
 testing/tests/MYTUBE-87/test_mytube_87.py::TestDeployApiWorkflowFailsOnInvalidConfig::test_workflow_scoped_to_api_paths PASSED
 
-16 passed in X.XXs
+17 passed in X.XXs
 ```
