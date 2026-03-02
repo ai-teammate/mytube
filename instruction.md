@@ -166,6 +166,7 @@ All environment-specific values live in `dmtools.env` (gitignored) and are provi
 | `GCP_DB_PASSWORD_SECRET` | Secret Manager secret name for DB password |
 | `FIREBASE_PROJECT_ID` | Firebase project ID |
 | `FIREBASE_API_KEY` | Firebase web API key (public) |
+| `RAW_OBJECT_PATH` | Path to test video in raw uploads bucket (e.g. `test-videos/test_video.mp4`) — used by transcoder integration tests |
 | `FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
 | `FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
 | `FIREBASE_APP_ID` | Firebase web app ID |
