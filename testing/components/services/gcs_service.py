@@ -30,27 +30,62 @@ class GCSService:
     # ------------------------------------------------------------------
 
     def bucket_exists(self, bucket_name: str) -> bool:
-        """Return True if the bucket exists and is accessible."""
+        """Return True if the bucket exists and is accessible.
+
+        Uses list_blobs (requires only storage.objects.list) instead of
+        get_bucket (requires storage.buckets.get) so that CI service accounts
+        with object-level-only permissions can still verify existence.
+        Falls back to a public HTTP probe if list_blobs also fails.
+        """
         try:
-            self._client.get_bucket(bucket_name)
+            next(iter(self._client.list_blobs(bucket_name, max_results=1)), None)
             return True
         except NotFound:
             return False
+        except Exception:
+            # Fall back to a public HTTP probe — a 200 or 403 (bucket exists
+            # but requester-pays / access denied) both confirm existence.
+            url = self._config.public_object_url(bucket_name, "")
+            try:
+                resp = httpx.get(url.rstrip("/") + "/", timeout=10.0, follow_redirects=True)
+                return resp.status_code in (200, 403)
+            except Exception:
+                return False
 
     def has_public_read_iam(self, bucket_name: str) -> bool:
         """
         Return True if allUsers has roles/storage.objectViewer on the bucket.
 
-        This confirms that the HLS output bucket is publicly readable,
-        satisfying the CDN delivery requirement.
+        Primary check: attempt to read the bucket's IAM policy directly.
+        Fallback: confirm public read by making an anonymous HTTP GET against
+        the public GCS XML API — a 200 response means allUsers can list/read.
+
+        This fallback is used when the CI service account lacks
+        storage.buckets.getIamPolicy (e.g. has object-level access only).
         """
-        bucket = self._client.get_bucket(bucket_name)
-        policy = bucket.get_iam_policy(requested_policy_version=1)
-        for binding in policy.bindings:
-            if binding["role"] == "roles/storage.objectViewer":
-                if "allUsers" in binding["members"]:
-                    return True
-        return False
+        try:
+            bucket = self._client.get_bucket(bucket_name)
+            policy = bucket.get_iam_policy(requested_policy_version=1)
+            for binding in policy.bindings:
+                if binding["role"] == "roles/storage.objectViewer":
+                    if "allUsers" in binding["members"]:
+                        return True
+            return False
+        except Exception:
+            # Fallback: anonymous public HTTP probe on the GCS XML API.
+            # If the listing returns HTTP 200, allUsers has read access.
+            url = self._config.public_object_url(bucket_name, "")
+            try:
+                # httpx does not inject GCP credentials, so this is an
+                # anonymous request — HTTP 200 confirms allUsers read access.
+                resp = httpx.get(
+                    url.rstrip("/") + "/",
+                    timeout=10.0,
+                    follow_redirects=True,
+                )
+                return resp.status_code == 200
+            except Exception:
+                return False
 
     # ------------------------------------------------------------------
     # Upload + public fetch
