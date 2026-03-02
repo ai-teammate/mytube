@@ -201,12 +201,13 @@ def public_profile_response(api_server, seeded_user):
     the response.  This is the core assertion: the endpoint must be publicly
     accessible.
     """
+    headers_sent = {}
     status_code, body = api_server.get(
         f"/api/users/{_TEST_USERNAME}",
         # Deliberately no Authorization header.
-        headers={},
+        headers=headers_sent,
     )
-    return {"status_code": status_code, "body": body, "username": _TEST_USERNAME}
+    return {"status_code": status_code, "body": body, "username": _TEST_USERNAME, "headers_sent": headers_sent}
 
 
 # ---------------------------------------------------------------------------
@@ -265,10 +266,6 @@ class TestPublicProfileAccessibility:
 
     def test_no_authorization_header_was_sent(self, public_profile_response):
         """Confirm the test itself sent no auth header — i.e. the 200 is not due to a token."""
-        # This test documents the test setup: the fixture explicitly passes no
-        # Authorization header.  If we got HTTP 200 without a token, the endpoint
-        # is correctly unauthenticated.
-        assert public_profile_response["status_code"] == 200, (
-            "HTTP 200 was expected without any Authorization header, confirming "
-            "the endpoint does not require Firebase Auth."
+        assert "Authorization" not in (public_profile_response.get("headers_sent") or {}), (
+            "Test setup error: an Authorization header was included in the request."
         )
