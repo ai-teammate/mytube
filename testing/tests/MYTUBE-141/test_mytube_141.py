@@ -129,7 +129,7 @@ def authenticated_page(web_config: WebConfig, page: Page) -> Page:
 def upload_page(authenticated_page: Page, web_config: WebConfig) -> UploadPage:
     """Navigate to /upload and return the UploadPage object."""
     up = UploadPage(authenticated_page)
-    up.navigate(web_config.base_url)
+    up.navigate(web_config.base_url.rstrip("/") + "/upload/")
     return up
 
 
@@ -183,7 +183,7 @@ class TestFileSizeLimitWarning:
         selecting a file of exactly 1 MB (well under the 4 GB threshold).
         """
         up = UploadPage(page)
-        up.navigate(web_config.base_url)
+        up.navigate(web_config.base_url.rstrip("/") + "/upload/")
 
         _ONE_MB = 1 * 1024 * 1024
         up.simulate_large_file_selection(

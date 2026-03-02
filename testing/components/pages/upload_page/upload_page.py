@@ -7,7 +7,7 @@ outside this class.
 Architecture notes
 ------------------
 - Dependency-injected Playwright ``Page`` is passed via constructor.
-- No hardcoded URLs — the caller provides the base URL.
+- No hardcoded URLs — the caller provides the full upload URL.
 - All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
 """
 from __future__ import annotations
@@ -18,13 +18,18 @@ from playwright.sync_api import Page
 
 
 class UploadPage:
-    """Page Object for the MyTube video upload page (/upload)."""
+    """Page Object for the MyTube upload page."""
 
     # Selectors
     _FILE_INPUT = 'input[id="video-file"]'
     _FILE_SIZE_WARNING = '[role="note"]'
     _MIME_TYPE_ERROR = '[role="alert"]'
+    _MIME_ERROR_ALERT = '[role="alert"]'
+    _SUPPORTED_FORMATS_TEXT = "p.mt-1.text-sm.text-gray-500"
     _HEADING = "h1"
+
+    # Timeouts
+    _MIME_ERROR_TIMEOUT = 5_000  # ms — max time to wait for the error alert to appear
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -33,9 +38,8 @@ class UploadPage:
     # Navigation
     # ------------------------------------------------------------------
 
-    def navigate(self, base_url: str) -> None:
-        """Navigate to the /upload page and wait for it to load."""
-        url = f"{base_url.rstrip('/')}/upload"
+    def navigate(self, url: str) -> None:
+        """Navigate the browser to the upload page URL and wait for it to load."""
         self._page.goto(url, wait_until="domcontentloaded")
 
     # ------------------------------------------------------------------
@@ -85,6 +89,30 @@ class UploadPage:
             [self._FILE_INPUT, size_bytes, filename],
         )
 
+    def set_input_file_by_mime(self, filename: str, mime_type: str, content: bytes = b"fake content") -> None:
+        """Simulate selecting a file with a specific MIME type via the file input.
+
+        Uses Playwright's ``set_input_files`` to bypass the OS file picker and
+        inject a synthetic file directly into the ``<input type="file">`` element.
+        Waits for the MIME error alert to become visible after the file is set,
+        so callers do not need any additional waits.
+        """
+        self._page.set_input_files(
+            self._FILE_INPUT,
+            files=[{"name": filename, "mimeType": mime_type, "buffer": content}],
+        )
+        # Wait for the React state update to propagate and the alert to appear.
+        # This is an event-driven wait — it resolves as soon as the element is
+        # visible and times out (raising) if it never appears within the timeout.
+        try:
+            self._page.locator(self._MIME_ERROR_ALERT).first.wait_for(
+                state="visible", timeout=self._MIME_ERROR_TIMEOUT
+            )
+        except Exception:
+            # The alert may not always appear (e.g. for the accept-attribute test).
+            # Silently swallow the timeout so callers can make their own assertions.
+            pass
+
     # ------------------------------------------------------------------
     # State queries
     # ------------------------------------------------------------------
@@ -111,10 +139,29 @@ class UploadPage:
         """Return True if the Upload video heading is visible on the page."""
         return self._page.locator(self._HEADING).filter(has_text="Upload video").is_visible()
 
+    def get_mime_error_message(self) -> str | None:
+        """Return the visible MIME type error alert text, or None if not shown."""
+        locator = self._page.locator(self._MIME_ERROR_ALERT)
+        if locator.count() == 0:
+            return None
+        for i in range(locator.count()):
+            text = locator.nth(i).text_content()
+            if text and ("unsupported" in text.lower() or "mp4" in text.lower()):
+                return text.strip()
+        return None
+
+    def has_mime_error(self) -> bool:
+        """Return True if a MIME type validation error alert is currently visible."""
+        return self.get_mime_error_message() is not None
+
+    def get_file_input_accept_attribute(self) -> str | None:
+        """Return the ``accept`` attribute value of the file input element."""
+        return self._page.get_attribute(self._FILE_INPUT, "accept")
+
+    def is_upload_form_visible(self) -> bool:
+        """Return True when the file input is present in the DOM."""
+        return self._page.locator(self._FILE_INPUT).count() > 0
+
     def get_current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
-
-    def is_on_login_page(self) -> bool:
-        """Return True if the browser has been redirected to the /login page."""
-        return "/login" in self._page.url
