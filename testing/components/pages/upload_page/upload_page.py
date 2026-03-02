@@ -31,8 +31,13 @@ class UploadPage:
     _TAGS_INPUT = 'input[id="tags"]'
     _SUBMIT_BUTTON = 'button[type="submit"]'
     _ERROR_ALERT = '[role="alert"]'
+    _MIME_ERROR_ALERT = '[role="alert"]'
     _PROGRESS_BAR = '[role="progressbar"]'
     _UPLOAD_PROGRESS_CONTAINER = '[aria-label="upload progress"]'
+    _SUPPORTED_FORMATS_TEXT = "p.mt-1.text-sm.text-gray-500"
+
+    # Timeouts
+    _MIME_ERROR_TIMEOUT = 5_000  # ms — max time to wait for the error alert to appear
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -98,6 +103,30 @@ class UploadPage:
             self.fill_tags(tags)
         self.click_upload()
 
+    def set_input_file_by_mime(self, filename: str, mime_type: str, content: bytes = b"fake content") -> None:
+        """Simulate selecting a file with a specific MIME type via the file input.
+
+        Uses Playwright's ``set_input_files`` to bypass the OS file picker and
+        inject a synthetic file directly into the ``<input type="file">`` element.
+        Waits for the MIME error alert to become visible after the file is set,
+        so callers do not need any additional waits.
+        """
+        self._page.set_input_files(
+            self._FILE_INPUT,
+            files=[{"name": filename, "mimeType": mime_type, "buffer": content}],
+        )
+        # Wait for the React state update to propagate and the alert to appear.
+        # This is an event-driven wait — it resolves as soon as the element is
+        # visible and times out (raising) if it never appears within the timeout.
+        try:
+            self._page.locator(self._MIME_ERROR_ALERT).first.wait_for(
+                state="visible", timeout=self._MIME_ERROR_TIMEOUT
+            )
+        except Exception:
+            # The alert may not always appear (e.g. for the accept-attribute test).
+            # Silently swallow the timeout so callers can make their own assertions.
+            pass
+
     # ------------------------------------------------------------------
     # State queries
     # ------------------------------------------------------------------
@@ -126,6 +155,29 @@ class UploadPage:
             return None
         text = locator.text_content()
         return text.strip() if text else None
+
+    def get_mime_error_message(self) -> str | None:
+        """Return the visible MIME type error alert text, or None if not shown."""
+        locator = self._page.locator(self._MIME_ERROR_ALERT)
+        if locator.count() == 0:
+            return None
+        for i in range(locator.count()):
+            text = locator.nth(i).text_content()
+            if text and ("unsupported" in text.lower() or "mp4" in text.lower()):
+                return text.strip()
+        return None
+
+    def has_mime_error(self) -> bool:
+        """Return True if a MIME type validation error alert is currently visible."""
+        return self.get_mime_error_message() is not None
+
+    def get_file_input_accept_attribute(self) -> str | None:
+        """Return the ``accept`` attribute value of the file input element."""
+        return self._page.get_attribute(self._FILE_INPUT, "accept")
+
+    def is_upload_form_visible(self) -> bool:
+        """Return True when the file input is present in the DOM."""
+        return self._page.locator(self._FILE_INPUT).count() > 0
 
     def is_uploading(self) -> bool:
         """Return True if the upload progress bar is visible."""

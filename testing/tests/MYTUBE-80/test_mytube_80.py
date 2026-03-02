@@ -54,6 +54,7 @@ from testing.core.config.db_config import DBConfig
 from testing.tests.conftest import make_conn_fixture
 
 
+
 def _postgres_available() -> bool:
     """Return True if a PostgreSQL server is reachable using the default DBConfig."""
     try:
