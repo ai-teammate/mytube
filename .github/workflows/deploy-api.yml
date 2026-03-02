@@ -70,7 +70,7 @@ jobs:
             echo "$OLD" | xargs -I{} gcloud run revisions delete {} \
               --region ${{ env.REGION }} \
               --project ${{ env.PROJECT_ID }} \
-              --quiet
+              --quiet || true
           fi
 
       - name: Delete old GCR images
@@ -83,5 +83,5 @@ jobs:
             echo "$OLD" | xargs -I{} gcloud container images delete \
               "${{ env.IMAGE }}@{}" \
               --project ${{ env.PROJECT_ID }} \
-              --quiet --force-delete-tags
+              --quiet --force-delete-tags || true
           fi
