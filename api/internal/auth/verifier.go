@@ -16,6 +16,9 @@ type TokenClaims struct {
 	UID string
 	// Email is the user's email address as recorded in Firebase Auth.
 	Email string
+	// Picture is the user's profile photo URL from the Firebase/Google ID
+	// token "picture" claim.  Empty string when not present.
+	Picture string
 }
 
 // TokenVerifier is the interface that wraps Firebase token verification.
@@ -63,9 +66,11 @@ func (v *FirebaseVerifier) VerifyIDToken(ctx context.Context, idToken string) (*
 	}
 
 	email, _ := t.Claims["email"].(string)
+	picture, _ := t.Claims["picture"].(string)
 
 	return &TokenClaims{
-		UID:   t.UID,
-		Email: email,
+		UID:     t.UID,
+		Email:   email,
+		Picture: picture,
 	}, nil
 }

@@ -24,7 +24,7 @@ func writeJSONError(w http.ResponseWriter, msg string, status int) {
 // UserProvider is the data-access interface used by the /api/me handlers.
 // Satisfied by *repository.UserRepository and allows tests to inject a stub.
 type UserProvider interface {
-	Upsert(ctx context.Context, firebaseUID, email string) (*repository.User, error)
+	Upsert(ctx context.Context, firebaseUID, email, pictureURL string) (*repository.User, error)
 	UpdateProfile(ctx context.Context, firebaseUID, username string, avatarURL *string) (*repository.User, error)
 }
 
@@ -67,7 +67,7 @@ func getMeHandler(users UserProvider, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := users.Upsert(r.Context(), claims.UID, claims.Email)
+	user, err := users.Upsert(r.Context(), claims.UID, claims.Email, claims.Picture)
 	if err != nil {
 		log.Printf("GET /api/me: provision user %s: %v", claims.UID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
