@@ -51,7 +51,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
-from testing.components.services.schema_service import SchemaService
+from testing.tests.conftest import make_conn_fixture
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -71,25 +71,7 @@ _MIGRATION_SCHEMA = os.path.join(_MIGRATIONS_DIR, "0001_initial_schema.up.sql")
 # DB fixture
 # ---------------------------------------------------------------------------
 
-
-@pytest.fixture(scope="module")
-def db_config() -> DBConfig:
-    return DBConfig()
-
-
-@pytest.fixture(scope="module")
-def conn(db_config: DBConfig):
-    """Open a fresh connection and rebuild the schema for this test module."""
-    connection = psycopg2.connect(db_config.dsn())
-    connection.autocommit = True
-
-    svc = SchemaService(connection)
-    svc.drop_all_public_tables()
-    svc.apply_sql_file(_MIGRATION_SCHEMA)
-
-    yield connection
-
-    connection.close()
+conn = make_conn_fixture([_MIGRATION_SCHEMA])
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +318,7 @@ class TestMarkFailedSQLContract:
         # Execute the exact MarkFailed SQL from video/repository.go.
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE videos SET status = $1 WHERE id = $2",
+                "UPDATE videos SET status = %s WHERE id = %s",
                 ("failed", video_id),
             )
 
@@ -416,7 +398,7 @@ class TestMarkFailedSQLContract:
         # Apply MarkFailed only to target.
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE videos SET status = $1 WHERE id = $2",
+                "UPDATE videos SET status = %s WHERE id = %s",
                 ("failed", target_id),
             )
 
