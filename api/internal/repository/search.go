@@ -42,10 +42,47 @@ func NewSearchRepository(db VideoQuerier) *SearchRepository {
 	return &SearchRepository{db: db}
 }
 
+// queryBuilder accumulates SQL WHERE conditions paired with their bind
+// parameter values. It automatically assigns sequential $N placeholders,
+// eliminating the manual argIdx counter and the risk of interpolating
+// user-controlled values directly into the SQL string.
+//
+// IMPORTANT: Only static string literals must be passed as the cond argument.
+// Never interpolate user-supplied values into cond — always pass them as vals.
+type queryBuilder struct {
+	conditions []string
+	args       []any
+}
+
+// add appends a condition and its associated bind values. The condition string
+// must use ? as a single placeholder token; add replaces each ? with the
+// appropriate $N index automatically.
+func (b *queryBuilder) add(cond string, vals ...any) {
+	// Replace ? tokens with $N sequentially.
+	result := make([]byte, 0, len(cond)+len(vals)*3)
+	argN := len(b.args) + 1
+	for i := 0; i < len(cond); i++ {
+		if cond[i] == '?' {
+			result = append(result, []byte(fmt.Sprintf("$%d", argN))...)
+			argN++
+		} else {
+			result = append(result, cond[i])
+		}
+	}
+	b.conditions = append(b.conditions, string(result))
+	b.args = append(b.args, vals...)
+}
+
+// whereClause joins all accumulated conditions with AND.
+func (b *queryBuilder) whereClause() string {
+	return strings.Join(b.conditions, " AND ")
+}
+
 // Search returns videos with status=ready that match the given query and optional
 // category filter. When both query and category_id are provided the results are
 // filtered by AND semantics (video must match keyword AND belong to the category).
 // Matches against title (full-text) and video_tags.tag (exact).
+// When a keyword query is present, results are ordered by ts_rank DESC for relevance.
 func (r *SearchRepository) Search(ctx context.Context, p SearchParams) ([]SearchVideo, error) {
 	if p.Limit <= 0 {
 		p.Limit = 20
@@ -54,33 +91,42 @@ func (r *SearchRepository) Search(ctx context.Context, p SearchParams) ([]Search
 		p.Offset = 0
 	}
 
-	var (
-		conditions []string
-		args       []any
-		argIdx     = 1
-	)
+	var qb queryBuilder
 
-	conditions = append(conditions, "v.status = 'ready'")
+	qb.add("v.status = 'ready'")
 
 	if p.Query != "" {
 		// Match against title (full-text) OR video_tags.tag (exact).
 		// The subquery for tag matching uses EXISTS for efficiency.
-		conditions = append(conditions, fmt.Sprintf(
-			"(to_tsvector('english', v.title) @@ plainto_tsquery('english', $%d) OR EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag = $%d))",
-			argIdx, argIdx+1,
-		))
-		args = append(args, p.Query, p.Query)
-		argIdx += 2
+		// IMPORTANT: p.Query is passed as bind values only — never interpolated.
+		qb.add(
+			"(to_tsvector('english', v.title) @@ plainto_tsquery('english', ?) OR EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.id AND vt.tag = ?))",
+			p.Query, p.Query,
+		)
 	}
 
 	if p.CategoryID != nil {
-		conditions = append(conditions, fmt.Sprintf("v.category_id = $%d", argIdx))
-		args = append(args, *p.CategoryID)
-		argIdx++
+		qb.add("v.category_id = ?", *p.CategoryID)
 	}
 
-	whereClause := strings.Join(conditions, " AND ")
+	// When a full-text query is present, rank by relevance (ts_rank) so the
+	// most relevant results appear first. Fall back to recency for ties and
+	// for pure browse queries (no keyword).
+	var orderClause string
+	if p.Query != "" {
+		// Pass p.Query again as a bind value for the rank expression.
+		rankIdx := len(qb.args) + 1
+		orderClause = fmt.Sprintf(
+			"ts_rank(to_tsvector('english', v.title), plainto_tsquery('english', $%d)) DESC, v.created_at DESC",
+			rankIdx,
+		)
+		qb.args = append(qb.args, p.Query)
+	} else {
+		orderClause = "v.created_at DESC"
+	}
 
+	limitIdx := len(qb.args) + 1
+	offsetIdx := limitIdx + 1
 	query := fmt.Sprintf(`
 SELECT v.id,
        v.title,
@@ -91,12 +137,12 @@ SELECT v.id,
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  %s
-ORDER BY v.created_at DESC
-LIMIT  $%d OFFSET $%d`, whereClause, argIdx, argIdx+1)
+ORDER BY %s
+LIMIT  $%d OFFSET $%d`, qb.whereClause(), orderClause, limitIdx, offsetIdx)
 
-	args = append(args, p.Limit, p.Offset)
+	qb.args = append(qb.args, p.Limit, p.Offset)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, qb.args...)
 	if err != nil {
 		return nil, fmt.Errorf("search videos: %w", err)
 	}

@@ -67,10 +67,16 @@ func main() {
 	createHandler := authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner))
 	browseHandler := handler.NewBrowseVideosHandler(searchRepo)
 	videosHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
 			createHandler.ServeHTTP(w, r)
-		} else {
+		case http.MethodGet:
 			browseHandler.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"error":"method not allowed"}`))
 		}
 	})
 

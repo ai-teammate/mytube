@@ -11,6 +11,10 @@ import (
 	"github.com/ai-teammate/mytube/api/internal/repository"
 )
 
+// maxResultsLimit is the upper bound on the limit query parameter accepted by
+// all search and discovery handlers.
+const maxResultsLimit = 100
+
 // SearchProvider is the data-access interface used by the search and discovery
 // handlers. Satisfied by *repository.SearchRepository.
 type SearchProvider interface {
@@ -99,7 +103,7 @@ func NewSearchHandler(search SearchProvider) http.Handler {
 		}
 
 		q := r.URL.Query().Get("q")
-		limit := parseLimit(r, 20, 100)
+		limit := parseLimit(r, 20, maxResultsLimit)
 		offset := parseOffset(r)
 
 		var categoryID *int
@@ -140,7 +144,7 @@ func NewRecentVideosHandler(search SearchProvider) http.Handler {
 			return
 		}
 
-		limit := parseLimit(r, 20, 100)
+		limit := parseLimit(r, 20, maxResultsLimit)
 
 		videos, err := search.GetRecent(r.Context(), limit)
 		if err != nil {
@@ -163,7 +167,7 @@ func NewPopularVideosHandler(search SearchProvider) http.Handler {
 			return
 		}
 
-		limit := parseLimit(r, 20, 100)
+		limit := parseLimit(r, 20, maxResultsLimit)
 
 		videos, err := search.GetPopular(r.Context(), limit)
 		if err != nil {
@@ -227,7 +231,7 @@ func NewBrowseVideosHandler(search SearchProvider) http.Handler {
 			return
 		}
 
-		limit := parseLimit(r, 20, 100)
+		limit := parseLimit(r, 20, maxResultsLimit)
 		offset := parseOffset(r)
 
 		videos, err := search.GetByCategory(r.Context(), categoryID, limit, offset)
