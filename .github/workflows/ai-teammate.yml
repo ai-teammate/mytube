@@ -64,6 +64,12 @@ jobs:
       - name: Update agents submodule to latest main
         run: git submodule update --remote --merge agents
 
+      - name: Cache JDK 23
+        uses: actions/cache@v4
+        with:
+          path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/
+          key: jdk-temurin-23-linux
+
       - name: Setup Java Environment
         uses: ./.github/actions/setup-java-only
         with:
