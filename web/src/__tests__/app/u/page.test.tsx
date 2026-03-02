@@ -48,7 +48,7 @@ jest.mock("next/image", () => ({
 }));
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
-import UserProfilePage from "@/app/u/[username]/page";
+import UserProfilePage from "@/app/u/[username]/UserProfilePageClient";
 
 // ─── Helper: create a params Promise that React.use can unwrap in tests ───────
 function makeParams(username: string): Promise<{ username: string }> {

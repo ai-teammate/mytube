@@ -34,7 +34,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
-import SearchPage from "@/app/search/page";
+import SearchPage from "@/app/search/SearchPageClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

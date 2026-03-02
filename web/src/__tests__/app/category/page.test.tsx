@@ -44,7 +44,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
-import CategoryPage from "@/app/category/[id]/page";
+import CategoryPage from "@/app/category/[id]/CategoryPageClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

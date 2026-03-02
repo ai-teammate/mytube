@@ -30,7 +30,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
-import HomePage from "@/app/page";
+import HomePage from "@/app/HomePageClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
