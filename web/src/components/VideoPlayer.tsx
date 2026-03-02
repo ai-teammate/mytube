@@ -44,6 +44,10 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         ],
         ...(poster ? { poster } : {}),
       });
+    }).catch((err) => {
+      if (isMounted) {
+        console.error("Failed to load video player:", err);
+      }
     });
 
     return () => {

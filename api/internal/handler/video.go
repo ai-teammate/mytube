@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -37,6 +38,15 @@ type VideoResponse struct {
 	Status         string       `json:"status"`
 	Uploader       UploaderInfo `json:"uploader"`
 	Tags           []string     `json:"tags"`
+}
+
+// uuidRE matches lowercase UUID v4 format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+var uuidRE = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// isValidVideoID returns true when id matches the UUID format used as the
+// videos primary key.  This guards against non-UUID garbage reaching the DB.
+func isValidVideoID(id string) bool {
+	return uuidRE.MatchString(id)
 }
 
 // cdnURLFromGCSPath converts a GCS path like gs://bucket/path/to/file
@@ -83,6 +93,11 @@ func NewVideoHandler(videos VideoProvider, cdnBaseURL string) http.Handler {
 			return
 		}
 
+		if !isValidVideoID(videoID) {
+			writeJSONError(w, "invalid video id", http.StatusBadRequest)
+			return
+		}
+
 		video, err := videos.GetByID(r.Context(), videoID)
 		if err != nil {
 			log.Printf("GET /api/videos/%s: get video: %v", videoID, err)
@@ -95,8 +110,13 @@ func NewVideoHandler(videos VideoProvider, cdnBaseURL string) http.Handler {
 		}
 
 		// Increment view count atomically; log failures but do not fail the request.
-		if _, err := videos.IncrementViewCount(r.Context(), videoID); err != nil {
+		// Use the pre-fetch count as the baseline and add 1 when the increment succeeds
+		// so the response reflects the post-increment value rather than the stale count.
+		viewCountInResponse := video.ViewCount
+		if ok, err := videos.IncrementViewCount(r.Context(), videoID); err != nil {
 			log.Printf("GET /api/videos/%s: increment view count: %v", videoID, err)
+		} else if ok {
+			viewCountInResponse++
 		}
 
 		tags, err := videos.GetTagsByVideoID(r.Context(), videoID)
@@ -114,7 +134,7 @@ func NewVideoHandler(videos VideoProvider, cdnBaseURL string) http.Handler {
 			Description:    video.Description,
 			HLSManifestURL: hlsURL,
 			ThumbnailURL:   video.ThumbnailURL,
-			ViewCount:      video.ViewCount,
+			ViewCount:      viewCountInResponse,
 			CreatedAt:      video.CreatedAt,
 			Status:         video.Status,
 			Uploader: UploaderInfo{

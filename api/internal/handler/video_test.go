@@ -14,15 +14,18 @@ import (
 	"github.com/ai-teammate/mytube/api/internal/repository"
 )
 
+// testVideoID is a valid UUID used as the video identifier throughout tests.
+const testVideoID = "00000000-0000-0000-0000-000000000001"
+
 // ─── stub VideoProvider ───────────────────────────────────────────────────────
 
 type stubVideoProvider struct {
-	video          *repository.VideoDetail
-	videoErr       error
-	incErr         error
-	incCalled      bool
-	tags           []string
-	tagsErr        error
+	video     *repository.VideoDetail
+	videoErr  error
+	incErr    error
+	incCalled bool
+	tags      []string
+	tagsErr   error
 }
 
 func (s *stubVideoProvider) GetByID(_ context.Context, _ string) (*repository.VideoDetail, error) {
@@ -52,7 +55,7 @@ func makeReadyVideo() *repository.VideoDetail {
 	thumb := "https://cdn.example.com/thumb.jpg"
 	now := time.Now().Truncate(time.Second)
 	return &repository.VideoDetail{
-		ID:               "video-id-1",
+		ID:               testVideoID,
 		Title:            "Test Video",
 		Description:      &desc,
 		HLSManifestPath:  &hls,
@@ -70,7 +73,7 @@ func TestNewVideoHandler_GET_VideoNotFound_Returns404(t *testing.T) {
 	p := &stubVideoProvider{video: nil}
 	h := handler.NewVideoHandler(p, "https://cdn.example.com")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusNotFound {
@@ -82,7 +85,7 @@ func TestNewVideoHandler_GET_GetByIDError_Returns500(t *testing.T) {
 	p := &stubVideoProvider{videoErr: errors.New("db error")}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusInternalServerError {
@@ -102,11 +105,29 @@ func TestNewVideoHandler_GET_EmptyVideoID_Returns400(t *testing.T) {
 	}
 }
 
+func TestNewVideoHandler_GET_InvalidVideoID_Returns400(t *testing.T) {
+	p := &stubVideoProvider{}
+	h := handler.NewVideoHandler(p, "")
+
+	// Non-UUID strings must be rejected with 400 before hitting the DB.
+	for _, id := range []string{"not-a-uuid", "v1", "video-id-1", "../secret", strings.Repeat("a", 200)} {
+		req := httptest.NewRequest(http.MethodGet, "/api/videos/"+id, nil)
+		rec := serveVideo(h, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("id=%q: expected 400, got %d", id, rec.Code)
+		}
+		// DB must not be called for invalid IDs.
+		if p.incCalled {
+			t.Errorf("id=%q: IncrementViewCount was called for an invalid ID", id)
+		}
+	}
+}
+
 func TestNewVideoHandler_UnsupportedMethod_Returns405(t *testing.T) {
 	p := &stubVideoProvider{}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
@@ -124,7 +145,7 @@ func TestNewVideoHandler_GET_Success_ReturnsVideoJSON(t *testing.T) {
 	}
 	h := handler.NewVideoHandler(p, "https://cdn.example.com")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -138,8 +159,8 @@ func TestNewVideoHandler_GET_Success_ReturnsVideoJSON(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.ID != "video-id-1" {
-		t.Errorf("ID: got %q, want %q", body.ID, "video-id-1")
+	if body.ID != testVideoID {
+		t.Errorf("ID: got %q, want %q", body.ID, testVideoID)
 	}
 	if body.Title != "Test Video" {
 		t.Errorf("Title: got %q, want %q", body.Title, "Test Video")
@@ -164,7 +185,7 @@ func TestNewVideoHandler_GET_Success_ReturnsVideoJSON(t *testing.T) {
 func TestNewVideoHandler_GET_HLSManifestURL_CDNConversion(t *testing.T) {
 	hls := "gs://mybucket/videos/v1/index.m3u8"
 	video := &repository.VideoDetail{
-		ID:               "v1",
+		ID:               testVideoID,
 		Title:            "CDN Test",
 		HLSManifestPath:  &hls,
 		Status:           "ready",
@@ -173,7 +194,7 @@ func TestNewVideoHandler_GET_HLSManifestURL_CDNConversion(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "https://cdn.example.com")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -196,7 +217,7 @@ func TestNewVideoHandler_GET_HLSManifestURL_CDNConversion(t *testing.T) {
 func TestNewVideoHandler_GET_HLSManifestURL_NilWhenNoCDNConfig(t *testing.T) {
 	hls := "gs://mybucket/videos/v1/index.m3u8"
 	video := &repository.VideoDetail{
-		ID:               "v1",
+		ID:               testVideoID,
 		Title:            "No CDN",
 		HLSManifestPath:  &hls,
 		Status:           "ready",
@@ -206,7 +227,7 @@ func TestNewVideoHandler_GET_HLSManifestURL_NilWhenNoCDNConfig(t *testing.T) {
 	// Pass empty cdnBaseURL
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -225,7 +246,7 @@ func TestNewVideoHandler_GET_HLSManifestURL_NilWhenNoCDNConfig(t *testing.T) {
 
 func TestNewVideoHandler_GET_NilHLSPath_ReturnsNullURL(t *testing.T) {
 	video := &repository.VideoDetail{
-		ID:               "v1",
+		ID:               testVideoID,
 		Title:            "No HLS",
 		HLSManifestPath:  nil,
 		Status:           "ready",
@@ -234,7 +255,7 @@ func TestNewVideoHandler_GET_NilHLSPath_ReturnsNullURL(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "https://cdn.example.com")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -255,7 +276,7 @@ func TestNewVideoHandler_GET_IncrementViewCount_Called(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	serveVideo(h, req)
 
 	if !p.incCalled {
@@ -273,7 +294,7 @@ func TestNewVideoHandler_GET_IncrementViewCountError_StillReturns200(t *testing.
 	}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -289,7 +310,7 @@ func TestNewVideoHandler_GET_TagsError_Returns500(t *testing.T) {
 	}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusInternalServerError {
@@ -302,7 +323,7 @@ func TestNewVideoHandler_GET_EmptyTagsReturnedAsEmptyArray(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -324,7 +345,7 @@ func TestNewVideoHandler_GET_NilDescription_SerializedAsNull(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -346,7 +367,7 @@ func TestNewVideoHandler_GET_NilUploaderAvatar_SerializedAsNull(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -362,13 +383,40 @@ func TestNewVideoHandler_GET_NilUploaderAvatar_SerializedAsNull(t *testing.T) {
 	}
 }
 
-func TestNewVideoHandler_GET_ViewCount_InResponse(t *testing.T) {
+func TestNewVideoHandler_GET_ViewCount_IncrementedInResponse(t *testing.T) {
+	// ViewCount in the DB is 9999; IncrementViewCount succeeds (returns true, nil),
+	// so the response should return 10000 (post-increment value).
 	video := makeReadyVideo()
 	video.ViewCount = 9999
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/video-id-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
+	rec := serveVideo(h, req)
+
+	var body handler.VideoResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	// Expect 10000: pre-increment value (9999) + 1 because IncrementViewCount succeeded.
+	if body.ViewCount != 10000 {
+		t.Errorf("ViewCount: got %d, want 10000", body.ViewCount)
+	}
+}
+
+func TestNewVideoHandler_GET_ViewCount_NotIncrementedWhenIncrementFails(t *testing.T) {
+	// When IncrementViewCount returns an error, the response should return the
+	// pre-increment value (not incremented).
+	video := makeReadyVideo()
+	video.ViewCount = 9999
+	p := &stubVideoProvider{
+		video:  video,
+		incErr: errors.New("increment failed"),
+		tags:   []string{},
+	}
+	h := handler.NewVideoHandler(p, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	var body handler.VideoResponse
@@ -376,7 +424,7 @@ func TestNewVideoHandler_GET_ViewCount_InResponse(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if body.ViewCount != 9999 {
-		t.Errorf("ViewCount: got %d, want 9999", body.ViewCount)
+		t.Errorf("ViewCount: got %d, want 9999 (no increment on error)", body.ViewCount)
 	}
 }
 
@@ -387,7 +435,7 @@ func TestNewVideoHandler_GET_ViewCount_InResponse(t *testing.T) {
 func TestNewVideoHandler_CDNConversion_TrailingSlashOnBaseURL(t *testing.T) {
 	hls := "gs://mybucket/videos/v1/index.m3u8"
 	video := &repository.VideoDetail{
-		ID:               "v1",
+		ID:               testVideoID,
 		Title:            "CDN Trailing Slash",
 		HLSManifestPath:  &hls,
 		Status:           "ready",
@@ -397,7 +445,7 @@ func TestNewVideoHandler_CDNConversion_TrailingSlashOnBaseURL(t *testing.T) {
 	// CDN base URL with trailing slash
 	h := handler.NewVideoHandler(p, "https://cdn.example.com/")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	var body handler.VideoResponse
@@ -419,20 +467,20 @@ func TestNewVideoHandler_GET_PassesVideoIDToGetByID(t *testing.T) {
 		},
 	}
 	h := handler.NewVideoHandler(recording, "")
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/my-video-id", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	serveVideo(h, req)
 
-	if gotID != "my-video-id" {
-		t.Errorf("GetByID called with %q, want %q", gotID, "my-video-id")
+	if gotID != testVideoID {
+		t.Errorf("GetByID called with %q, want %q", gotID, testVideoID)
 	}
 }
 
 // ─── recording stub ───────────────────────────────────────────────────────────
 
 type recordingVideoProvider struct {
-	onGetByID          func(id string) (*repository.VideoDetail, error)
+	onGetByID            func(id string) (*repository.VideoDetail, error)
 	onIncrementViewCount func(id string) (bool, error)
-	onGetTagsByVideoID func(id string) ([]string, error)
+	onGetTagsByVideoID   func(id string) ([]string, error)
 }
 
 func (r *recordingVideoProvider) GetByID(_ context.Context, id string) (*repository.VideoDetail, error) {
@@ -460,7 +508,7 @@ func TestNewVideoHandler_GET_NonGCSPath_ReturnedAsIs(t *testing.T) {
 	// If hls_manifest_path doesn't start with gs://, return as-is
 	rawPath := "https://storage.googleapis.com/mybucket/videos/v1/index.m3u8"
 	video := &repository.VideoDetail{
-		ID:               "v1",
+		ID:               testVideoID,
 		Title:            "Non-GCS",
 		HLSManifestPath:  &rawPath,
 		Status:           "ready",
@@ -469,7 +517,7 @@ func TestNewVideoHandler_GET_NonGCSPath_ReturnedAsIs(t *testing.T) {
 	p := &stubVideoProvider{video: video, tags: []string{}}
 	h := handler.NewVideoHandler(p, "https://cdn.example.com")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	var body handler.VideoResponse
@@ -486,7 +534,7 @@ func TestNewVideoHandler_GET_AllowMethod_SetOn405(t *testing.T) {
 	p := &stubVideoProvider{}
 	h := handler.NewVideoHandler(p, "")
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/videos/v1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/videos/"+testVideoID, nil)
 	rec := serveVideo(h, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
