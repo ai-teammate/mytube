@@ -36,3 +36,27 @@ class AuthService:
                 return resp.status, resp.read().decode()
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
+
+    def post(self, path: str, payload: dict, extra_headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue an authenticated POST *path* with a JSON body.
+
+        Serialises *payload* as JSON, sets Content-Type to application/json,
+        and includes Authorization: Bearer header.
+
+        Returns (status_code, response_body).
+        """
+        import json
+        url = f"{self._base_url}{path}"
+        data = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        req = urllib.request.Request(url, data=data, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()

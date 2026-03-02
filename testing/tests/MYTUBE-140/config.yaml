@@ -1,6 +1,8 @@
-test_id: MYTUBE-138
+test_id: MYTUBE-140
 type: web
 framework: playwright
 platform: chromium
 dependencies:
   - WEB_BASE_URL
+  - FIREBASE_TEST_EMAIL
+  - FIREBASE_TEST_PASSWORD

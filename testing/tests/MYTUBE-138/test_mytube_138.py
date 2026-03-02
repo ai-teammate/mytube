@@ -218,7 +218,9 @@ def upload_page_ready(
         )
 
     def handle_gcs_put(route: Route) -> None:
-        """Intercept the fake GCS PUT and return 200 OK."""
+        """Intercept the fake GCS PUT — add delay so XHR progress events fire."""
+        import time
+        time.sleep(0.5)  # 500 ms gives the browser time to emit progress events
         route.fulfill(
             status=200,
             body="",
@@ -354,11 +356,13 @@ class TestUploadProgressBar:
     def test_progress_values_are_valid_if_captured(
         self, after_upload_click: tuple
     ):
-        """Any captured aria-valuenow values must be integers in [0, 100].
+        """Progress bar must have updated incrementally during upload.
 
-        If no snapshots were captured (upload completed before polling started)
-        the test is vacuously satisfied — progress bar correctness is covered
-        by the appearance and completion tests above.
+        The mock GCS handler introduces a 500 ms delay, which gives the browser
+        time to emit at least one XHR progress event before the upload finishes.
+        At least one snapshot with a value > 0 must be captured to confirm the
+        progress bar actually moved, verifying the ticket's core requirement that
+        the progress bar updates incrementally from 0% to 100%.
         """
         _, snapshots, _ = after_upload_click
         numeric_values = [
@@ -366,7 +370,14 @@ class TestUploadProgressBar:
             for s in snapshots
             if s.aria_value_now is not None
         ]
-        # No snapshots captured is acceptable (upload was instantaneous)
+        assert len(numeric_values) >= 1, (
+            "Expected at least one progress snapshot to be captured during upload, "
+            "but none were. The mock GCS response may be completing too quickly for "
+            "XHR progress events to fire."
+        )
+        assert max(numeric_values) > 0, (
+            f"Expected at least one progress value > 0, got {numeric_values}."
+        )
         out_of_range = [v for v in numeric_values if not (0 <= v <= 100)]
         assert not out_of_range, (
             f"Progress bar aria-valuenow values must be in [0, 100], but "
