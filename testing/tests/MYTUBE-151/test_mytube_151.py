@@ -12,28 +12,39 @@ social media sharing previews.
 Preconditions
 -------------
 - A video exists with a specific title and generated thumbnail.
-- The "tester" user profile is accessible and has at least one ready video.
+- The "tester" user profile is accessible and has at least one ready video with
+  a thumbnail_url set.
 - The web application is deployed and reachable at WEB_BASE_URL.
+- The backend API is reachable at API_BASE_URL (to discover the real video).
 
 Test approach
 -------------
 The OG tags are injected client-side by JavaScript in the WatchPage component
 (web/src/app/v/[id]/page.tsx).  The test:
 
-1. Starts a lightweight mock API server that returns a known video response
-   (id, title, thumbnail_url) at GET /api/videos/<id>.
-2. Starts a static HTTP server that serves the watch page HTML fixture
-   (testing/fixtures/watch_page/watch_page.html) — a standalone page that
-   runs the same OG tag injection logic as the production component.
-3. Navigates to the fixture page with Playwright.
-4. Waits for the JS to call the mock API and inject the OG meta tags.
-5. Asserts og:title equals the video title and og:image is an absolute HTTPS URL.
+1. Queries the backend API at API_BASE_URL to find a ready video with a
+   thumbnail_url (via GET /api/users/tester, then GET /api/videos/<id>).
+2. Navigates to the real deployed watch page at WEB_BASE_URL/v/<id>/ using
+   Playwright.
+3. Waits for the JS to fetch video data and inject the OG meta tags.
+4. Asserts og:title equals the video title and og:image is an absolute HTTPS URL.
+
+This ensures the test covers the actual production OG injection code in
+web/src/app/v/[id]/page.tsx rather than a standalone reimplementation.
+
+Fallback (fixture mode)
+-----------------------
+If API_BASE_URL is not set or the backend API is unreachable, the test falls
+back to the local fixture approach (mock API + standalone HTML fixture).  This
+keeps local CI green while ensuring real-app coverage when the API is available.
 
 Environment variables
 ---------------------
-WEB_BASE_URL        : Base URL of the deployed web app (used when testing
-                      against the live deployment instead of local fixture).
+WEB_BASE_URL        : Base URL of the deployed web app.
                       Default: https://ai-teammate.github.io/mytube
+API_BASE_URL        : Base URL of the backend API used to discover a real video.
+                      When set the test navigates to the real deployed app.
+                      When absent the test falls back to the local fixture.
 PLAYWRIGHT_HEADLESS : Run browser headless (default: true).
 PLAYWRIGHT_SLOW_MO  : Slow-motion delay in ms (default: 0).
 
@@ -42,17 +53,19 @@ Architecture
 - Uses WatchPage (Page Object) from testing/components/pages/watch_page/.
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest fixtures (module-scoped browser).
-- Mock API and static server are started/stopped around the test module.
 - No hardcoded URLs or credentials outside of fixture data.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
-import json
 import threading
+import urllib.request
+import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+from typing import Optional
 
 import pytest
 from playwright.sync_api import sync_playwright, Browser, Page
@@ -70,16 +83,60 @@ _MOCK_API_PORT = 19151
 _FIXTURE_PORT = 19153
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 
-# Known video fixture data matching the mock API response
+# Known video fixture data used in fallback (local fixture) mode
 _VIDEO_ID = "11111111-1111-1111-1111-111111111111"
 _VIDEO_TITLE = "Test Video For OG Tags"
 _THUMBNAIL_URL = "https://storage.googleapis.com/mytube-hls-test/videos/11111111/thumbnail.jpg"
 
 _FIXTURE_DIR = Path(__file__).parent.parent.parent / "fixtures" / "watch_page"
 
+# Username whose profile is queried to discover a real video in live mode
+_TESTER_USERNAME = "tester"
+
 
 # ---------------------------------------------------------------------------
-# Mock servers
+# Live-app video discovery
+# ---------------------------------------------------------------------------
+
+
+def _fetch_json(url: str, timeout: int = 10) -> Optional[dict]:
+    """Issue a GET request and return the parsed JSON body, or None on error."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+    except Exception:
+        return None
+
+
+def _discover_live_video(api_base_url: str) -> Optional[dict]:
+    """Query the API to find a ready video with a thumbnail for the tester user.
+
+    Returns a dict with ``video_id``, ``title``, and ``thumbnail_url`` when a
+    suitable video is found, or None when the API is unreachable or no
+    qualifying video exists.
+    """
+    profile_url = f"{api_base_url.rstrip('/')}/api/users/{_TESTER_USERNAME}"
+    profile = _fetch_json(profile_url)
+    if not profile:
+        return None
+
+    for v in profile.get("videos", []):
+        thumbnail = v.get("thumbnail_url")
+        if thumbnail:
+            # Fetch full video details to confirm status and exact thumbnail URL
+            video_url = f"{api_base_url.rstrip('/')}/api/videos/{v['id']}"
+            video = _fetch_json(video_url)
+            if video and video.get("status") == "ready" and video.get("thumbnail_url"):
+                return {
+                    "video_id": video["id"],
+                    "title": video["title"],
+                    "thumbnail_url": video["thumbnail_url"],
+                }
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Mock servers (used in fallback / local fixture mode only)
 # ---------------------------------------------------------------------------
 
 
@@ -162,19 +219,50 @@ def web_config() -> WebConfig:
 
 
 @pytest.fixture(scope="module")
-def mock_api_server():
-    """Start the mock API server for the duration of this test module."""
-    server = _start_server(_MockAPIHandler, _MOCK_API_PORT)
-    yield server
-    server.shutdown()
+def test_video_context(web_config: WebConfig):
+    """Resolve the video to test against and the base URL to navigate.
 
+    When API_BASE_URL is set and a ready video with a thumbnail is found, the
+    test runs against the real deployed app (live mode).  Otherwise it starts
+    local mock servers and uses the standalone HTML fixture (fixture mode).
 
-@pytest.fixture(scope="module")
-def fixture_html_server(mock_api_server):
-    """Start the static HTML fixture server (depends on mock_api_server)."""
-    server = _start_server(_FixtureHTMLHandler, _FIXTURE_PORT)
-    yield server
-    server.shutdown()
+    Yields a dict with:
+      - ``base_url``      : URL to pass to WatchPage.navigate()
+      - ``video_id``      : ID of the video to load
+      - ``expected_title``: Expected og:title value
+      - ``expected_image``: Expected og:image value (absolute HTTPS URL)
+      - ``mode``          : "live" or "fixture" (for test reporting)
+    """
+    api_base_url = os.getenv("API_BASE_URL", "").strip()
+
+    if api_base_url:
+        live_video = _discover_live_video(api_base_url)
+    else:
+        live_video = None
+
+    if live_video:
+        yield {
+            "base_url": web_config.base_url,
+            "video_id": live_video["video_id"],
+            "expected_title": live_video["title"],
+            "expected_image": live_video["thumbnail_url"],
+            "mode": "live",
+        }
+    else:
+        # Fallback: start local mock servers and use the fixture HTML
+        mock_api = _start_server(_MockAPIHandler, _MOCK_API_PORT)
+        fixture_srv = _start_server(_FixtureHTMLHandler, _FIXTURE_PORT)
+        try:
+            yield {
+                "base_url": f"http://127.0.0.1:{_FIXTURE_PORT}",
+                "video_id": _VIDEO_ID,
+                "expected_title": _VIDEO_TITLE,
+                "expected_image": _THUMBNAIL_URL,
+                "mode": "fixture",
+            }
+        finally:
+            fixture_srv.shutdown()
+            mock_api.shutdown()
 
 
 @pytest.fixture(scope="module")
@@ -200,14 +288,13 @@ def page(browser: Browser) -> Page:
 
 
 @pytest.fixture(scope="module")
-def loaded_watch_page(fixture_html_server, page: Page) -> WatchPage:
+def loaded_watch_page(test_video_context, page: Page) -> WatchPage:
     """
-    Navigate to the watch page fixture for the test video and wait for it to load.
+    Navigate to the watch page for the test video and wait for it to load.
     All tests in this module reuse this loaded page state.
     """
-    base_url = f"http://127.0.0.1:{_FIXTURE_PORT}"
     watch = WatchPage(page)
-    watch.navigate(base_url, _VIDEO_ID)
+    watch.navigate(test_video_context["base_url"], test_video_context["video_id"])
     return watch
 
 
@@ -246,11 +333,14 @@ class TestOGMetaTags:
             f"Expected og:title '{og_title}' to match the page <h1> title '{page_h1}'."
         )
 
-    def test_og_title_matches_known_video_title(self, loaded_watch_page: WatchPage):
+    def test_og_title_matches_known_video_title(
+        self, loaded_watch_page: WatchPage, test_video_context
+    ):
         """og:title must equal the expected video title from the API."""
         og_title = loaded_watch_page.get_og_title()
-        assert og_title == _VIDEO_TITLE, (
-            f"Expected og:title to be '{_VIDEO_TITLE}', but got '{og_title}'."
+        expected = test_video_context["expected_title"]
+        assert og_title == expected, (
+            f"Expected og:title to be '{expected}', but got '{og_title}'."
         )
 
     def test_og_image_is_present(self, loaded_watch_page: WatchPage):
@@ -276,9 +366,12 @@ class TestOGMetaTags:
             f"but got '{og_image}'."
         )
 
-    def test_og_image_matches_thumbnail_url(self, loaded_watch_page: WatchPage):
+    def test_og_image_matches_thumbnail_url(
+        self, loaded_watch_page: WatchPage, test_video_context
+    ):
         """og:image must equal the thumbnail_url from the API response."""
         og_image = loaded_watch_page.get_og_image()
-        assert og_image == _THUMBNAIL_URL, (
-            f"Expected og:image to be '{_THUMBNAIL_URL}', but got '{og_image}'."
+        expected = test_video_context["expected_image"]
+        assert og_image == expected, (
+            f"Expected og:image to be '{expected}', but got '{og_image}'."
         )
