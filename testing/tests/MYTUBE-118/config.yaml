@@ -1,0 +1,6 @@
+test_id: MYTUBE-118
+type: api
+framework: subprocess+http
+platform: go-binary
+dependencies:
+  - FIREBASE_PROJECT_ID

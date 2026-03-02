@@ -58,3 +58,13 @@ class UserProfilePage:
     def current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    # ------------------------------------------------------------------
+    # Event monitoring
+    # ------------------------------------------------------------------
+
+    def listen_for_js_errors(self) -> list[str]:
+        """Attach a pageerror listener and return the shared errors list."""
+        errors: list[str] = []
+        self._page.on("pageerror", lambda err: errors.append(str(err)))
+        return errors

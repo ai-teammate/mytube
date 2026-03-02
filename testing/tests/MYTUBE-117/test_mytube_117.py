@@ -310,10 +310,7 @@ class TestUserProfileNotFoundE2E:
         No network failure, no uncaught exception — the page loads and handles
         the 404 gracefully.
         """
-        errors: list[str] = []
-        user_profile_page._page.on(
-            "pageerror", lambda err: errors.append(str(err))
-        )
+        errors = user_profile_page.listen_for_js_errors()
 
         user_profile_page.navigate_to_user(
             web_config.base_url, _NON_EXISTENT_USERNAME
