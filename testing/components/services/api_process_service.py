@@ -167,6 +167,16 @@ class ApiProcessService:
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
 
+    def post(self, path: str, body: bytes, headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue POST *path* with *body* and return (status_code, response_body)."""
+        url = f"http://127.0.0.1:{self._port}{path}"
+        req = urllib.request.Request(url, data=body, method="POST", headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
     # ------------------------------------------------------------------
     # Private
     # ------------------------------------------------------------------
