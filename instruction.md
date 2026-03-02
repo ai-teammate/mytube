@@ -84,7 +84,11 @@ For integration tests requiring a real Firebase ID token, store a dedicated test
     echo "FIREBASE_TEST_EMAIL=${{ secrets.FIREBASE_TEST_EMAIL }}" >> $GITHUB_ENV
 ```
 
-Required secrets (not yet added): `FIREBASE_TEST_EMAIL`, `FIREBASE_TEST_PASSWORD` — a dedicated Firebase test user account for project `ai-native-478811`.
+Firebase test user (already provisioned in project `ai-native-478811`):
+- `FIREBASE_TEST_EMAIL` = `ci-test@mytube.test` (fake domain — no real Gmail needed)
+- `FIREBASE_TEST_UID` = `ci-test-user-001`
+- `FIREBASE_TEST_PASSWORD` — stored in GitHub secrets (password for the test user)
+- Username derived by API: `ci-test` (prefix before `@`)
 
 ### Managing Secrets and Variables
 
@@ -151,8 +155,8 @@ All environment-specific values live in `dmtools.env` (gitignored) and are provi
 | `GEMINI_API_KEY` | Gemini AI |
 | `FIGMA_TOKEN` | Figma |
 | `CODEMIE_API_KEY` | Codemie AI agent |
-| `FIREBASE_TEST_EMAIL` | ⚠️ **Not yet added** — email of dedicated Firebase test user for integration tests |
-| `FIREBASE_TEST_PASSWORD` | ⚠️ **Not yet added** — password of dedicated Firebase test user for integration tests |
+| `FIREBASE_TEST_EMAIL` | Email of dedicated Firebase CI test user (`ci-test@mytube.test`) |
+| `FIREBASE_TEST_PASSWORD` | Password of dedicated Firebase CI test user |
 
 ### GitHub Variables
 
@@ -166,7 +170,9 @@ All environment-specific values live in `dmtools.env` (gitignored) and are provi
 | `GCP_DB_PASSWORD_SECRET` | Secret Manager secret name for DB password |
 | `FIREBASE_PROJECT_ID` | Firebase project ID |
 | `FIREBASE_API_KEY` | Firebase web API key (public) |
-| `RAW_OBJECT_PATH` | Path to test video in raw uploads bucket (e.g. `test-videos/test_video.mp4`) — used by transcoder integration tests |
+| `RAW_OBJECT_PATH` | Path to test video in raw uploads bucket (`test-videos/test_video.mp4`) — used by transcoder integration tests |
+| `FIREBASE_TEST_UID` | Firebase UID of the CI test user (`ci-test-user-001`) |
+| `FIREBASE_TEST_EMAIL` | Email of the CI test user (`ci-test@mytube.test`) — non-existent domain, no real Gmail needed |
 | `FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
 | `FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
 | `FIREBASE_APP_ID` | Firebase web app ID |
