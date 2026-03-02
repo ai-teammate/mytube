@@ -180,15 +180,14 @@ class TestTranscoderDiskCleanupGoTests:
     def test_upload_error_marks_video_failed(self):
         """
         When the GCS upload step fails (after spending disk quota on HLS
-        segments), the job must still call MarkFailed.
+        segments), the job must call MarkFailed to set status='failed'.
 
-        Verified by TestTranscode_UploadDirError_ReturnsError combined with
-        the MarkFailed assertion pattern.
+        Verified by TestTranscode_UploadDirError_MarksVideoFailed.
         """
         result = subprocess.run(
             [
                 "go", "test", "-v", "-count=1",
-                "-run", "TestTranscode_UploadDirError_ReturnsError",
+                "-run", "TestTranscode_UploadDirError_MarksVideoFailed",
                 ".",
             ],
             cwd=TRANSCODER_DIR,
@@ -196,7 +195,7 @@ class TestTranscoderDiskCleanupGoTests:
             text=True,
         )
         assert result.returncode == 0, (
-            f"TestTranscode_UploadDirError_ReturnsError failed.\n"
+            f"TestTranscode_UploadDirError_MarksVideoFailed failed.\n"
             f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         )
         assert "PASS" in result.stdout
