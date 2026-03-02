@@ -21,8 +21,10 @@ Test approach:
        so a missing or empty variable causes a concrete failure at the affected
        step rather than a silent misconfiguration.
 
-    4. Required secrets (GCP_DB_USER_SECRET, GCP_DB_PASSWORD_SECRET) are wired
-       via ``--set-secrets``, so Cloud Run deploy fails when the secrets are
+    4. Repository variables ``GCP_DB_USER_SECRET`` and ``GCP_DB_PASSWORD_SECRET``
+       hold the *names* of GCP Secret Manager secrets (not GitHub secrets
+       themselves).  They are passed via ``vars.`` prefix and wired via
+       ``--set-secrets``; Cloud Run deploy fails when the named secrets are
        absent or contain invalid values.
 
     5. No critical step has its exit code suppressed (``|| true``) — cleanup
@@ -66,9 +68,16 @@ CLEANUP_STEP_NAMES = [
     "Delete old GCR images",
 ]
 
-# Secrets that must be referenced for the pipeline to detect invalid configs.
-REQUIRED_SECRETS = [
+# GitHub Actions secrets that must be referenced for authentication.
+REQUIRED_GH_SECRETS = [
     "GCP_SA_KEY",
+]
+
+# Repository variables that hold GCP Secret Manager secret *names* (not GitHub
+# secrets themselves).  They are referenced via ``vars.`` and passed to Cloud
+# Run via ``--set-secrets`` so that an invalid or missing GCP secret name
+# causes a descriptive deploy failure.
+REQUIRED_SECRET_NAME_VARS = [
     "GCP_DB_USER_SECRET",
     "GCP_DB_PASSWORD_SECRET",
 ]
@@ -159,30 +168,51 @@ class TestDeployApiWorkflowFailsOnInvalidConfig:
 
     def test_db_user_secret_is_referenced(self, workflow_text: str):
         """
-        ``GCP_DB_USER_SECRET`` must be referenced so Cloud Run deploy fails
-        when the secret is missing or invalid.
+        ``GCP_DB_USER_SECRET`` must be referenced via the ``vars.`` prefix.
+
+        This value is a repository variable that holds the *name* of a GCP
+        Secret Manager secret.  It is passed to Cloud Run via ``--set-secrets``
+        so that an invalid or missing secret name causes a descriptive deploy
+        failure.
         """
-        assert "vars.GCP_DB_USER_SECRET" in workflow_text or "GCP_DB_USER_SECRET" in workflow_text, (
-            "GCP_DB_USER_SECRET is not referenced in deploy-api.yml. "
-            "Database credentials must be wired via --set-secrets."
+        assert "vars.GCP_DB_USER_SECRET" in workflow_text, (
+            "vars.GCP_DB_USER_SECRET is not referenced in deploy-api.yml. "
+            "The repository variable holding the DB user secret name must be "
+            "wired via --set-secrets using the vars. prefix."
         )
 
     def test_db_password_secret_is_referenced(self, workflow_text: str):
         """
-        ``GCP_DB_PASSWORD_SECRET`` must be referenced so Cloud Run deploy
-        fails when the secret is missing or invalid.
+        ``GCP_DB_PASSWORD_SECRET`` must be referenced via the ``vars.`` prefix.
+
+        Same rationale as ``GCP_DB_USER_SECRET`` — this is a repository
+        variable holding a GCP Secret Manager secret name, not a GitHub secret.
         """
-        assert "GCP_DB_PASSWORD_SECRET" in workflow_text, (
-            "GCP_DB_PASSWORD_SECRET is not referenced in deploy-api.yml. "
-            "Database password must be wired via --set-secrets."
+        assert "vars.GCP_DB_PASSWORD_SECRET" in workflow_text, (
+            "vars.GCP_DB_PASSWORD_SECRET is not referenced in deploy-api.yml. "
+            "The repository variable holding the DB password secret name must "
+            "be wired via --set-secrets using the vars. prefix."
         )
 
-    def test_all_required_secrets_referenced(self, workflow_text: str):
-        """All required secrets are referenced in the workflow."""
-        missing = [s for s in REQUIRED_SECRETS if s not in workflow_text]
+    def test_all_required_gh_secrets_referenced(self, workflow_text: str):
+        """All required GitHub Actions secrets are referenced in the workflow."""
+        missing = [s for s in REQUIRED_GH_SECRETS if f"secrets.{s}" not in workflow_text]
         assert not missing, (
-            f"The following secrets are not referenced in deploy-api.yml: "
+            f"The following GitHub secrets are not referenced in deploy-api.yml: "
             f"{missing}. Missing secrets cause silent misconfigurations."
+        )
+
+    def test_all_required_secret_name_vars_referenced(self, workflow_text: str):
+        """
+        All repository variables that hold GCP Secret Manager secret names
+        must be referenced with the ``vars.`` prefix in the workflow.
+        """
+        missing = [v for v in REQUIRED_SECRET_NAME_VARS if f"vars.{v}" not in workflow_text]
+        assert not missing, (
+            f"The following repository variables (holding GCP secret names) are "
+            f"not referenced via vars. in deploy-api.yml: {missing}. "
+            f"Missing variable references prevent Cloud Run from wiring the "
+            f"correct secrets via --set-secrets."
         )
 
     # ------------------------------------------------------------------
