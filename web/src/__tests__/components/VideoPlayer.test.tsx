@@ -91,29 +91,20 @@ describe("VideoPlayer", () => {
   });
 
   it("does not create a player after unmount (isMounted guard)", async () => {
-    // Hold the dynamic import promise so we can resolve it after unmount.
-    let resolveImport!: (val: unknown) => void;
-    const importPromise = new Promise((res) => {
-      resolveImport = res;
-    });
-    jest.mock("video.js", () => importPromise);
-
+    // Render and immediately unmount before promises flush.
+    // The isMounted guard in VideoPlayer should prevent player creation.
     const { unmount } = render(
       <VideoPlayer src="https://cdn.example.com/videos/v2/index.m3u8" />
     );
 
-    // Unmount before the import resolves.
+    // Unmount before the dynamic import resolves.
     unmount();
 
-    // Now resolve the import — the player should NOT be created.
-    await act(async () => {
-      resolveImport({ default: mockVideoJs });
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    });
+    // Flush promises — the isMounted guard should prevent player creation.
+    await flushPromises();
 
-    // mockVideoJs should not have been called for this render instance
-    // (it may have been called for prior tests; check only that dispose was not called again).
-    expect(mockDispose).not.toHaveBeenCalled();
+    // Player should never have been initialised.
+    expect(mockVideoJs).not.toHaveBeenCalled();
   });
 
   it("does not throw when the dynamic import fails", async () => {
@@ -149,8 +140,12 @@ describe("VideoPlayer", () => {
     render(<VideoPlayer src="https://cdn.example.com/videos/v1/index.m3u8" />);
     await flushPromises();
 
-    // The error from videoJs() is caught and logged
-    // (even though it's a runtime error, the catch in VideoPlayer handles it).
+    // The error from videoJs() is caught by the .catch() handler and logged.
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Failed to load video player:",
+      expect.any(Error)
+    );
     consoleSpy.mockRestore();
   });
 });

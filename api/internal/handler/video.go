@@ -40,8 +40,9 @@ type VideoResponse struct {
 	Tags           []string     `json:"tags"`
 }
 
-// uuidRE matches lowercase UUID v4 format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-var uuidRE = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+// uuidRE matches UUID format (RFC 4122, case-insensitive):
+// xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+var uuidRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // isValidVideoID returns true when id matches the UUID format used as the
 // videos primary key.  This guards against non-UUID garbage reaching the DB.
