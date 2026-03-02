@@ -2,23 +2,22 @@
 MYTUBE-79: Update video record on success — database fields populated correctly
 after transcoding.
 
-Verifies that after the transcoding job completes successfully, the `videos`
-table row for the given VIDEO_ID is updated with:
+Verifies that after the transcoding Cloud Run Job completes successfully, the
+`videos` table row for the given VIDEO_ID is updated with:
   - status = 'ready'
   - hls_manifest_path = 'gs://mytube-hls-output/videos/{VIDEO_ID}/index.m3u8'
   - thumbnail_url set to the CDN-based path
 
-The test exercises the SQL UPDATE statement used by the transcoder's
-video.Repository.UpdateVideo via a live PostgreSQL connection, starting from
-a row in 'processing' status (matching the documented precondition).
-
 Test sequence:
   1. Apply the initial schema migration to a clean database.
-  2. Insert a user row (required by the videos FK).
-  3. Insert a video row with status 'processing'.
-  4. Execute the same UPDATE query the transcoder issues on success.
-  5. Query the updated row and assert all three fields are correct.
+  2. Insert a user row (required by the videos FK) via UserService.
+  3. Insert a video row with status 'processing' via VideoService.
+  4. Execute the Cloud Run Job via HLSTranscoderService (the actual transcoder).
+  5. Query the `videos` table and assert that the transcoder updated all three
+     fields correctly.
 """
+from __future__ import annotations
+
 import os
 import sys
 
@@ -27,10 +26,11 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.tests.conftest import make_conn_fixture
+from testing.core.config.db_config import DBConfig
 from testing.core.config.gcp_config import GcpConfig
-from testing.core.config.gcs_config import GCSConfig
 from testing.components.services.user_service import UserService
 from testing.components.services.video_service import VideoService
+from testing.components.services.hls_transcoder_service import HLSTranscoderService
 
 # ---------------------------------------------------------------------------
 # Migration path
@@ -47,22 +47,85 @@ conn = make_conn_fixture([_INITIAL_SCHEMA])
 
 
 # ---------------------------------------------------------------------------
-# Module-scoped fixture: set up precondition and run the transcoder UPDATE
+# Environment-driven fixtures (skip when vars are absent)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
-def transcoded_video(conn) -> dict:
-    """
-    Insert a video row with status 'processing', then apply the exact UPDATE
-    the transcoder performs on success.  Returns the row fetched after the
-    update along with the VIDEO_ID and expected field values.
-    """
-    gcp_cfg = GcpConfig()
-    gcs_cfg = GCSConfig()
+def gcp_config() -> GcpConfig:
+    cfg = GcpConfig()
+    if not cfg.project_id:
+        pytest.skip(
+            "GCP_PROJECT_ID is not set — cannot run Cloud Run Job. "
+            "Set GCP_PROJECT_ID and GOOGLE_APPLICATION_CREDENTIALS to run this test."
+        )
+    return cfg
 
-    hls_bucket = gcp_cfg.hls_bucket  # mytube-hls-output
-    cdn_base_url = gcs_cfg.cdn_base_url  # may be empty in CI — handled below
+
+@pytest.fixture(scope="module")
+def raw_object_path() -> str:
+    value = os.environ.get("RAW_OBJECT_PATH", "")
+    if not value:
+        pytest.skip("RAW_OBJECT_PATH is not set — skipping transcoder integration test.")
+    return value
+
+
+@pytest.fixture(scope="module")
+def db_dsn() -> str:
+    value = os.environ.get("DB_DSN", "")
+    if not value:
+        # Fall back to building a DSN from the individual DB_* env vars used by conftest.
+        db_cfg = DBConfig()
+        dsn = db_cfg.dsn()
+        return dsn
+    return value
+
+
+@pytest.fixture(scope="module")
+def storage_client(gcp_config: GcpConfig):
+    """Create an authenticated GCS client; skip if credentials are unavailable."""
+    try:
+        from google.cloud import storage as gcs_storage
+        from google.auth.exceptions import DefaultCredentialsError
+    except ImportError:
+        pytest.skip("google-cloud-storage is not installed")
+
+    try:
+        client = gcs_storage.Client(project=gcp_config.project_id)
+    except DefaultCredentialsError as exc:
+        pytest.skip(
+            f"GCP credentials not available: {exc}. "
+            "Configure GOOGLE_APPLICATION_CREDENTIALS or Application Default Credentials."
+        )
+
+    return client
+
+
+@pytest.fixture(scope="module")
+def transcoder_service(gcp_config: GcpConfig, storage_client) -> HLSTranscoderService:
+    return HLSTranscoderService(config=gcp_config, storage_client=storage_client)
+
+
+# ---------------------------------------------------------------------------
+# Module-scoped fixture: set up precondition and run the actual transcoder
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def transcoded_video(conn, transcoder_service: HLSTranscoderService, raw_object_path: str, db_dsn: str) -> dict:
+    """
+    Insert a video row with status 'processing', trigger the real Cloud Run
+    transcoding job for that video, then return the row the transcoder updated.
+
+    The returned dict contains:
+      - video_id
+      - status           (as written by the transcoder)
+      - hls_manifest_path (as written by the transcoder)
+      - thumbnail_url    (as written by the transcoder)
+      - expected_hls_manifest_path (derived from config for comparison)
+      - expected_thumbnail_url     (derived from config for comparison)
+    """
+    gcp_cfg = transcoder_service._config
 
     # ── Precondition: insert a user (FK dependency) via UserService ───────
     user_svc = UserService(conn)
@@ -73,32 +136,25 @@ def transcoded_video(conn) -> dict:
     video_id, initial_status = video_svc.insert_video(user_id, "Test Transcoding Video", "processing")
     video_id = str(video_id)
 
-    # Verify precondition
     assert initial_status in ("processing", "pending"), (
         f"Precondition failed: expected status 'processing' or 'pending', got '{initial_status}'."
     )
 
-    # Derive the expected values using the same logic as main.go / doTranscode.
-    expected_hls_manifest_path = f"gs://{hls_bucket}/videos/{video_id}/index.m3u8"
-    # CDN_BASE_URL may not be set in CI; fall back to a deterministic placeholder
-    # so the assertion still exercises the path-construction logic.
-    effective_cdn = cdn_base_url.rstrip("/") if cdn_base_url else "https://cdn.example.com"
-    expected_thumbnail_url = f"{effective_cdn}/videos/{video_id}/thumbnail.jpg"
+    # ── Step 1 (ticket): Run the Cloud Run transcoding job ────────────────
+    job_result = transcoder_service.run_transcoding_job(
+        video_id=video_id,
+        raw_object_path=raw_object_path,
+        db_dsn=db_dsn,
+    )
 
-    # ── Simulate transcoder UpdateVideo (mirrors repository.go SQL) ───────
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE videos
-            SET hls_manifest_path = %s,
-                thumbnail_url      = %s,
-                status             = %s
-            WHERE id = %s
-            """,
-            (expected_hls_manifest_path, expected_thumbnail_url, "ready", video_id),
-        )
+    assert job_result.success, (
+        f"Cloud Run Job failed with exit code {job_result.exit_code}.\n"
+        f"STDOUT: {job_result.stdout}\n"
+        f"STDERR: {job_result.stderr}\n"
+        f"Error: {job_result.error_message}"
+    )
 
-    # ── Fetch the updated row ─────────────────────────────────────────────
+    # ── Step 2 (ticket): Query the videos table for the updated record ────
     with conn.cursor() as cur:
         cur.execute(
             "SELECT status, hls_manifest_path, thumbnail_url FROM videos WHERE id = %s",
@@ -106,7 +162,15 @@ def transcoded_video(conn) -> dict:
         )
         updated = cur.fetchone()
 
-    assert updated is not None, f"Video row {video_id} not found after UPDATE."
+    assert updated is not None, f"Video row {video_id} not found after transcoding job."
+
+    # Derive the expected values from config (same logic as the transcoder)
+    # These are used as the expected side of the assertions, but the actual
+    # values are whatever the transcoder wrote — not pre-computed by the test.
+    expected_hls_manifest_path = f"gs://{gcp_cfg.hls_bucket}/videos/{video_id}/index.m3u8"
+    cdn_base_url = os.environ.get("CDN_BASE_URL", "").rstrip("/")
+    effective_cdn = cdn_base_url if cdn_base_url else "https://cdn.example.com"
+    expected_thumbnail_url = f"{effective_cdn}/videos/{video_id}/thumbnail.jpg"
 
     return {
         "video_id": video_id,
