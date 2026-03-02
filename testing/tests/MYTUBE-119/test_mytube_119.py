@@ -11,8 +11,8 @@ Preconditions
 Test steps
 ----------
 1. Build and start the Go API server with valid DB credentials.
-2. Pre-insert a test user row via direct DB access.
-3. Insert 60 "ready" videos for that user via direct DB access.
+2. Pre-insert a test user row via UserService.
+3. Insert 60 "ready" videos for that user via VideoService.
 4. Send GET /api/users/<username> (no authentication required).
 5. Assert HTTP 200 OK.
 6. Parse the JSON response body.
@@ -30,7 +30,7 @@ Architecture notes
 ------------------
 - No authentication required; the endpoint is public.
 - ApiProcessService handles Go binary lifecycle and HTTP requests.
-- Direct psycopg2 SQL is used for idempotent test-user and video setup.
+- UserService and VideoService are used for idempotent test-data setup.
 - No hardcoded waits; wait_for_ready() polls /health.
 - 60 videos are inserted to exceed the limit and confirm the cap is 50.
 """
@@ -46,6 +46,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.user_service import UserService
+from testing.components.services.video_service import VideoService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -152,51 +154,36 @@ def db_conn(db_config: DBConfig):
 
 @pytest.fixture(scope="module")
 def seeded_user(api_server, db_conn):
-    """Insert a test user with 60 ready videos.
+    """Insert a test user with 60 ready videos via UserService and VideoService.
 
-    Uses ON CONFLICT DO NOTHING / UPDATE so the fixture is idempotent.
-    Returns the user's internal UUID string.
+    Uses find_by_firebase_uid to check existence before creating, making the
+    fixture idempotent across re-runs. Returns the user's internal UUID string.
     """
-    # Upsert the user row.
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO users (firebase_uid, username)
-            VALUES (%s, %s)
-            ON CONFLICT (firebase_uid) DO UPDATE SET username = EXCLUDED.username
-            """,
-            (_TEST_FIREBASE_UID, _TEST_USERNAME),
-        )
-        cur.execute(
-            "SELECT id FROM users WHERE firebase_uid = %s",
-            (_TEST_FIREBASE_UID,),
-        )
-        row = cur.fetchone()
+    user_svc = UserService(db_conn)
+    video_svc = VideoService(db_conn)
 
-    if row is None:
-        pytest.fail(
-            f"Could not insert or find user row for firebase_uid={_TEST_FIREBASE_UID!r}"
-        )
+    # Upsert the user row via UserService.
+    existing_user = user_svc.find_by_firebase_uid(_TEST_FIREBASE_UID)
+    if existing_user is not None:
+        user_id = existing_user["id"]
+    else:
+        user_id = user_svc.create_user(_TEST_FIREBASE_UID, _TEST_USERNAME)
 
-    user_id = str(row[0])
-
-    # Insert exactly _VIDEO_INSERT_COUNT ready videos (skip duplicates by
-    # checking the count first so re-runs stay idempotent).
+    # Count existing ready videos to keep the fixture idempotent.
     with db_conn.cursor() as cur:
         cur.execute(
             "SELECT COUNT(*) FROM videos WHERE uploader_id = %s AND status = 'ready'",
             (user_id,),
         )
-        existing = cur.fetchone()[0]
+        existing_count = cur.fetchone()[0]
 
-    videos_to_add = _VIDEO_INSERT_COUNT - existing
-    if videos_to_add > 0:
-        with db_conn.cursor() as cur:
-            for i in range(videos_to_add):
-                cur.execute(
-                    "INSERT INTO videos (uploader_id, title, status) VALUES (%s, %s, 'ready')",
-                    (user_id, f"Video {existing + i + 1} for MYTUBE-119"),
-                )
+    videos_to_add = _VIDEO_INSERT_COUNT - existing_count
+    for i in range(videos_to_add):
+        video_svc.insert_video(
+            user_id,
+            f"Video {existing_count + i + 1} for MYTUBE-119",
+            "ready",
+        )
 
     return user_id
 
