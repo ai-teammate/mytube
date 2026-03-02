@@ -16,6 +16,7 @@ import (
 // mock in unit tests.
 type Migrator interface {
 	Up() error
+	Force(version int) error
 }
 
 // migrateMaker is a function type that creates a Migrator from a *sql.DB and
@@ -57,6 +58,16 @@ func runMigrations(db *sql.DB, migrationsFS fs.ReadDirFS, maker migrateMaker) er
 	}
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		var dirtyErr migrate.ErrDirty
+		if errors.As(err, &dirtyErr) {
+			if ferr := m.Force(dirtyErr.Version); ferr != nil {
+				return fmt.Errorf("migrate force version %d: %w", dirtyErr.Version, ferr)
+			}
+			if rerr := m.Up(); rerr != nil && !errors.Is(rerr, migrate.ErrNoChange) {
+				return fmt.Errorf("migrate up after force: %w", rerr)
+			}
+			return nil
+		}
 		return fmt.Errorf("migrate up: %w", err)
 	}
 	return nil
