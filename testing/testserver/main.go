@@ -1,5 +1,5 @@
 // testserver is a minimal HTTP server for integration testing the auth middleware
-// header-format validation logic (MYTUBE-65).
+// header-format validation logic (MYTUBE-65, MYTUBE-135).
 //
 // It re-implements the exact bearerToken() and RequireAuth logic from
 // api/internal/middleware/auth.go using only the Go standard library, so it can
@@ -16,9 +16,11 @@
 //
 // Endpoints:
 //
-//	GET /health  — always 200 (readiness probe)
-//	GET /api/me  — protected by requireAuth; returns 200 only for a properly
-//	               formed "Bearer <token>" header (token value is not validated)
+//	GET /health      — always 200 (readiness probe)
+//	GET /api/me      — protected by requireAuth; returns 200 only for a properly
+//	                   formed "Bearer <token>" header (token value is not validated)
+//	POST /api/videos — protected by requireAuth; mirrors the production route for
+//	                   testing the 401 path without DB or Firebase dependencies
 package main
 
 import (
@@ -80,6 +82,21 @@ func main() {
 	})
 	mux.Handle("/api/me", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
+	})))
+	// /api/videos mirrors the production route: POST only, protected by requireAuth.
+	// When no Authorization header is present requireAuth returns 401 before the
+	// handler body executes — which is exactly what MYTUBE-135 tests.
+	mux.Handle("/api/videos", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]string{"video_id": "stub", "upload_url": "stub"})
 	})))
 
 	addr := "127.0.0.1:" + port
