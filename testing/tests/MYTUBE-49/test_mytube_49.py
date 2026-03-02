@@ -33,8 +33,31 @@ def gcs_config() -> GCSConfig:
 
 
 @pytest.fixture(scope="module")
-def gcs_service(gcs_config: GCSConfig) -> GCSService:
-    return GCSService(gcs_config)
+def storage_client():
+    """Create an authenticated google-cloud-storage Client.
+
+    Skips all GCS tests when GCP Application Default Credentials are absent
+    so that the test suite exits cleanly on CI runners without GCP access.
+    """
+    try:
+        from google.cloud import storage as gcs_storage
+        from google.auth.exceptions import DefaultCredentialsError
+    except ImportError:
+        pytest.skip("google-cloud-storage is not installed")
+
+    try:
+        return gcs_storage.Client()
+    except DefaultCredentialsError as exc:
+        pytest.skip(
+            f"GCP credentials not available (DefaultCredentialsError): {exc}. "
+            "Configure GOOGLE_APPLICATION_CREDENTIALS or Application Default "
+            "Credentials to run GCS tests."
+        )
+
+
+@pytest.fixture(scope="module")
+def gcs_service(gcs_config: GCSConfig, storage_client) -> GCSService:
+    return GCSService(gcs_config, storage_client=storage_client)
 
 
 # ---------------------------------------------------------------------------
