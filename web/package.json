@@ -4,16 +4,18 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "jest"
   },
   "dependencies": {
+    "@videojs/http-streaming": "^3.17.4",
     "firebase": "^12.10.0",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "video.js": "^8.23.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -24,7 +24,7 @@ type stubUserProvider struct {
 	updateErr     error
 }
 
-func (s *stubUserProvider) Upsert(_ context.Context, _, _ string) (*repository.User, error) {
+func (s *stubUserProvider) Upsert(_ context.Context, _, _, _ string) (*repository.User, error) {
 	return s.user, s.err
 }
 
@@ -432,7 +432,7 @@ type recordingUserProvider struct {
 	onUpdateProfile func(uid, username string, avatar *string) (*repository.User, error)
 }
 
-func (r *recordingUserProvider) Upsert(_ context.Context, firebaseUID, email string) (*repository.User, error) {
+func (r *recordingUserProvider) Upsert(_ context.Context, firebaseUID, email, _ string) (*repository.User, error) {
 	if r.onUpsert != nil {
 		return r.onUpsert(firebaseUID, email)
 	}

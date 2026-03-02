@@ -164,6 +164,10 @@ func (q *captureQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) 
 	return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
 }
 
+func (q *captureQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
+}
+
 // rowQuerier returns a fully-populated row from QueryRowContext (for found tests).
 type rowQuerier struct {
 	t       *testing.T
@@ -189,13 +193,17 @@ func (q *rowQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql
 	)
 }
 
+func (q *rowQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
+}
+
 // ─── Upsert tests ─────────────────────────────────────────────────────────────
 
 func TestUpsert_UsesEmailPrefix(t *testing.T) {
 	q := &captureQuerier{}
 	repo := repository.NewUserRepository(q)
 
-	_, _ = repo.Upsert(context.Background(), "uid1", "alice@example.com")
+	_, _ = repo.Upsert(context.Background(), "uid1", "alice@example.com", "")
 
 	if len(q.capturedArgs) < 2 {
 		t.Fatalf("expected ≥2 args, got %d", len(q.capturedArgs))
@@ -213,7 +221,7 @@ func TestUpsert_EmailWithoutAt(t *testing.T) {
 	q := &captureQuerier{}
 	repo := repository.NewUserRepository(q)
 
-	_, _ = repo.Upsert(context.Background(), "uid2", "noemail")
+	_, _ = repo.Upsert(context.Background(), "uid2", "noemail", "")
 
 	got := q.capturedArgs[1].(string)
 	if got != "noemail" {
@@ -225,11 +233,44 @@ func TestUpsert_FirebaseUIDPassedToExec(t *testing.T) {
 	q := &captureQuerier{}
 	repo := repository.NewUserRepository(q)
 
-	_, _ = repo.Upsert(context.Background(), "my-firebase-uid", "user@test.com")
+	_, _ = repo.Upsert(context.Background(), "my-firebase-uid", "user@test.com", "")
 
 	got := q.capturedArgs[0].(string)
 	if got != "my-firebase-uid" {
 		t.Errorf("expected firebase_uid 'my-firebase-uid', got %q", got)
+	}
+}
+
+func TestUpsert_PictureURLPassedToExecWhenNonEmpty(t *testing.T) {
+	q := &captureQuerier{}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.Upsert(context.Background(), "uid-pic", "user@test.com", "https://example.com/photo.jpg")
+
+	if len(q.capturedArgs) < 3 {
+		t.Fatalf("expected ≥3 args, got %d", len(q.capturedArgs))
+	}
+	avatarArg, ok := q.capturedArgs[2].(*string)
+	if !ok {
+		t.Fatalf("expected *string arg[2], got %T", q.capturedArgs[2])
+	}
+	if avatarArg == nil || *avatarArg != "https://example.com/photo.jpg" {
+		t.Errorf("arg[2] (avatar_url): got %v, want picture URL", avatarArg)
+	}
+}
+
+func TestUpsert_EmptyPictureURLPassesNilToExec(t *testing.T) {
+	q := &captureQuerier{}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.Upsert(context.Background(), "uid-nopic", "user@test.com", "")
+
+	if len(q.capturedArgs) < 3 {
+		t.Fatalf("expected ≥3 args, got %d", len(q.capturedArgs))
+	}
+	avatarArg := q.capturedArgs[2]
+	if avatarArg != (*string)(nil) {
+		t.Errorf("expected nil *string for empty pictureURL, got %v (%T)", avatarArg, avatarArg)
 	}
 }
 
@@ -238,7 +279,7 @@ func TestUpsert_ExecError(t *testing.T) {
 	q := &captureQuerier{execErr: dbErr}
 	repo := repository.NewUserRepository(q)
 
-	user, err := repo.Upsert(context.Background(), "uid3", "bob@example.com")
+	user, err := repo.Upsert(context.Background(), "uid3", "bob@example.com", "")
 
 	if user != nil {
 		t.Errorf("expected nil user on exec error")
@@ -252,7 +293,7 @@ func TestUpsert_ReturnsNilWhenSelectNotFound(t *testing.T) {
 	q := &captureQuerier{} // QueryRowContext returns no rows
 	repo := repository.NewUserRepository(q)
 
-	user, err := repo.Upsert(context.Background(), "uid4", "charlie@example.com")
+	user, err := repo.Upsert(context.Background(), "uid4", "charlie@example.com", "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -273,7 +314,7 @@ func TestUpsert_ReturnsUserWhenFound(t *testing.T) {
 	}
 
 	repo := repository.NewUserRepository(&rowQuerier{t: t, user: expected})
-	got, err := repo.Upsert(context.Background(), "firebase-uid-3", "carol@example.com")
+	got, err := repo.Upsert(context.Background(), "firebase-uid-3", "carol@example.com", "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -356,6 +397,192 @@ func TestGetByFirebaseUID_NilAvatarURL(t *testing.T) {
 	}
 }
 
+// ─── GetByUsername tests ──────────────────────────────────────────────────────
+
+func TestGetByUsername_NotFound(t *testing.T) {
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: nil})
+
+	user, err := repo.GetByUsername(context.Background(), "unknown-user")
+
+	if err != nil {
+		t.Fatalf("expected nil error for not-found, got: %v", err)
+	}
+	if user != nil {
+		t.Errorf("expected nil user, got: %+v", user)
+	}
+}
+
+func TestGetByUsername_Found(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	avatarURL := "https://example.com/avatar.png"
+	expected := &repository.User{
+		ID:          "00000000-0000-0000-0000-000000000020",
+		FirebaseUID: "firebase-uid-20",
+		Username:    "carol",
+		AvatarURL:   &avatarURL,
+		CreatedAt:   now,
+	}
+
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: expected})
+	got, err := repo.GetByUsername(context.Background(), "carol")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil user, got nil")
+	}
+	if got.ID != expected.ID {
+		t.Errorf("ID: got %q, want %q", got.ID, expected.ID)
+	}
+	if got.Username != expected.Username {
+		t.Errorf("Username: got %q, want %q", got.Username, expected.Username)
+	}
+	if got.AvatarURL == nil || *got.AvatarURL != avatarURL {
+		t.Errorf("AvatarURL: got %v, want %q", got.AvatarURL, avatarURL)
+	}
+}
+
+func TestGetByUsername_NilAvatarURL(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	expected := &repository.User{
+		ID:          "00000000-0000-0000-0000-000000000021",
+		FirebaseUID: "firebase-uid-21",
+		Username:    "dave",
+		AvatarURL:   nil,
+		CreatedAt:   now,
+	}
+
+	repo := repository.NewUserRepository(&rowQuerier{t: t, user: expected})
+	got, err := repo.GetByUsername(context.Background(), "dave")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if got.AvatarURL != nil {
+		t.Errorf("expected nil AvatarURL, got %q", *got.AvatarURL)
+	}
+}
+
+// ─── GetVideosByUserID tests ──────────────────────────────────────────────────
+
+// videosQuerier is a UserQuerier stub that returns pre-configured video rows
+// from QueryContext.
+type videosQuerier struct {
+	t      *testing.T
+	videos []repository.Video
+	qErr   error
+}
+
+func (q *videosQuerier) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
+	return okResult{}, nil
+}
+
+func (q *videosQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
+}
+
+func (q *videosQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	q.t.Helper()
+	if q.qErr != nil {
+		return nil, q.qErr
+	}
+	if len(q.videos) == 0 {
+		return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
+	}
+	// Build fakedb rows for each video.
+	now := time.Now().Truncate(time.Second)
+	var rows [][]driver.Value
+	for _, v := range q.videos {
+		thumbVal := driver.Value(nil)
+		if v.ThumbnailURL != nil {
+			thumbVal = *v.ThumbnailURL
+		}
+		ts := v.CreatedAt
+		if ts.IsZero() {
+			ts = now
+		}
+		rows = append(rows, []driver.Value{v.ID, v.Title, thumbVal, v.ViewCount, ts})
+	}
+	dsn := registerResults(q.t, []fakeQueryResult{
+		{
+			columns: []string{"id", "title", "thumbnail_url", "view_count", "created_at"},
+			rows:    rows,
+		},
+	})
+	db, _ := sql.Open("fakedb", dsn)
+	return db.QueryContext(context.Background(),
+		"SELECT id, title, thumbnail_url, view_count, created_at FROM videos")
+}
+
+func TestGetVideosByUserID_Empty(t *testing.T) {
+	q := &videosQuerier{t: t, videos: nil}
+	repo := repository.NewUserRepository(q)
+
+	videos, err := repo.GetVideosByUserID(context.Background(), "user-1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(videos) != 0 {
+		t.Errorf("expected 0 videos, got %d", len(videos))
+	}
+}
+
+func TestGetVideosByUserID_ReturnsVideos(t *testing.T) {
+	thumb := "https://example.com/thumb.jpg"
+	now := time.Now().Truncate(time.Second)
+	expected := []repository.Video{
+		{ID: "v1", Title: "Hello World", ThumbnailURL: &thumb, ViewCount: 42, CreatedAt: now},
+		{ID: "v2", Title: "No Thumb", ThumbnailURL: nil, ViewCount: 7, CreatedAt: now},
+	}
+
+	q := &videosQuerier{t: t, videos: expected}
+	repo := repository.NewUserRepository(q)
+
+	got, err := repo.GetVideosByUserID(context.Background(), "user-1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 videos, got %d", len(got))
+	}
+	if got[0].ID != "v1" {
+		t.Errorf("video[0].ID: got %q, want %q", got[0].ID, "v1")
+	}
+	if got[0].Title != "Hello World" {
+		t.Errorf("video[0].Title: got %q, want %q", got[0].Title, "Hello World")
+	}
+	if got[0].ThumbnailURL == nil || *got[0].ThumbnailURL != thumb {
+		t.Errorf("video[0].ThumbnailURL: got %v, want %q", got[0].ThumbnailURL, thumb)
+	}
+	if got[0].ViewCount != 42 {
+		t.Errorf("video[0].ViewCount: got %d, want 42", got[0].ViewCount)
+	}
+	if got[1].ThumbnailURL != nil {
+		t.Errorf("video[1].ThumbnailURL: expected nil, got %q", *got[1].ThumbnailURL)
+	}
+}
+
+func TestGetVideosByUserID_QueryError(t *testing.T) {
+	dbErr := errors.New("query failed")
+	q := &videosQuerier{t: t, qErr: dbErr}
+	repo := repository.NewUserRepository(q)
+
+	videos, err := repo.GetVideosByUserID(context.Background(), "user-1")
+
+	if videos != nil {
+		t.Errorf("expected nil videos on error")
+	}
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected wrapped dbErr, got: %v", err)
+	}
+}
+
 // ─── UpdateProfile querier stub ───────────────────────────────────────────────
 
 // updateQuerier extends rowQuerier with configurable RowsAffected.
@@ -385,6 +612,10 @@ func (q *updateQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *
 		"SELECT id, firebase_uid, username, avatar_url, created_at FROM users WHERE firebase_uid = $1",
 		q.user.FirebaseUID,
 	)
+}
+
+func (q *updateQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
 }
 
 type rowsAffectedResult struct{ n int64 }
