@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+
 	"github.com/ai-teammate/mytube/api/internal/middleware"
 	"github.com/ai-teammate/mytube/api/internal/repository"
 	"github.com/ai-teammate/mytube/api/internal/storage"
@@ -24,6 +26,12 @@ const (
 	// maxTitleLength is the maximum allowed title length in runes (matches the
 	// VARCHAR(255) column constraint).
 	maxTitleLength = 255
+
+	// maxTags is the maximum number of tags allowed per video.
+	maxTags = 20
+
+	// maxTagLength is the maximum length of a single tag in runes.
+	maxTagLength = 50
 )
 
 // allowedMIMETypes lists MIME types accepted for video uploads.
@@ -148,28 +156,29 @@ func (h *VideosHandler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	// Sanitise tags: trim whitespace, drop empty strings, deduplicate.
 	tags := sanitiseTags(req.Tags)
 
-	// Build the GCS object path: raw/<userID>/<videoID-placeholder>.
-	// We use the video ID returned by Create, so we insert first then sign.
+	// Validate tag count and per-tag length.
+	if len(tags) > maxTags {
+		writeJSONError(w, fmt.Sprintf("too many tags; maximum is %d", maxTags), http.StatusUnprocessableEntity)
+		return
+	}
+	for _, tag := range tags {
+		if utf8.RuneCountInString(tag) > maxTagLength {
+			writeJSONError(w, fmt.Sprintf("tag %q exceeds maximum length of %d characters", tag, maxTagLength), http.StatusUnprocessableEntity)
+			return
+		}
+	}
+
 	var desc *string
 	if d := strings.TrimSpace(req.Description); d != "" {
 		desc = &d
 	}
 
-	videoRecord, err := h.videos.Create(r.Context(), repository.CreateVideoParams{
-		UploaderID:  user.ID,
-		Title:       req.Title,
-		Description: desc,
-		CategoryID:  req.CategoryID,
-		Tags:        tags,
-		GCSRawPath:  "", // will be updated by transcoder on processing
-	})
-	if err != nil {
-		log.Printf("POST /api/videos: create video for user %s: %v", user.ID, err)
-		writeJSONError(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	objectPath := fmt.Sprintf("raw/%s/%s", user.ID, videoRecord.ID)
+	// Pre-generate the video ID so the GCS object path is known before the DB
+	// insert. This allows us to sign the URL first and only create the DB record
+	// if signing succeeds — preventing orphaned pending rows when GCS is
+	// unavailable or misconfigured.
+	videoID := uuid.New().String()
+	objectPath := fmt.Sprintf("raw/%s/%s", user.ID, videoID)
 
 	uploadURL, err := h.signer.SignPutURL(r.Context(), storage.SignedURLOptions{
 		Bucket:      h.bucket,
@@ -178,7 +187,22 @@ func (h *VideosHandler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		Expires:     signedURLTTL,
 	})
 	if err != nil {
-		log.Printf("POST /api/videos: sign URL for video %s: %v", videoRecord.ID, err)
+		log.Printf("POST /api/videos: sign URL for video %s: %v", videoID, err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	videoRecord, err := h.videos.Create(r.Context(), repository.CreateVideoParams{
+		ID:          videoID,
+		UploaderID:  user.ID,
+		Title:       req.Title,
+		Description: desc,
+		CategoryID:  req.CategoryID,
+		Tags:        tags,
+		GCSRawPath:  objectPath,
+	})
+	if err != nil {
+		log.Printf("POST /api/videos: create video for user %s: %v", user.ID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

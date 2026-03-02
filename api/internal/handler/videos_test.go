@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,12 +20,22 @@ import (
 // ─── stubs ────────────────────────────────────────────────────────────────────
 
 // stubVideoCreator is a VideoCreator stub.
+// When record is non-nil it is returned as-is, but the record's ID is
+// overwritten with the ID supplied in CreateVideoParams so that tests which
+// verify the object path (raw/<userID>/<videoID>) see a consistent value.
 type stubVideoCreator struct {
 	record *repository.VideoRecord
 	err    error
 }
 
-func (s *stubVideoCreator) Create(_ context.Context, _ repository.CreateVideoParams) (*repository.VideoRecord, error) {
+func (s *stubVideoCreator) Create(_ context.Context, p repository.CreateVideoParams) (*repository.VideoRecord, error) {
+	if s.record != nil && p.ID != "" {
+		// Return a copy with the handler-supplied ID so callers can match the
+		// object path that was passed to the signer.
+		copied := *s.record
+		copied.ID = p.ID
+		return &copied, s.err
+	}
 	return s.record, s.err
 }
 
@@ -445,8 +456,9 @@ func TestNewVideosHandler_POST_Success_Returns201WithVideoIDAndUploadURL(t *test
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("could not decode response: %v", err)
 	}
-	if resp.VideoID != video.ID {
-		t.Errorf("video_id: got %q, want %q", resp.VideoID, video.ID)
+	// The handler pre-generates the video UUID; verify the ID is non-empty.
+	if resp.VideoID == "" {
+		t.Error("video_id: expected non-empty UUID in response")
 	}
 	if resp.UploadURL != signedURL {
 		t.Errorf("upload_url: got %q, want %q", resp.UploadURL, signedURL)
@@ -480,11 +492,10 @@ func TestNewVideosHandler_POST_SignerReceivesCorrectBucket(t *testing.T) {
 func TestNewVideosHandler_POST_SignerReceivesObjectPathWithUserAndVideoID(t *testing.T) {
 	t.Setenv("RAW_UPLOADS_BUCKET", "test-bucket")
 	user := defaultUser()
-	video := defaultVideoRecord()
 	signer := &stubStorageSigner{url: "https://signed.url"}
 
 	h := buildVideosHandler(
-		&stubVideoCreator{record: video},
+		&stubVideoCreator{record: defaultVideoRecord()},
 		&stubUserIDProvider{user: user},
 		signer,
 	)
@@ -495,11 +506,22 @@ func TestNewVideosHandler_POST_SignerReceivesObjectPathWithUserAndVideoID(t *tes
 			bytes.NewBufferString(`{"title":"My Video","mime_type":"video/mp4"}`)),
 		claims,
 	)
-	serveVideos(h, req)
+	rec := serveVideos(h, req)
 
-	expectedObject := "raw/" + user.ID + "/" + video.ID
-	if signer.capturedOpts.Object != expectedObject {
-		t.Errorf("signer Object: got %q, want %q", signer.capturedOpts.Object, expectedObject)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// The handler pre-generates a UUID for the video, so the object path is
+	// raw/<userID>/<generatedUUID>. Verify the prefix and that both segments
+	// are non-empty; the exact UUID value is non-deterministic.
+	expectedPrefix := "raw/" + user.ID + "/"
+	if !strings.HasPrefix(signer.capturedOpts.Object, expectedPrefix) {
+		t.Errorf("signer Object %q does not start with %q", signer.capturedOpts.Object, expectedPrefix)
+	}
+	videoIDSegment := strings.TrimPrefix(signer.capturedOpts.Object, expectedPrefix)
+	if videoIDSegment == "" {
+		t.Error("signer Object: video ID segment is empty")
 	}
 }
 
@@ -671,11 +693,96 @@ func (r *recordingVideoCreator) Create(_ context.Context, p repository.CreateVid
 	}
 	rawPath := "raw/u/v"
 	return &repository.VideoRecord{
-		ID:         "default-vid",
+		ID:         p.ID,
 		UploaderID: p.UploaderID,
 		Title:      p.Title,
 		Status:     "pending",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now(),
 	}, nil
+}
+
+func TestNewVideosHandler_POST_TooManyTags_Returns422(t *testing.T) {
+	h := buildVideosHandler(
+		&stubVideoCreator{record: defaultVideoRecord()},
+		&stubUserIDProvider{user: defaultUser()},
+		&stubStorageSigner{url: "https://signed.url"},
+	)
+
+	// Build a request with 21 unique tags (limit is 20).
+	tags := make([]string, 21)
+	for i := range tags {
+		tags[i] = strings.Repeat("a", i+1) // unique tags: "a", "aa", ...
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":     "My Video",
+		"mime_type": "video/mp4",
+		"tags":      tags,
+	})
+	claims := &auth.TokenClaims{UID: "uid1", Email: "user@example.com"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPost, "/api/videos", bytes.NewBuffer(body)),
+		claims,
+	)
+	rec := serveVideos(h, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 on too many tags, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNewVideosHandler_POST_TagTooLong_Returns422(t *testing.T) {
+	h := buildVideosHandler(
+		&stubVideoCreator{record: defaultVideoRecord()},
+		&stubUserIDProvider{user: defaultUser()},
+		&stubStorageSigner{url: "https://signed.url"},
+	)
+
+	// A single tag of 51 runes (limit is 50).
+	longTag := strings.Repeat("x", 51)
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":     "My Video",
+		"mime_type": "video/mp4",
+		"tags":      []string{longTag},
+	})
+	claims := &auth.TokenClaims{UID: "uid1", Email: "user@example.com"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPost, "/api/videos", bytes.NewBuffer(body)),
+		claims,
+	)
+	rec := serveVideos(h, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 on tag too long, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNewVideosHandler_POST_MaxTagsAccepted(t *testing.T) {
+	t.Setenv("RAW_UPLOADS_BUCKET", "test-bucket")
+	h := buildVideosHandler(
+		&stubVideoCreator{record: defaultVideoRecord()},
+		&stubUserIDProvider{user: defaultUser()},
+		&stubStorageSigner{url: "https://signed.url"},
+	)
+
+	// Exactly 20 unique tags — should be accepted.
+	tags := make([]string, 20)
+	for i := range tags {
+		tags[i] = strings.Repeat("a", i+1)
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":     "My Video",
+		"mime_type": "video/mp4",
+		"tags":      tags,
+	})
+	claims := &auth.TokenClaims{UID: "uid1", Email: "user@example.com"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPost, "/api/videos", bytes.NewBuffer(body)),
+		claims,
+	)
+	rec := serveVideos(h, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected 201 for exactly %d tags, got %d: %s", 20, rec.Code, rec.Body.String())
+	}
 }

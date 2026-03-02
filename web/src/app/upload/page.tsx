@@ -152,6 +152,11 @@ export default function UploadPage() {
 
     // Upload the file directly to GCS via the signed URL using XHR (supports
     // onprogress for a real-time progress bar).
+    // Use a local flag instead of reading the `phase` state value, which is
+    // captured by closure and will not reflect updates made by the .catch()
+    // handler before the guard below runs.
+    let uploadFailed = false;
+
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
@@ -177,18 +182,19 @@ export default function UploadPage() {
       xhr.setRequestHeader("Content-Type", file.type);
       xhr.send(file);
     }).catch((err: unknown) => {
+      uploadFailed = true;
       const msg =
         err instanceof Error ? err.message : "Upload failed.";
       setErrorMessage(msg);
       setPhase("error");
-      return;
     });
 
-    if (phase !== "error") {
+    if (!uploadFailed) {
       setPhase("done");
-      // Redirect to dashboard/management page showing the video as "Processing".
-      // For MVP the profile page serves as the video management dashboard.
-      router.replace(`/u/${user!.displayName ?? "me"}?uploaded=${videoId}`);
+      // Redirect to the dashboard showing the video as "Processing".
+      // Use a generic dashboard route rather than a user-profile URL to avoid
+      // depending on the Firebase displayName (client-controlled, may be null).
+      router.replace(`/dashboard?uploaded=${videoId}`);
     }
   }
 
@@ -327,6 +333,8 @@ export default function UploadPage() {
               disabled={phase === "uploading"}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 bg-white"
             >
+              {/* Category IDs match seeds in api/migrations/0002_seed_categories.up.sql.
+                  If that migration changes, these values must be updated to match. */}
               <option value="">— Select a category —</option>
               <option value="1">Education</option>
               <option value="2">Entertainment</option>

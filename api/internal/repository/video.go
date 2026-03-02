@@ -23,6 +23,9 @@ type VideoRecord struct {
 
 // CreateVideoParams holds the input required to create a new video row.
 type CreateVideoParams struct {
+	// ID is the pre-generated UUID for the video row.  The handler generates
+	// this before signing the GCS URL so that both use the same video ID.
+	ID          string
 	UploaderID  string
 	Title       string
 	Description *string
@@ -53,11 +56,12 @@ func NewVideoRepository(db VideoQuerier) *VideoRepository {
 // Returns the created VideoRecord.
 func (r *VideoRepository) Create(ctx context.Context, p CreateVideoParams) (*VideoRecord, error) {
 	const insertSQL = `
-INSERT INTO videos (uploader_id, title, description, category_id, status, gcs_raw_path)
-VALUES ($1, $2, $3, $4, 'pending', $5)
+INSERT INTO videos (id, uploader_id, title, description, category_id, status, gcs_raw_path)
+VALUES ($1, $2, $3, $4, $5, 'pending', $6)
 RETURNING id, uploader_id, title, description, category_id, status, gcs_raw_path, created_at`
 
 	row := r.db.QueryRowContext(ctx, insertSQL,
+		p.ID,
 		p.UploaderID,
 		p.Title,
 		p.Description,

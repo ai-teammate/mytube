@@ -49,6 +49,10 @@ func main() {
 		log.Fatalf("gcs client: %v", err)
 	}
 
+	if os.Getenv("RAW_UPLOADS_BUCKET") == "" {
+		log.Fatalf("RAW_UPLOADS_BUCKET environment variable is required")
+	}
+
 	userRepo := repository.NewUserRepository(db)
 	videoRepo := repository.NewVideoRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
