@@ -97,8 +97,8 @@ class TestGCSCredentialsConfiguredOnCI:
         Core assertion: storage.Client() must not raise DefaultCredentialsError.
 
         This mirrors the gcs_service fixture in test_mytube_49.py. When
-        GOOGLE_APPLICATION_CREDENTIALS is properly configured, the client
-        is created successfully and the GCS tests proceed to execution.
+        GOOGLE_APPLICATION_CREDENTIALS is properly configured, ADC resolves the
+        credentials automatically and the client is created successfully.
         """
         gcs_storage, DefaultCredentialsError = _require_gcs_imports()
 
@@ -107,7 +107,7 @@ class TestGCSCredentialsConfiguredOnCI:
             pytest.skip("Valid credentials file not available — covered by prior tests")
 
         try:
-            client = gcs_storage.Client.from_service_account_json(credentials_path)
+            client = gcs_storage.Client()
         except DefaultCredentialsError as exc:
             pytest.fail(
                 f"storage.Client() raised DefaultCredentialsError — GCP credentials are not "
@@ -136,7 +136,7 @@ class TestGCSCredentialsConfiguredOnCI:
             pytest.skip("Valid credentials file not available — covered by prior tests")
 
         try:
-            storage_client = gcs_storage.Client.from_service_account_json(credentials_path)
+            storage_client = gcs_storage.Client()
         except DefaultCredentialsError as exc:
             pytest.fail(
                 f"storage.Client() raised DefaultCredentialsError: {exc}"
