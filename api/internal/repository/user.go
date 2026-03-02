@@ -79,6 +79,32 @@ WHERE  firebase_uid = $1`
 	return &u, nil
 }
 
+// UpdateProfile updates the username and avatar_url for the user identified by
+// firebaseUID.  avatarURL may be nil to clear the avatar.  Returns the updated
+// user row.  Returns (nil, nil) when no row matches the given firebaseUID.
+func (r *UserRepository) UpdateProfile(ctx context.Context, firebaseUID, username string, avatarURL *string) (*User, error) {
+	const updateSQL = `
+UPDATE users
+SET    username   = $1,
+       avatar_url = $2
+WHERE  firebase_uid = $3`
+
+	result, err := r.db.ExecContext(ctx, updateSQL, username, avatarURL, firebaseUID)
+	if err != nil {
+		return nil, fmt.Errorf("update user profile: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("update user profile rows affected: %w", err)
+	}
+	if rows == 0 {
+		return nil, nil
+	}
+
+	return r.GetByFirebaseUID(ctx, firebaseUID)
+}
+
 // emailPrefix returns the portion of addr before the first "@".
 // If addr contains no "@", the whole string is returned.
 func emailPrefix(addr string) string {

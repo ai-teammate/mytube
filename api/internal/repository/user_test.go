@@ -355,3 +355,169 @@ func TestGetByFirebaseUID_NilAvatarURL(t *testing.T) {
 		t.Errorf("expected nil AvatarURL, got %q", *got.AvatarURL)
 	}
 }
+
+// ─── UpdateProfile querier stub ───────────────────────────────────────────────
+
+// updateQuerier extends rowQuerier with configurable RowsAffected.
+type updateQuerier struct {
+	t            *testing.T
+	user         *repository.User
+	execErr      error
+	rowsAffected int64
+	// capturedExecArgs holds the args passed to ExecContext.
+	capturedExecArgs []any
+}
+
+func (q *updateQuerier) ExecContext(_ context.Context, _ string, args ...any) (sql.Result, error) {
+	q.capturedExecArgs = args
+	if q.execErr != nil {
+		return nil, q.execErr
+	}
+	return rowsAffectedResult{n: q.rowsAffected}, nil
+}
+
+func (q *updateQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	if q.user == nil {
+		return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
+	}
+	return userDB(q.t, q.user).QueryRowContext(
+		context.Background(),
+		"SELECT id, firebase_uid, username, avatar_url, created_at FROM users WHERE firebase_uid = $1",
+		q.user.FirebaseUID,
+	)
+}
+
+type rowsAffectedResult struct{ n int64 }
+
+func (r rowsAffectedResult) LastInsertId() (int64, error) { return 0, nil }
+func (r rowsAffectedResult) RowsAffected() (int64, error) { return r.n, nil }
+
+// ─── UpdateProfile tests ──────────────────────────────────────────────────────
+
+func TestUpdateProfile_ExecError(t *testing.T) {
+	dbErr := errors.New("update failed")
+	q := &updateQuerier{t: t, execErr: dbErr, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	user, err := repo.UpdateProfile(context.Background(), "uid1", "alice", nil)
+
+	if user != nil {
+		t.Errorf("expected nil user on exec error")
+	}
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected wrapped dbErr, got: %v", err)
+	}
+}
+
+func TestUpdateProfile_NoRowsAffected_ReturnsNilUser(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	user, err := repo.UpdateProfile(context.Background(), "unknown-uid", "alice", nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user != nil {
+		t.Errorf("expected nil user when no rows affected")
+	}
+}
+
+func TestUpdateProfile_RowAffected_ReturnsUpdatedUser(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	avatarURL := "https://example.com/new.png"
+	expected := &repository.User{
+		ID:          "00000000-0000-0000-0000-000000000010",
+		FirebaseUID: "firebase-uid-10",
+		Username:    "alice-updated",
+		AvatarURL:   &avatarURL,
+		CreatedAt:   now,
+	}
+	q := &updateQuerier{t: t, user: expected, rowsAffected: 1}
+	repo := repository.NewUserRepository(q)
+
+	got, err := repo.UpdateProfile(context.Background(), "firebase-uid-10", "alice-updated", &avatarURL)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if got.Username != "alice-updated" {
+		t.Errorf("Username: got %q, want %q", got.Username, "alice-updated")
+	}
+	if got.AvatarURL == nil || *got.AvatarURL != avatarURL {
+		t.Errorf("AvatarURL: got %v, want %q", got.AvatarURL, avatarURL)
+	}
+}
+
+func TestUpdateProfile_PassesFirebaseUIDAsThirdArg(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.UpdateProfile(context.Background(), "my-firebase-uid", "bob", nil)
+
+	if len(q.capturedExecArgs) < 3 {
+		t.Fatalf("expected ≥3 exec args, got %d", len(q.capturedExecArgs))
+	}
+	uid, ok := q.capturedExecArgs[2].(string)
+	if !ok {
+		t.Fatalf("expected string arg[2], got %T", q.capturedExecArgs[2])
+	}
+	if uid != "my-firebase-uid" {
+		t.Errorf("arg[2] (firebase_uid): got %q, want %q", uid, "my-firebase-uid")
+	}
+}
+
+func TestUpdateProfile_PassesUsernameAsFirstArg(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.UpdateProfile(context.Background(), "uid", "newusername", nil)
+
+	if len(q.capturedExecArgs) < 1 {
+		t.Fatalf("expected ≥1 exec args, got %d", len(q.capturedExecArgs))
+	}
+	username, ok := q.capturedExecArgs[0].(string)
+	if !ok {
+		t.Fatalf("expected string arg[0], got %T", q.capturedExecArgs[0])
+	}
+	if username != "newusername" {
+		t.Errorf("arg[0] (username): got %q, want %q", username, "newusername")
+	}
+}
+
+func TestUpdateProfile_PassesAvatarURLAsSecondArg(t *testing.T) {
+	avatarURL := "https://example.com/avatar.png"
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.UpdateProfile(context.Background(), "uid", "alice", &avatarURL)
+
+	if len(q.capturedExecArgs) < 2 {
+		t.Fatalf("expected ≥2 exec args, got %d", len(q.capturedExecArgs))
+	}
+	avatarArg, ok := q.capturedExecArgs[1].(*string)
+	if !ok {
+		t.Fatalf("expected *string arg[1], got %T", q.capturedExecArgs[1])
+	}
+	if avatarArg == nil || *avatarArg != avatarURL {
+		t.Errorf("arg[1] (avatar_url): got %v, want %q", avatarArg, avatarURL)
+	}
+}
+
+func TestUpdateProfile_NilAvatarURL_PassedThrough(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.UpdateProfile(context.Background(), "uid", "alice", nil)
+
+	if len(q.capturedExecArgs) < 2 {
+		t.Fatalf("expected ≥2 exec args, got %d", len(q.capturedExecArgs))
+	}
+	avatarArg := q.capturedExecArgs[1]
+	if avatarArg != (*string)(nil) {
+		t.Errorf("expected nil *string arg[1], got %v (%T)", avatarArg, avatarArg)
+	}
+}
