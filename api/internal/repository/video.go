@@ -164,6 +164,184 @@ ORDER BY tag`
 	return tags, nil
 }
 
+// DashboardVideo represents a video row as returned by the dashboard endpoint.
+// All statuses are included (pending/processing/ready/failed).
+type DashboardVideo struct {
+	ID           string
+	Title        string
+	Status       string
+	ThumbnailURL *string
+	ViewCount    int64
+	CreatedAt    time.Time
+}
+
+// UpdateVideoParams holds the input required to update an existing video row.
+type UpdateVideoParams struct {
+	Title       string
+	Description *string
+	CategoryID  *int
+	Tags        []string
+}
+
+// GetByIDForOwner fetches a video row by ID without filtering by status.
+// Returns (nil, nil) when no matching row exists.
+func (r *VideoRepository) GetByIDForOwner(ctx context.Context, videoID string) (*VideoDetail, error) {
+	const selectSQL = `
+SELECT v.id,
+       v.title,
+       v.description,
+       v.hls_manifest_path,
+       v.thumbnail_url,
+       v.view_count,
+       v.created_at,
+       v.status,
+       u.username,
+       u.avatar_url
+FROM   videos v
+JOIN   users  u ON u.id = v.uploader_id
+WHERE  v.id = $1`
+
+	row := r.db.QueryRowContext(ctx, selectSQL, videoID)
+
+	var v VideoDetail
+	if err := row.Scan(
+		&v.ID,
+		&v.Title,
+		&v.Description,
+		&v.HLSManifestPath,
+		&v.ThumbnailURL,
+		&v.ViewCount,
+		&v.CreatedAt,
+		&v.Status,
+		&v.UploaderUsername,
+		&v.UploaderAvatarURL,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get video by id for owner: %w", err)
+	}
+	return &v, nil
+}
+
+// GetVideosByUploaderID returns all non-deleted videos uploaded by the user
+// with the given internal user ID (all statuses except 'deleted'), ordered by
+// created_at DESC (newest first).
+func (r *VideoRepository) GetVideosByUploaderID(ctx context.Context, uploaderID string) ([]DashboardVideo, error) {
+	const selectSQL = `
+SELECT id, title, status, thumbnail_url, view_count, created_at
+FROM   videos
+WHERE  uploader_id = $1
+  AND  status != 'deleted'
+ORDER BY created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, selectSQL, uploaderID)
+	if err != nil {
+		return nil, fmt.Errorf("get videos by uploader id: %w", err)
+	}
+	defer rows.Close()
+
+	var videos []DashboardVideo
+	for rows.Next() {
+		var v DashboardVideo
+		if err := rows.Scan(&v.ID, &v.Title, &v.Status, &v.ThumbnailURL, &v.ViewCount, &v.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan dashboard video row: %w", err)
+		}
+		videos = append(videos, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dashboard video rows: %w", err)
+	}
+	if videos == nil {
+		videos = []DashboardVideo{}
+	}
+	return videos, nil
+}
+
+// Update updates the title, description, category_id, and tags for the video
+// with the given ID. Tags are replaced: existing tags are deleted and the new
+// set is inserted. Returns the updated VideoDetail (without status filter).
+// Returns (nil, nil) when no row matches the given videoID.
+func (r *VideoRepository) Update(ctx context.Context, videoID string, p UpdateVideoParams) (*VideoDetail, error) {
+	const updateSQL = `
+UPDATE videos
+SET    title       = $1,
+       description = $2,
+       category_id = $3
+WHERE  id = $4`
+
+	result, err := r.db.ExecContext(ctx, updateSQL, p.Title, p.Description, p.CategoryID, videoID)
+	if err != nil {
+		return nil, fmt.Errorf("update video: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("update video rows affected: %w", err)
+	}
+	if rows == 0 {
+		return nil, nil
+	}
+
+	// Replace tags: delete existing then insert new set.
+	const deleteTagsSQL = `DELETE FROM video_tags WHERE video_id = $1`
+	if _, err := r.db.ExecContext(ctx, deleteTagsSQL, videoID); err != nil {
+		return nil, fmt.Errorf("delete tags for video %s: %w", videoID, err)
+	}
+
+	for _, tag := range p.Tags {
+		if tag == "" {
+			continue
+		}
+		const insertTagSQL = `
+INSERT INTO video_tags (video_id, tag)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING`
+		if _, err := r.db.ExecContext(ctx, insertTagSQL, videoID, tag); err != nil {
+			return nil, fmt.Errorf("insert tag %q for video %s: %w", tag, videoID, err)
+		}
+	}
+
+	return r.GetByIDForOwner(ctx, videoID)
+}
+
+// SoftDelete sets the status of the video with the given ID to 'deleted'.
+// Returns (false, nil) when no matching row exists.
+func (r *VideoRepository) SoftDelete(ctx context.Context, videoID string) (bool, error) {
+	const updateSQL = `
+UPDATE videos
+SET    status = 'deleted'
+WHERE  id = $1
+  AND  status != 'deleted'`
+
+	result, err := r.db.ExecContext(ctx, updateSQL, videoID)
+	if err != nil {
+		return false, fmt.Errorf("soft delete video: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("soft delete video rows affected: %w", err)
+	}
+	return rows > 0, nil
+}
+
+// GetUploaderIDByVideoID returns the uploader_id for the given video ID,
+// or ("", nil) if no such video exists (including already-deleted videos).
+func (r *VideoRepository) GetUploaderIDByVideoID(ctx context.Context, videoID string) (string, error) {
+	const selectSQL = `SELECT uploader_id FROM videos WHERE id = $1`
+
+	row := r.db.QueryRowContext(ctx, selectSQL, videoID)
+	var uploaderID string
+	if err := row.Scan(&uploaderID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", fmt.Errorf("get uploader id by video id: %w", err)
+	}
+	return uploaderID, nil
+}
+
 // Create inserts a new video row with status=pending and the given GCS raw path,
 // then inserts any provided tags into the video_tags table.
 // Returns the created VideoRecord.
