@@ -305,3 +305,44 @@ class WatchPage:
             return bool(result)
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Rating widget queries and actions
+    # ------------------------------------------------------------------
+
+    _RATING_GROUP = '[role="group"][aria-label="Star rating"]'
+    _RATING_SUMMARY_TIMEOUT = 10_000  # ms — wait for the summary span to appear
+
+    def get_rating_summary_text(self) -> Optional[str]:
+        """Return the rating summary text (e.g. '4.2 / 5 (10 ratings)'), or None."""
+        locator = self._page.locator('span:has-text("/ 5")')
+        if locator.count() == 0:
+            return None
+        return (locator.first.text_content() or "").strip()
+
+    def wait_for_rating_summary(self, timeout: float = _RATING_SUMMARY_TIMEOUT) -> None:
+        """Wait until the rating summary span ('X.X / 5 ...') is visible."""
+        self._page.locator('span:has-text("/ 5")').wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def click_star(self, n: int) -> None:
+        """Click the nth star button (1–5) in the rating widget."""
+        label = f"Rate {n} star{'s' if n != 1 else ''}"
+        self._page.locator(f'button[aria-label="{label}"]').click()
+
+    def is_star_pressed(self, n: int) -> bool:
+        """Return True if star *n* has aria-pressed='true'."""
+        label = f"Rate {n} star{'s' if n != 1 else ''}"
+        el = self._page.query_selector(f'button[aria-label="{label}"]')
+        if el is None:
+            return False
+        return el.get_attribute("aria-pressed") == "true"
+
+    def is_rating_widget_visible(self) -> bool:
+        """Return True if the star rating group is present in the DOM."""
+        return self._page.locator(self._RATING_GROUP).count() > 0
+
+    def has_login_to_rate_prompt(self) -> bool:
+        """Return True if the 'Log in to rate this video.' link is visible."""
+        return self._page.get_by_text("to rate this video.").count() > 0
