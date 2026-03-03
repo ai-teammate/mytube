@@ -107,6 +107,13 @@ gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
   --role="roles/storage.legacyBucketReader" \
   --project="${PROJECT}"
 
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} legacyBucketReader on ${HLS_BUCKET} (CI/testing read access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.legacyBucketReader" \
+  --project="${PROJECT}"
+
 # ── 5. Allow trigger service to invoke Cloud Run Jobs ─────────────────────────
 # The trigger Cloud Run Service needs run.jobs.run permission.
 echo ""

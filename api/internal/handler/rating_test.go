@@ -373,3 +373,117 @@ func TestRatingHandler_POST_VideoNotFound_Returns404(t *testing.T) {
 		t.Errorf("expected 404 for non-existent video on POST, got %d", rec.Code)
 	}
 }
+
+// ─── Regression tests for MYTUBE-212 ─────────────────────────────────────────
+
+// trackingRatingUserProvider records calls to GetByFirebaseUID so tests can
+// assert that the GET handler resolves the internal user ID.
+type trackingRatingUserProvider struct {
+	user          *repository.User
+	userErr       error
+	calledWithUID string
+}
+
+func (s *trackingRatingUserProvider) GetByFirebaseUID(_ context.Context, uid string) (*repository.User, error) {
+	s.calledWithUID = uid
+	return s.user, s.userErr
+}
+
+// TestRatingHandler_GET_JSONFieldNames verifies that the response body uses the
+// documented keys "average", "count", and "my_rating" (not "average_rating" /
+// "rating_count" which were the broken names before the fix).
+func TestRatingHandler_GET_JSONFieldNames(t *testing.T) {
+	store := &stubRatingStore{summary: makeRatingSummary(4.2, 5, nil)}
+	users := &stubRatingUserProvider{}
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var raw map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, key := range []string{"average", "count", "my_rating"} {
+		if _, ok := raw[key]; !ok {
+			t.Errorf("expected JSON key %q in response, got keys: %v", key, raw)
+		}
+	}
+	for _, key := range []string{"average_rating", "rating_count"} {
+		if _, ok := raw[key]; ok {
+			t.Errorf("unexpected JSON key %q in response (wrong field name)", key)
+		}
+	}
+}
+
+// TestRatingHandler_GET_AuthenticatedUser_CallsUserProvider verifies that the
+// GET handler resolves the authenticated caller's internal user ID via the user
+// provider rather than passing the raw Firebase UID to GetSummary.  Before the
+// fix, GetByFirebaseUID was never called from the GET path.
+func TestRatingHandler_GET_AuthenticatedUser_CallsUserProvider(t *testing.T) {
+	myRating := 4
+	store := &stubRatingStore{summary: makeRatingSummary(4.2, 5, &myRating)}
+	users := &trackingRatingUserProvider{
+		user: &repository.User{ID: "internal-user-uuid", FirebaseUID: "firebase-uid-1"},
+	}
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
+	req = authRequest(req) // injects claims.UID = "firebase-uid-1"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if users.calledWithUID != "firebase-uid-1" {
+		t.Errorf("expected GetByFirebaseUID called with %q, got %q", "firebase-uid-1", users.calledWithUID)
+	}
+}
+
+// TestRatingHandler_GET_AuthenticatedUser_UserProviderError_Returns500 checks
+// that a user-provider failure during GET returns 500.
+func TestRatingHandler_GET_AuthenticatedUser_UserProviderError_Returns500(t *testing.T) {
+	store := &stubRatingStore{summary: makeRatingSummary(4.2, 5, nil)}
+	users := &trackingRatingUserProvider{userErr: errors.New("db error")}
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
+	req = authRequest(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on user provider error, got %d", rec.Code)
+	}
+}
+
+// TestRatingHandler_GET_AuthenticatedUser_UserNotInDB_MyRatingIsNull verifies
+// that when the authenticated user has no DB record, my_rating is null rather
+// than an error being returned.
+func TestRatingHandler_GET_AuthenticatedUser_UserNotInDB_MyRatingIsNull(t *testing.T) {
+	store := &stubRatingStore{summary: makeRatingSummary(3.0, 2, nil)}
+	users := &trackingRatingUserProvider{user: nil} // user not found
+	h := handler.NewRatingHandler(store, users, &stubRatingVideoChecker{exists: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+ratingTestVideoID+"/rating", nil)
+	req = authRequest(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 even when user not in DB, got %d", rec.Code)
+	}
+	var body handler.RatingResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.MyRating != nil {
+		t.Errorf("MyRating: expected nil for user not in DB, got %v", *body.MyRating)
+	}
+}

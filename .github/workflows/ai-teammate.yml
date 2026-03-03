@@ -62,7 +62,12 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Update agents submodule to latest main
-        run: git submodule update --remote --merge agents
+        run: |
+          for i in 1 2 3; do
+            git submodule update --remote --merge agents && break
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
 
       - name: Cache JDK 23
         uses: actions/cache@v4

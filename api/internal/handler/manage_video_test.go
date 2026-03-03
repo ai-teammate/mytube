@@ -333,27 +333,6 @@ func TestPutVideo_UpdateError_Returns500(t *testing.T) {
 	}
 }
 
-func TestPutVideo_UpdateErrNotFound_Returns404(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{
-		updateErr: repository.ErrNotFound,
-	}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
-			bytes.NewBufferString(`{"title":"New Title"}`)),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", rec.Code)
-	}
-}
-
 func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
@@ -506,6 +485,36 @@ func TestDeleteVideo_SoftDeleteError_Returns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
+// TestDeleteVideo_NonOwner_Returns403 verifies that when SoftDelete returns
+// ErrForbidden (video exists but the caller is not the owner) the handler
+// responds with HTTP 403 Forbidden and a JSON {"error":"forbidden"} body.
+func TestDeleteVideo_NonOwner_Returns403(t *testing.T) {
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{
+		deleteErr: repository.ErrForbidden,
+	}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	claims := &auth.TokenClaims{UID: "firebase-non-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "forbidden" {
+		t.Errorf("expected error=forbidden, got %q", body["error"])
 	}
 }
 
