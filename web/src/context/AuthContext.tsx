@@ -43,10 +43,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-    });
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (firebaseUser) => {
+        setUser(firebaseUser);
+        setLoading(false);
+      },
+      () => {
+        // Firebase auth error (e.g. auth/invalid-api-key due to missing env
+        // vars at build time). Stop loading so the page can render.
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, []);

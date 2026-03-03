@@ -282,6 +282,56 @@ class WatchPage:
         except Exception:
             return None
 
+    # ------------------------------------------------------------------
+    # Comment section queries (guest / authenticated state)
+    # ------------------------------------------------------------------
+
+    _COMMENT_SECTION = "section[aria-label='Comments']"
+    _COMMENT_HEADING = "section[aria-label='Comments'] h2"
+    _LOGIN_LINK = "section[aria-label='Comments'] a[href='/login']"
+    _COMMENT_TEXTAREA = "section[aria-label='Comments'] textarea[aria-label='Comment body']"
+    _COMMENT_SUBMIT = "section[aria-label='Comments'] button[type='submit']"
+    _AUTH_WAIT_TIMEOUT = 20_000  # ms — Firebase auth resolves quickly for guests
+
+    def wait_for_comment_section_auth_resolved(self, timeout: int = _AUTH_WAIT_TIMEOUT) -> None:
+        """Wait until the comment section finishes resolving auth state.
+
+        After auth resolves, either the login prompt (guest) or the comment
+        form (authenticated user) will be present.  Block until one of them
+        is visible.
+        """
+        self._page.wait_for_selector(
+            f"{self._LOGIN_LINK}, {self._COMMENT_TEXTAREA}",
+            timeout=timeout,
+        )
+
+    def is_comment_section_visible(self) -> bool:
+        """Return True if the Comments section heading is visible."""
+        el = self._page.query_selector(self._COMMENT_HEADING)
+        return bool(el and el.is_visible())
+
+    def has_login_to_comment_prompt(self) -> bool:
+        """Return True if the 'Login to comment' link is visible for guests."""
+        el = self._page.query_selector(self._LOGIN_LINK)
+        return bool(el and el.is_visible())
+
+    def get_login_link_href(self) -> Optional[str]:
+        """Return the href of the 'Login' link in the comment section, or None."""
+        el = self._page.query_selector(self._LOGIN_LINK)
+        if el is None:
+            return None
+        return el.get_attribute("href")
+
+    def has_comment_textarea(self) -> bool:
+        """Return True if the comment text area is present (only for auth users)."""
+        el = self._page.query_selector(self._COMMENT_TEXTAREA)
+        return bool(el and el.is_visible())
+
+    def has_comment_submit_button(self) -> bool:
+        """Return True if the comment submit button is present (only for auth users)."""
+        el = self._page.query_selector(self._COMMENT_SUBMIT)
+        return bool(el and el.is_visible())
+
     def has_hls_source_configured(self) -> bool:
         """Return True if the Video.js player has an HLS (m3u8) source configured."""
         try:

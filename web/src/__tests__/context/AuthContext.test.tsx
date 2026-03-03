@@ -9,17 +9,24 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 // ─── Mock Firebase ────────────────────────────────────────────────────────────
 
 let onAuthStateChangedCallback: ((user: unknown) => void) | null = null;
+let onAuthStateChangedErrorCallback: ((error: Error) => void) | null = null;
 
 const mockSignOut = jest.fn().mockResolvedValue(undefined);
 const mockGetAuth = jest.fn().mockReturnValue({ name: "mock-auth" });
-const mockOnAuthStateChanged = jest.fn().mockImplementation((_auth, cb) => {
-  onAuthStateChangedCallback = cb;
-  return () => {}; // unsubscribe
-});
+const mockOnAuthStateChanged = jest
+  .fn()
+  .mockImplementation((_auth, cb, errorCb?: (error: Error) => void) => {
+    onAuthStateChangedCallback = cb;
+    onAuthStateChangedErrorCallback = errorCb ?? null;
+    return () => {}; // unsubscribe
+  });
 
 jest.mock("firebase/auth", () => ({
-  onAuthStateChanged: (auth: unknown, cb: (user: unknown) => void) =>
-    mockOnAuthStateChanged(auth, cb),
+  onAuthStateChanged: (
+    auth: unknown,
+    cb: (user: unknown) => void,
+    errorCb?: (error: Error) => void
+  ) => mockOnAuthStateChanged(auth, cb, errorCb),
   signOut: (auth: unknown) => mockSignOut(auth),
   browserLocalPersistence: "LOCAL",
   setPersistence: jest.fn().mockResolvedValue(undefined),
@@ -74,6 +81,7 @@ describe("AuthProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     onAuthStateChangedCallback = null;
+    onAuthStateChangedErrorCallback = null;
     mockSignOut.mockResolvedValue(undefined);
   });
 
@@ -87,6 +95,23 @@ describe("AuthProvider", () => {
     act(() => {
       onAuthStateChangedCallback?.(null);
     });
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+  });
+
+  it("sets loading=false when Firebase fires the auth error callback (e.g., auth/invalid-api-key)", async () => {
+    renderWithProvider();
+    expect(screen.getByTestId("loading")).toHaveTextContent("true");
+
+    act(() => {
+      onAuthStateChangedErrorCallback?.(
+        Object.assign(new Error("Firebase: Error (auth/invalid-api-key)."), {
+          code: "auth/invalid-api-key",
+        })
+      );
+    });
+
     await waitFor(() =>
       expect(screen.getByTestId("loading")).toHaveTextContent("false")
     );

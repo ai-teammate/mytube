@@ -25,6 +25,8 @@ class DashboardPage:
     _VIDEO_LIST_ITEM = "[data-testid='video-item'], .video-item, [class*='video']"
     _PROCESSING_STATUS = "text=Processing"
     _NOT_FOUND = "text=404"
+    _UPLOAD_CTA_TEXT = "Upload new video"
+    _UPLOAD_CTA_LINK = "a[href*='upload']"
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -91,6 +93,38 @@ class DashboardPage:
     def wait_for_load(self, timeout: int = 15_000) -> None:
         """Wait for the dashboard content to load."""
         self._page.wait_for_load_state("networkidle", timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Upload CTA actions
+    # ------------------------------------------------------------------
+
+    def is_upload_cta_visible(self, timeout: int = 5_000) -> bool:
+        """Return True if the 'Upload new video' CTA is visible on the dashboard."""
+        try:
+            self._page.wait_for_selector(
+                f"text={self._UPLOAD_CTA_TEXT}", timeout=timeout
+            )
+            return True
+        except Exception:
+            try:
+                self._page.wait_for_selector(self._UPLOAD_CTA_LINK, timeout=1_000)
+                return True
+            except Exception:
+                return False
+
+    def click_upload_new_video_cta(self) -> None:
+        """Click the 'Upload new video' call-to-action on the dashboard.
+
+        Uses Playwright's built-in navigation handling to wait for the URL to
+        change after the click, avoiding race conditions with SPA routing.
+        """
+        cta = self._page.locator(f"text={self._UPLOAD_CTA_TEXT}").first
+        if cta.count() > 0 and cta.is_visible():
+            cta.click()
+        else:
+            self._page.locator(self._UPLOAD_CTA_LINK).first.click()
+        # Wait for the URL to change away from /dashboard/
+        self._page.wait_for_url(lambda url: "/upload" in url, timeout=15_000)
 
     # ------------------------------------------------------------------
     # Status badge inspection
