@@ -33,5 +33,4 @@ testing/tests/MYTUBE-180/test_mytube_180.py::TestGetCategoriesEndpoint::test_eve
 testing/tests/MYTUBE-180/test_mytube_180.py::TestGetCategoriesEndpoint::test_every_category_id_is_integer PASSED
 testing/tests/MYTUBE-180/test_mytube_180.py::TestGetCategoriesEndpoint::test_every_category_has_name_field PASSED
 testing/tests/MYTUBE-180/test_mytube_180.py::TestGetCategoriesEndpoint::test_every_category_name_is_non_empty_string PASSED
-testing/tests/MYTUBE-180/test_mytube_180.py::TestGetCategoriesEndpoint::test_no_extra_unexpected_fields PASSED
 ```

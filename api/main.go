@@ -83,12 +83,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
+	mux.Handle("/api/me/videos", authMiddleware(handler.NewMeVideosHandler(videoRepo, userRepo)))
+	optionalAuthMiddleware := middleware.OptionalAuth(verifier)
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
 	// /api/videos/recent and /api/videos/popular must be registered before
 	// the generic /api/videos/ prefix handler so they are matched first.
 	mux.Handle("/api/videos/recent", handler.NewRecentVideosHandler(searchRepo))
 	mux.Handle("/api/videos/popular", handler.NewPopularVideosHandler(searchRepo))
-	mux.Handle("/api/videos/", handler.NewVideoHandler(videoRepo, cdnBaseURL))
+	mux.Handle("/api/videos/", optionalAuthMiddleware(handler.NewManageVideoHandler(videoRepo, videoRepo, userRepo, cdnBaseURL)))
 	mux.Handle("/api/videos", videosHandler)
 	mux.Handle("/api/search", handler.NewSearchHandler(searchRepo))
 	mux.Handle("/api/categories", handler.NewCategoriesHandler(searchRepo))
