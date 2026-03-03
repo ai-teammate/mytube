@@ -33,7 +33,8 @@ Environment variables
 Architecture
 ------------
 - CommentsService wraps POST /api/videos/:id/comments with Bearer token auth.
-- AuthService is used to resolve the current user's profile and video list.
+- AuthService is used to resolve the current user's profile via /api/me.
+- VideoApiService is used to look up the user's video list via /api/users/{username}.
 - APIConfig loads API_BASE_URL from the environment.
 - No hardcoded URLs or credentials.
 """
@@ -42,9 +43,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.request
-import urllib.error
-from typing import Optional
 
 import pytest
 
@@ -52,6 +50,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.api_config import APIConfig
 from testing.components.services.auth_service import AuthService
+from testing.components.services.video_api_service import VideoApiService
 from testing.components.services.comments_service import CommentsService, CommentResponse
 
 # ---------------------------------------------------------------------------
@@ -80,54 +79,6 @@ def require_firebase_token():
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _fetch_json(url: str, timeout: int = 10) -> Optional[dict]:
-    """Issue an unauthenticated GET and return parsed JSON, or None on error."""
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
-
-
-def _find_any_video_id(base_url: str, token: str) -> Optional[str]:
-    """Discover any video ID owned by the authenticated user.
-
-    Strategy:
-    1. GET /api/me to retrieve the current user's username.
-    2. GET /api/users/{username} to retrieve their video list.
-    3. Return the first video ID found (any status is acceptable — we are
-       testing comment input validation, not video playback readiness).
-    """
-    auth = AuthService(base_url=base_url, token=token)
-    status, body = auth.get("/api/me")
-    if status != 200:
-        return None
-    try:
-        me = json.loads(body)
-    except Exception:
-        return None
-
-    username = me.get("username")
-    if not username:
-        return None
-
-    profile = _fetch_json(f"{base_url}/api/users/{username}")
-    if not profile:
-        return None
-
-    videos = profile.get("videos", [])
-    for v in videos:
-        vid_id = v.get("id") or v.get("video_id")
-        if vid_id:
-            return vid_id
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -144,19 +95,47 @@ def video_id(api_config: APIConfig) -> str:
 
     Priority:
     1. MYTUBE_201_VIDEO_ID env var (explicit override).
-    2. Any video owned by the authenticated CI test user (via /api/me).
+    2. Any video owned by the authenticated CI test user (via /api/me +
+       VideoApiService.get_user).
     3. Skip the test if no video is available.
     """
     if _VIDEO_ID_OVERRIDE:
         return _VIDEO_ID_OVERRIDE
 
-    vid_id = _find_any_video_id(api_config.base_url, _FIREBASE_TOKEN)
-    if not vid_id:
+    auth = AuthService(base_url=api_config.base_url, token=_FIREBASE_TOKEN)
+    status, body = auth.get("/api/me")
+    if status != 200:
         pytest.skip(
-            "No video found for the authenticated user. "
+            f"/api/me returned HTTP {status} — cannot discover video. "
             "Set MYTUBE_201_VIDEO_ID to a valid video UUID to run this test."
         )
-    return vid_id
+
+    try:
+        me = json.loads(body)
+    except Exception:
+        pytest.skip("Could not parse /api/me response as JSON.")
+
+    username = me.get("username")
+    if not username:
+        pytest.skip("No username in /api/me response.")
+
+    video_svc = VideoApiService(api_config)
+    profile = video_svc.get_user(username)
+    if not profile:
+        pytest.skip(
+            f"VideoApiService.get_user({username!r}) returned no data. "
+            "Set MYTUBE_201_VIDEO_ID to a valid video UUID to run this test."
+        )
+
+    for v in profile.get("videos", []):
+        vid_id = v.get("id") or v.get("video_id")
+        if vid_id:
+            return vid_id
+
+    pytest.skip(
+        "No video found for the authenticated user. "
+        "Set MYTUBE_201_VIDEO_ID to a valid video UUID to run this test."
+    )
 
 
 @pytest.fixture(scope="module")

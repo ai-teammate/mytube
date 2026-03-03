@@ -46,7 +46,9 @@ testing/tests/MYTUBE-201/test_mytube_201.py::TestCommentCharacterLimitEnforced::
 
 - **CommentsService** (`testing/components/services/comments_service.py`) — wraps
   `POST /api/videos/:id/comments` with Bearer token authentication.
-- **VideoApiService** (`testing/components/services/video_api_service.py`) — discovers
-  a ready video from the deployed API when no override is specified.
+- **AuthService** (`testing/components/services/auth_service.py`) — issues an
+  authenticated `GET /api/me` to resolve the current user's username.
+- **VideoApiService** (`testing/components/services/video_api_service.py`) — calls
+  `get_user(username)` to fetch the user's video list when no override is specified.
 - **APIConfig** (`testing/core/config/api_config.py`) — loads `API_BASE_URL` from
   the environment.
