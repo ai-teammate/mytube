@@ -43,6 +43,10 @@ func (q *searchQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sq
 	return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
 }
 
+func (q *searchQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return emptyDB().BeginTx(ctx, opts)
+}
+
 // searchVideoDB builds a fakedb with search video rows.
 func searchVideoDB(t *testing.T, videos []repository.SearchVideo) *sql.DB {
 	t.Helper()

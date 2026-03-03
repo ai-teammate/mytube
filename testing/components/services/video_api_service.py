@@ -77,6 +77,24 @@ class VideoApiService:
             "or ensure a ready video exists for a known test user."
         )
 
+    def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict]]:
+        """GET /api/videos/recent?limit=*limit* and return (status_code, videos).
+
+        Returns (0, []) when the host is unreachable or the response cannot be
+        parsed as a JSON array.
+        """
+        url = f"{self._base_url}/api/videos/recent?limit={limit}"
+        return self._fetch_list(url)
+
+    def get_popular_videos(self, limit: int = 20) -> tuple[int, list[dict]]:
+        """GET /api/videos/popular?limit=*limit* and return (status_code, videos).
+
+        Returns (0, []) when the host is unreachable or the response cannot be
+        parsed as a JSON array.
+        """
+        url = f"{self._base_url}/api/videos/popular?limit={limit}"
+        return self._fetch_list(url)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -88,3 +106,20 @@ class VideoApiService:
                 return json.loads(resp.read().decode())
         except Exception:
             return None
+
+    def _fetch_list(self, url: str) -> tuple[int, list[dict]]:
+        """GET *url* and return (status_code, parsed_json_list).
+
+        Returns (status_code, []) on HTTP error or JSON parse failure.
+        Returns (0, []) when the host is unreachable.
+        """
+        req = urllib.request.Request(url)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+                body = resp.read().decode()
+                data = json.loads(body)
+                return resp.status, data if isinstance(data, list) else []
+        except urllib.error.HTTPError as exc:
+            return exc.code, []
+        except Exception:
+            return 0, []

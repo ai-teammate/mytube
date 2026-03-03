@@ -21,10 +21,8 @@ Architecture notes
 ------------------
 - The API is expected to be deployed and reachable at API_BASE_URL.
 - No authentication is required — these are public discovery endpoints.
-- VideoApiService and APIConfig are used for HTTP interactions.
-- The status field is not returned directly by VideoCard, but since the
-  endpoint only ever returns ready videos (filtered by the repository), we
-  verify ordering invariants on the returned data.
+- VideoApiService (testing/components/services/video_api_service.py) handles
+  all HTTP interactions.
 - If the API is unreachable or returns no videos, the test skips gracefully.
 
 Environment variables
@@ -35,47 +33,26 @@ API_PORT     : API port (used to construct base_url if API_BASE_URL is absent).
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
-import urllib.request
-import urllib.error
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.api_config import APIConfig
+from testing.components.services.video_api_service import VideoApiService
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _LIMIT = 20
-_TIMEOUT = 15  # seconds per request
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _fetch_video_list(base_url: str, path: str) -> tuple[int, list[dict]]:
-    """GET *path* from *base_url* and return (status_code, parsed_json_list).
-
-    Returns (status_code, []) on HTTP error or JSON parse failure.
-    """
-    url = f"{base_url.rstrip('/')}{path}"
-    req = urllib.request.Request(url)
-    try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = resp.read().decode()
-            return resp.status, json.loads(body)
-    except urllib.error.HTTPError as exc:
-        return exc.code, []
-    except Exception:
-        return 0, []
 
 
 def _parse_created_at(value: str) -> datetime:
@@ -92,20 +69,20 @@ def _parse_created_at(value: str) -> datetime:
 
 
 @pytest.fixture(scope="module")
-def api_config() -> APIConfig:
-    return APIConfig()
+def video_service() -> VideoApiService:
+    return VideoApiService(APIConfig())
 
 
 @pytest.fixture(scope="module")
-def recent_response(api_config: APIConfig) -> tuple[int, list[dict]]:
+def recent_response(video_service: VideoApiService) -> tuple[int, list[dict]]:
     """GET /api/videos/recent?limit=20 and return (status_code, body)."""
-    return _fetch_video_list(api_config.base_url, f"/api/videos/recent?limit={_LIMIT}")
+    return video_service.get_recent_videos(limit=_LIMIT)
 
 
 @pytest.fixture(scope="module")
-def popular_response(api_config: APIConfig) -> tuple[int, list[dict]]:
+def popular_response(video_service: VideoApiService) -> tuple[int, list[dict]]:
     """GET /api/videos/popular?limit=20 and return (status_code, body)."""
-    return _fetch_video_list(api_config.base_url, f"/api/videos/popular?limit={_LIMIT}")
+    return video_service.get_popular_videos(limit=_LIMIT)
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +135,20 @@ class TestRecentVideosEndpoint:
             assert not missing, (
                 f"Video at index {i} is missing required fields: {missing}. "
                 f"Video data: {video}"
+            )
+
+    def test_recent_videos_have_status_ready(self, recent_response: tuple[int, list[dict]]):
+        """All returned videos must have status='ready'."""
+        status_code, videos = recent_response
+        if status_code == 0:
+            pytest.skip("API is not reachable.")
+        if not videos:
+            pytest.skip("No videos returned by /api/videos/recent — cannot check status.")
+
+        for i, video in enumerate(videos):
+            assert video.get("status") == "ready", (
+                f"Video at index {i} (id={video.get('id')!r}) has "
+                f"status={video.get('status')!r}, expected 'ready'."
             )
 
     def test_recent_videos_ordered_by_created_at_desc(self, recent_response: tuple[int, list[dict]]):
@@ -258,6 +249,20 @@ class TestPopularVideosEndpoint:
             assert not missing, (
                 f"Video at index {i} is missing required fields: {missing}. "
                 f"Video data: {video}"
+            )
+
+    def test_popular_videos_have_status_ready(self, popular_response: tuple[int, list[dict]]):
+        """All returned videos must have status='ready'."""
+        status_code, videos = popular_response
+        if status_code == 0:
+            pytest.skip("API is not reachable.")
+        if not videos:
+            pytest.skip("No videos returned by /api/videos/popular — cannot check status.")
+
+        for i, video in enumerate(videos):
+            assert video.get("status") == "ready", (
+                f"Video at index {i} (id={video.get('id')!r}) has "
+                f"status={video.get('status')!r}, expected 'ready'."
             )
 
     def test_popular_videos_ordered_by_view_count_desc(self, popular_response: tuple[int, list[dict]]):
