@@ -245,7 +245,7 @@ func TestVideoCommentsHandler_POST_EmptyBody_Returns422(t *testing.T) {
 	}
 }
 
-func TestVideoCommentsHandler_POST_BodyTooLong_Returns422(t *testing.T) {
+func TestVideoCommentsHandler_POST_BodyTooLong_Returns400(t *testing.T) {
 	longBody := strings.Repeat("a", 2001)
 	store := &stubCommentStore{}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
@@ -258,8 +258,16 @@ func TestVideoCommentsHandler_POST_BodyTooLong_Returns422(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected 422 for body too long, got %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for body too long, got %d", rec.Code)
+	}
+
+	var errBody map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&errBody); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if errBody["error"] != "comment body must not exceed 2000 characters" {
+		t.Errorf("error message: got %q, want %q", errBody["error"], "comment body must not exceed 2000 characters")
 	}
 }
 

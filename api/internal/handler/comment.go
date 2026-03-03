@@ -210,7 +210,7 @@ func postCommentHandler(comments CommentStore, users CommentUserProvider, videos
 		return
 	}
 	if utf8.RuneCountInString(req.Body) > maxCommentBodyLength {
-		writeJSONError(w, "body exceeds maximum length of 2000 characters", http.StatusUnprocessableEntity)
+		writeJSONError(w, "comment body must not exceed 2000 characters", http.StatusBadRequest)
 		return
 	}
 
