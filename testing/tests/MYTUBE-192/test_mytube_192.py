@@ -20,25 +20,28 @@ Preconditions
 
 Test steps
 ----------
-1. Seed a test user in the DB (idempotent — matched by FIREBASE_TEST_UID):
+1. Resolve the real Firebase UID for the test user via the Firebase REST sign-in API.
+2. Seed a test user in the DB (idempotent — matched by the resolved Firebase UID):
    - One video with status "ready" and title "MYTUBE-192 Ready Video".
    - One video with status "processing" and title "MYTUBE-192 Processing Video".
-2. Log in via /login using FIREBASE_TEST_EMAIL and FIREBASE_TEST_PASSWORD.
-3. Navigate to /dashboard.
-4. Wait for the video table to render.
-5. Assert the video table is visible.
-6. Assert the "ready" video title appears in the table.
-7. Assert the status badge for the "ready" video shows "ready".
-8. Assert the status badge for the "processing" video shows "processing".
-9. Assert the thumbnail cell for the "ready" video contains an <img> or placeholder div.
-10. Assert the view count cell for the "ready" video is non-empty.
-11. Assert the creation date cell for the "ready" video contains at least one digit.
+3. Log in via /login using FIREBASE_TEST_EMAIL and FIREBASE_TEST_PASSWORD.
+4. Navigate to /dashboard.
+5. Wait for the video table to render.
+6. Assert the video table is visible.
+7. Assert the "ready" video title appears in the table.
+8. Assert the status badge for the "ready" video shows "ready".
+9. Assert the status badge for the "processing" video shows "processing".
+10. Assert the thumbnail cell for the "ready" video contains an <img> or placeholder div.
+11. Assert the view count cell for the "ready" video is non-empty.
+12. Assert the creation date cell for the "ready" video contains at least one digit.
 
 Environment variables
 ---------------------
 FIREBASE_TEST_EMAIL    : Email of the registered Firebase test user (required).
 FIREBASE_TEST_PASSWORD : Password of the registered Firebase test user (required).
-FIREBASE_TEST_UID      : Firebase UID of the test user (default: ci-test-user-001).
+FIREBASE_API_KEY       : Firebase web API key, used to resolve the real UID before seeding.
+                         Falls back to FIREBASE_TEST_UID when not set.
+FIREBASE_TEST_UID      : Fallback Firebase UID (default: ci-test-user-001).
 WEB_BASE_URL / APP_URL : Base URL of the deployed web app.
                          Default: https://ai-teammate.github.io/mytube
 DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME / SSL_MODE :
@@ -57,6 +60,7 @@ Architecture
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import urllib.request
@@ -83,8 +87,8 @@ _PAGE_LOAD_TIMEOUT = 30_000    # ms
 _NAVIGATION_TIMEOUT = 20_000   # ms — max time to wait for post-login redirect
 _TABLE_TIMEOUT = 30_000        # ms — max time to wait for the video table
 
-# Firebase UID of the CI test user — must match what Firebase issues on login.
-_TEST_FIREBASE_UID = os.getenv("FIREBASE_TEST_UID", "ci-test-user-001")
+# Fallback Firebase UID — used only when FIREBASE_API_KEY is unavailable.
+_TEST_FIREBASE_UID_FALLBACK = os.getenv("FIREBASE_TEST_UID", "ci-test-user-001")
 _TEST_USERNAME = "ci_test_mytube192"
 
 # Unique video titles for this test so rows can be identified across runs.
@@ -115,6 +119,29 @@ def _postgres_available(db_config: DBConfig) -> bool:
         return True
     except psycopg2.OperationalError:
         return False
+
+
+def _resolve_firebase_uid(email: str, password: str, api_key: str) -> str:
+    """Sign in via Firebase REST API and return the real UID (localId).
+
+    Calls ``accounts:signInWithPassword`` with the given credentials and
+    returns ``localId`` from the response — the canonical Firebase UID that
+    the backend extracts from the ID token when the browser makes API calls.
+    This guarantees that the UID used for DB seeding matches the UID the
+    frontend sends, eliminating the FIREBASE_TEST_UID mismatch.
+    """
+    payload = json.dumps(
+        {"email": email, "password": password, "returnSecureToken": True}
+    ).encode()
+    req = urllib.request.Request(
+        f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+    return data["localId"]
 
 
 # ---------------------------------------------------------------------------
@@ -179,13 +206,18 @@ def db_conn(db_config: DBConfig):
 
 
 @pytest.fixture(scope="module")
-def seeded_videos(db_conn) -> dict:
+def seeded_videos(db_conn, web_config: WebConfig) -> dict:
     """Seed a test user and two videos; return their IDs and titles.
 
-    Uses ``FIREBASE_TEST_UID`` to find or create the CI test user in the DB.
-    The seeded user's Firebase UID must match what Firebase issues when logging
-    in with FIREBASE_TEST_EMAIL / FIREBASE_TEST_PASSWORD so the dashboard API
-    returns the seeded videos.
+    Resolves the **real** Firebase UID for the test user by calling the
+    Firebase REST sign-in API (``accounts:signInWithPassword``) when
+    ``FIREBASE_API_KEY`` is available.  This guarantees that the UID used
+    for DB seeding matches the UID embedded in the Firebase ID token that
+    the browser sends to the API — eliminating the mismatch that previously
+    caused ``GET /api/me/videos`` to return zero results.
+
+    Falls back to the ``FIREBASE_TEST_UID`` environment variable when
+    ``FIREBASE_API_KEY`` is not set (e.g. local runs without full CI env).
 
     Seeds:
     - One video with status "ready" (title: MYTUBE-192 Ready Video)
@@ -198,12 +230,24 @@ def seeded_videos(db_conn) -> dict:
     user_svc = UserService(db_conn)
     video_svc = VideoService(db_conn)
 
+    # Resolve the real Firebase UID so DB seeding matches the token UID.
+    api_key = os.getenv("FIREBASE_API_KEY", "")
+    if api_key and web_config.test_email and web_config.test_password:
+        try:
+            firebase_uid = _resolve_firebase_uid(
+                web_config.test_email, web_config.test_password, api_key
+            )
+        except Exception:
+            firebase_uid = _TEST_FIREBASE_UID_FALLBACK
+    else:
+        firebase_uid = _TEST_FIREBASE_UID_FALLBACK
+
     # Find or create the CI test user by their Firebase UID.
-    existing = user_svc.find_by_firebase_uid(_TEST_FIREBASE_UID)
+    existing = user_svc.find_by_firebase_uid(firebase_uid)
     if existing is not None:
         user_id = existing["id"]
     else:
-        user_id = user_svc.create_user(_TEST_FIREBASE_UID, _TEST_USERNAME)
+        user_id = user_svc.create_user(firebase_uid, _TEST_USERNAME)
 
     # Insert fresh videos with status-specific titles unique to MYTUBE-192.
     ready_row = video_svc.insert_video(
