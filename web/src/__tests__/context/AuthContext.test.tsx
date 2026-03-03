@@ -209,3 +209,31 @@ describe("useAuth outside AuthProvider", () => {
     spy.mockRestore();
   });
 });
+
+describe("AuthProvider — Firebase initialisation failure", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    onAuthStateChangedCallback = null;
+  });
+
+  it("renders children with user=null and loading=false when getFirebaseAuth throws auth/invalid-api-key", async () => {
+    // Simulate the deployed-site scenario: Firebase SDK throws because
+    // NEXT_PUBLIC_FIREBASE_API_KEY was absent at build time.
+    mockGetAuth.mockImplementationOnce(() => {
+      throw new Error("Firebase: Error (auth/invalid-api-key).");
+    });
+
+    // Suppress React's error-boundary console noise for this expected failure.
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    renderWithProvider();
+
+    // After the fix: children must render in an unauthenticated but non-crashed state.
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+    expect(screen.getByTestId("user-email")).toHaveTextContent("null");
+
+    consoleSpy.mockRestore();
+  });
+});
