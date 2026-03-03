@@ -23,6 +23,7 @@ const (
 type CommentStore interface {
 	Create(ctx context.Context, p repository.CreateCommentParams) (*repository.Comment, error)
 	ListByVideoID(ctx context.Context, videoID string) ([]repository.Comment, error)
+	GetByID(ctx context.Context, commentID string) (*repository.Comment, error)
 	Delete(ctx context.Context, commentID, ownerID string) (bool, error)
 }
 
@@ -117,6 +118,21 @@ func NewDeleteCommentHandler(comments CommentStore, users CommentUserProvider) h
 		}
 		if user == nil {
 			writeJSONError(w, "user not found", http.StatusNotFound)
+			return
+		}
+
+		existing, err := comments.GetByID(r.Context(), commentID)
+		if err != nil {
+			log.Printf("DELETE /api/comments/%s: get: %v", commentID, err)
+			writeJSONError(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if existing == nil {
+			writeJSONError(w, "comment not found", http.StatusNotFound)
+			return
+		}
+		if existing.AuthorID != user.ID {
+			writeJSONError(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
