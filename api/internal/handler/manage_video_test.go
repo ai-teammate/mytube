@@ -44,11 +44,13 @@ func makeOwnerUser() *repository.User {
 
 func makeUpdatedVideoDetail() *repository.VideoDetail {
 	desc := "Updated description"
+	catID := 2
 	now := time.Now().Truncate(time.Second)
 	return &repository.VideoDetail{
 		ID:               testManageVideoID,
 		Title:            "Updated Title",
 		Description:      &desc,
+		CategoryID:       &catID,
 		Status:           "ready",
 		ViewCount:        5,
 		CreatedAt:        now,
@@ -366,6 +368,45 @@ func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	// Tags come directly from the validated request tags slice.
 	if len(resp.Tags) != 2 {
 		t.Errorf("Tags: expected 2, got %d", len(resp.Tags))
+	}
+}
+
+// TestPutVideo_Success_ReturnsCategoryID verifies that the updated category_id
+// is included in the 200 response body (regression for MYTUBE-217).
+func TestPutVideo_Success_ReturnsCategoryID(t *testing.T) {
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{
+		updateResult: makeUpdatedVideoDetail(), // CategoryID = 2
+	}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":       "Updated Title",
+		"description": "Updated description",
+		"category_id": 2,
+		"tags":        []string{"tag1", "tag2"},
+	})
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID, bytes.NewBuffer(body)),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp handler.UpdateVideoResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.CategoryID == nil {
+		t.Fatal("CategoryID: got nil, want 2")
+	}
+	if *resp.CategoryID != 2 {
+		t.Errorf("CategoryID: got %d, want 2", *resp.CategoryID)
 	}
 }
 
