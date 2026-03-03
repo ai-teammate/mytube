@@ -66,6 +66,7 @@ _PORT = 18202
 _STARTUP_TIMEOUT = 20.0
 
 _FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
+_RAW_UPLOADS_BUCKET = os.getenv("RAW_UPLOADS_BUCKET", "test-placeholder-bucket-202")
 
 # Stable identifiers so repeated runs don't accumulate stale rows.
 _FIREBASE_UID = "test-uid-mytube-202"
@@ -147,6 +148,9 @@ def api_server(db_config: DBConfig):
         "DB_NAME": db_config.dbname,
         "SSL_MODE": db_config.sslmode,
         "FIREBASE_PROJECT_ID": _FIREBASE_PROJECT_ID,
+        # RAW_UPLOADS_BUCKET is required by the binary at startup even though
+        # the comments endpoint does not use GCS.
+        "RAW_UPLOADS_BUCKET": _RAW_UPLOADS_BUCKET,
     }
 
     svc = ApiProcessService(
