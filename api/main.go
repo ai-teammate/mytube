@@ -92,8 +92,8 @@ func main() {
 	// (Go 1.22+ ServeMux), so they take precedence over the /api/videos/ subtree.
 	// Per-IP rate limiting is applied only to the public GET paths inside each
 	// handler so that authenticated POST requests use a separate, unlimited bucket.
-	mux.Handle("/api/videos/{id}/rating", handler.NewRatingHandler(ratingRepo, userRepo, videoRepo))
-	mux.Handle("/api/videos/{id}/comments", handler.NewVideoCommentsHandler(commentRepo, userRepo, videoRepo))
+	mux.Handle("/api/videos/{id}/rating", optionalAuthMiddleware(handler.NewRatingHandler(ratingRepo, userRepo, videoRepo)))
+	mux.Handle("/api/videos/{id}/comments", optionalAuthMiddleware(handler.NewVideoCommentsHandler(commentRepo, userRepo, videoRepo)))
 	// Delete comment: authenticated
 	mux.Handle("/api/comments/", authMiddleware(handler.NewDeleteCommentHandler(commentRepo, userRepo)))
 	// /api/videos/recent and /api/videos/popular must be registered before

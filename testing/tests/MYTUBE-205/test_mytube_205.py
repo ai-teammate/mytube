@@ -284,18 +284,11 @@ class TestRatingWidgetInteraction:
     def after_star_click(self, watch_page_loaded: dict):
         """Click the 5th star and yield the resulting state."""
         watch_pg: WatchPage = watch_page_loaded["watch_page"]
-        page: Page = watch_page_loaded["page"]
 
         watch_pg.click_star(5)
 
         # Wait for the summary text to update (mock POST returns 4.3 / 5)
-        page.wait_for_function(
-            "() => { "
-            "  const spans = Array.from(document.querySelectorAll('span')); "
-            "  return spans.some(s => s.textContent && s.textContent.includes('4.3 / 5')); "
-            "}",
-            timeout=_RATING_WIDGET_TIMEOUT,
-        )
+        watch_pg.wait_for_rating_summary_text("4.3 / 5", timeout=_RATING_WIDGET_TIMEOUT)
         return watch_pg
 
     def test_summary_updates_after_star_click(self, after_star_click: WatchPage) -> None:
