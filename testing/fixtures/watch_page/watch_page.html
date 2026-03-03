@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>mytube</title>
+</head>
+<body>
+  <div id="root">
+    <div class="min-h-screen flex items-center justify-center">
+      <p id="loading-text">Loading…</p>
+    </div>
+  </div>
+
+  <script>
+    // This script replicates the exact OG tag injection logic from:
+    // web/src/app/v/[id]/page.tsx (useEffect that sets og:title and og:image)
+    //
+    // The setMeta helper:
+    //   const setMeta = (property, content) => {
+    //     let el = document.querySelector(`meta[property="${property}"]`);
+    //     if (!el) {
+    //       el = document.createElement("meta");
+    //       el.setAttribute("property", property);
+    //       document.head.appendChild(el);
+    //     }
+    //     el.setAttribute("content", content);
+    //   };
+    //   setMeta("og:title", video.title);
+    //   if (video.thumbnailUrl) {
+    //     setMeta("og:image", video.thumbnailUrl);
+    //   }
+
+    const API_BASE_URL = window.API_BASE_URL || "";
+    const videoId = window.location.pathname.split("/").filter(Boolean).pop();
+
+    async function loadVideo() {
+      try {
+        const res = await fetch(API_BASE_URL + "/api/videos/" + videoId);
+        if (res.status === 404) {
+          document.getElementById("root").innerHTML =
+            '<div class="min-h-screen flex items-center justify-center"><p>Video not found.</p></div>';
+          return;
+        }
+        if (!res.ok) {
+          throw new Error("Failed to fetch video: " + res.status);
+        }
+        const data = await res.json();
+        const video = {
+          id: data.id,
+          title: data.title,
+          description: data.description || null,
+          hlsManifestUrl: data.hls_manifest_url || null,
+          thumbnailUrl: data.thumbnail_url || null,
+          viewCount: data.view_count,
+          status: data.status,
+        };
+
+        // Set document title
+        document.title = video.title;
+
+        // Replicate exact setMeta logic from watch page component
+        const setMeta = (property, content) => {
+          let el = document.querySelector('meta[property="' + property + '"]');
+          if (!el) {
+            el = document.createElement("meta");
+            el.setAttribute("property", property);
+            document.head.appendChild(el);
+          }
+          el.setAttribute("content", content);
+        };
+
+        setMeta("og:title", video.title);
+        if (video.thumbnailUrl) {
+          setMeta("og:image", video.thumbnailUrl);
+        }
+
+        // Render video title in page
+        document.getElementById("root").innerHTML =
+          '<div class="min-h-screen bg-gray-50">' +
+          '<div class="max-w-5xl mx-auto px-4 py-6">' +
+          '<h1 class="text-2xl font-bold text-gray-900 mb-2">' + escapeHtml(video.title) + '</h1>' +
+          '</div></div>';
+
+      } catch (err) {
+        document.getElementById("root").innerHTML =
+          '<div class="min-h-screen flex items-center justify-center">' +
+          '<p role="alert" class="text-red-600">Could not load video. Please try again later.</p>' +
+          '</div>';
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    loadVideo();
+  </script>
+</body>
+</html>

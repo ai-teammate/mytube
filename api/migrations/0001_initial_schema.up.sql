@@ -37,11 +37,12 @@ CREATE TABLE IF NOT EXISTS videos (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS trg_videos_updated_at ON videos;
 CREATE TRIGGER trg_videos_updated_at
 BEFORE UPDATE ON videos
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE INDEX idx_videos_uploader_id ON videos(uploader_id);
+CREATE INDEX IF NOT EXISTS idx_videos_uploader_id ON videos(uploader_id);
 
 CREATE TABLE IF NOT EXISTS categories (
     id   SERIAL PRIMARY KEY,
@@ -61,7 +62,7 @@ CREATE TABLE IF NOT EXISTS playlists (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_playlists_owner_id ON playlists(owner_id);
+CREATE INDEX IF NOT EXISTS idx_playlists_owner_id ON playlists(owner_id);
 
 CREATE TABLE IF NOT EXISTS playlist_videos (
     playlist_id UUID NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
@@ -78,8 +79,8 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_comments_video_id  ON comments(video_id);
-CREATE INDEX idx_comments_author_id ON comments(author_id);
+CREATE INDEX IF NOT EXISTS idx_comments_video_id  ON comments(video_id);
+CREATE INDEX IF NOT EXISTS idx_comments_author_id ON comments(author_id);
 
 CREATE TABLE IF NOT EXISTS ratings (
     video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
@@ -88,4 +89,4 @@ CREATE TABLE IF NOT EXISTS ratings (
     PRIMARY KEY (video_id, user_id)
 );
 
-CREATE INDEX idx_ratings_user_id ON ratings(user_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON ratings(user_id);

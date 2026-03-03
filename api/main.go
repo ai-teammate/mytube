@@ -55,14 +55,55 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	videoRepo := repository.NewVideoRepository(db)
+	ratingRepo := repository.NewRatingRepository(db)
+	commentRepo := repository.NewCommentRepository(db)
+	searchRepo := repository.NewSearchRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
+
+	cdnBaseURL := os.Getenv("CDN_BASE_URL")
+
+	// /api/videos (exact) handles both:
+	//   GET  ?category_id=<id>  — public category browse
+	//   POST                    — auth-protected video creation
+	createHandler := authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner))
+	browseHandler := handler.NewBrowseVideosHandler(searchRepo)
+	videosHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			createHandler.ServeHTTP(w, r)
+		case http.MethodGet:
+			browseHandler.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"error":"method not allowed"}`))
+		}
+	})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
+	mux.Handle("/api/me/videos", authMiddleware(handler.NewMeVideosHandler(videoRepo, userRepo)))
+	optionalAuthMiddleware := middleware.OptionalAuth(verifier)
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
-	mux.Handle("/api/videos", authMiddleware(handler.NewVideosHandler(videoRepo, userRepo, gcsSigner)))
+	// Rating and comment sub-resources are registered with wildcard patterns
+	// (Go 1.22+ ServeMux), so they take precedence over the /api/videos/ subtree.
+	// Per-IP rate limiting is applied only to the public GET paths inside each
+	// handler so that authenticated POST requests use a separate, unlimited bucket.
+	mux.Handle("/api/videos/{id}/rating", optionalAuthMiddleware(handler.NewRatingHandler(ratingRepo, userRepo, videoRepo)))
+	mux.Handle("/api/videos/{id}/comments", optionalAuthMiddleware(handler.NewVideoCommentsHandler(commentRepo, userRepo, videoRepo)))
+	// Delete comment: authenticated
+	mux.Handle("/api/comments/", authMiddleware(handler.NewDeleteCommentHandler(commentRepo, userRepo)))
+	// /api/videos/recent and /api/videos/popular must be registered before
+	// the generic /api/videos/ prefix handler so they are matched first.
+	mux.Handle("/api/videos/recent", handler.NewRecentVideosHandler(searchRepo))
+	mux.Handle("/api/videos/popular", handler.NewPopularVideosHandler(searchRepo))
+	mux.Handle("/api/videos/", optionalAuthMiddleware(handler.NewManageVideoHandler(videoRepo, videoRepo, userRepo, cdnBaseURL)))
+	mux.Handle("/api/videos", videosHandler)
+	mux.Handle("/api/search", handler.NewSearchHandler(searchRepo))
+	mux.Handle("/api/categories", handler.NewCategoriesHandler(searchRepo))
 	// Catch-all: return 404 for any path not matched above.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)

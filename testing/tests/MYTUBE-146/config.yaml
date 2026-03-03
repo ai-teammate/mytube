@@ -1,0 +1,7 @@
+test_id: MYTUBE-146
+type: web
+framework: playwright
+platform: chromium
+dependencies:
+  - WEB_BASE_URL
+  - API_BASE_URL

@@ -1,0 +1,6 @@
+test_id: MYTUBE-175
+type: api
+framework: pytest
+platform: linux
+dependencies:
+  - API_BASE_URL
