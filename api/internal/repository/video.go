@@ -21,6 +21,7 @@ type VideoDetail struct {
 	Description     *string
 	HLSManifestPath *string // raw GCS path, e.g. gs://bucket/videos/{id}/index.m3u8
 	ThumbnailURL    *string
+	CategoryID      *int
 	ViewCount       int64
 	CreatedAt       time.Time
 	Status          string
@@ -217,6 +218,7 @@ SELECT v.id,
        v.description,
        v.hls_manifest_path,
        v.thumbnail_url,
+       v.category_id,
        v.view_count,
        v.created_at,
        v.status,
@@ -235,6 +237,7 @@ WHERE  v.id = $1`
 		&v.Description,
 		&v.HLSManifestPath,
 		&v.ThumbnailURL,
+		&v.CategoryID,
 		&v.ViewCount,
 		&v.CreatedAt,
 		&v.Status,
