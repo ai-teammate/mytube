@@ -62,7 +62,12 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Update agents submodule to latest main
-        run: git submodule update --remote --merge agents
+        run: |
+          for i in 1 2 3; do
+            git submodule update --remote --merge agents && break
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
 
       - name: Cache JDK 23
         uses: actions/cache@v4
@@ -191,6 +196,36 @@ jobs:
           git config --global user.email "agent.ai.native@gmail.com"
           echo "✅ Git author configured as AI Teammate"
 
+      - name: Start Cloud SQL Auth Proxy
+        run: |
+          curl -fsSL -o cloud-sql-proxy \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.2/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 ${{ vars.CLOUD_SQL_CONNECTION_NAME }} &
+          echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
+          # Wait for proxy to be ready
+          for i in $(seq 1 10); do
+            nc -z 127.0.0.1 5432 && echo "✅ Cloud SQL Proxy ready" && break
+            echo "Waiting for proxy... ($i/10)"
+            sleep 2
+          done
+
+      - name: Get Firebase test token
+        run: |
+          RESP=$(curl -s -X POST \
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${{ vars.FIREBASE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"${{ vars.FIREBASE_TEST_EMAIL }}\",\"password\":\"${{ secrets.FIREBASE_TEST_PASSWORD }}\",\"returnSecureToken\":true}")
+          TOKEN=$(echo $RESP | jq -r .idToken)
+          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "⚠️ Firebase token not obtained (credentials may not be set) — skipping"
+          else
+            echo "FIREBASE_TEST_TOKEN=${TOKEN}" >> $GITHUB_ENV
+            echo "✅ Firebase test token obtained"
+          fi
+          echo "FIREBASE_TEST_UID=${{ vars.FIREBASE_TEST_UID }}" >> $GITHUB_ENV
+          echo "FIREBASE_TEST_EMAIL=${{ vars.FIREBASE_TEST_EMAIL }}" >> $GITHUB_ENV
+
       - name: Run AI Teammate
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
@@ -246,6 +281,33 @@ jobs:
 
           # DMTools Advanced Configuration
           PROMPT_CHUNK_TOKEN_LIMIT: ${{ vars.PROMPT_CHUNK_TOKEN_LIMIT }}
+
+          # GCP Configuration (for test automation)
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          CLOUD_SQL_CONNECTION_NAME: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
+          GCP_DB_USER_SECRET: ${{ vars.GCP_DB_USER_SECRET }}
+          GCP_DB_PASSWORD_SECRET: ${{ vars.GCP_DB_PASSWORD_SECRET }}
+          RAW_OBJECT_PATH: ${{ vars.RAW_OBJECT_PATH }}
+
+          # Database (for test automation)
+          DB_HOST: ${{ env.DB_HOST }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          SSL_MODE: disable
+
+          # Firebase Configuration (for test automation)
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          FIREBASE_AUTH_DOMAIN: ${{ vars.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ vars.FIREBASE_STORAGE_BUCKET }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_TEST_EMAIL: ${{ env.FIREBASE_TEST_EMAIL }}
+          FIREBASE_TEST_UID: ${{ env.FIREBASE_TEST_UID }}
+          FIREBASE_TEST_TOKEN: ${{ env.FIREBASE_TEST_TOKEN }}
+          FIREBASE_TEST_PASSWORD: ${{ secrets.FIREBASE_TEST_PASSWORD }}
 
         run: |
           echo "Using configuration: ${{ inputs.config_file }}"

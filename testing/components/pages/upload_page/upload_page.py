@@ -1,17 +1,21 @@
-"""UploadPage — Page Object for the /upload page of the MyTube web application.
+"""UploadPage -- Page Object for the /upload page of the MyTube web application.
 
 Encapsulates all interactions with the video upload form, including file selection,
 metadata entry, upload submission, and real-time progress bar observation.
+Also used for access-control tests -- verifying that unauthenticated users are
+redirected away from this protected page.
 
 Architecture notes
 ------------------
 - Dependency-injected Playwright ``Page`` is passed via constructor.
-- No hardcoded URLs — the caller provides the full upload URL.
+- No hardcoded URLs -- the caller provides the base URL.
 - All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
 - Progress bar snapshots are captured at intervals for incremental verification.
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -28,9 +32,10 @@ class UploadProgressSnapshot:
 
 
 class UploadPage:
-    """Page Object for the MyTube upload page (/upload)."""
+    """Page Object for the MyTube upload page at /upload."""
 
     # Selectors
+    _HEADING = "h1"
     _FILE_INPUT = 'input[id="video-file"]'
     _FILE_SIZE_WARNING = '[role="note"]'
     _MIME_TYPE_ERROR = '[role="alert"]'
@@ -38,16 +43,17 @@ class UploadPage:
     _DESCRIPTION_INPUT = 'textarea[id="description"]'
     _CATEGORY_SELECT = 'select[id="categoryId"]'
     _TAGS_INPUT = 'input[id="tags"]'
+    _SUBMIT_BUTTON = 'button[type="submit"]'
     _UPLOAD_BUTTON = 'button[type="submit"]'
-    _PROGRESS_BAR = '[role="progressbar"]'
-    _PROGRESS_CONTAINER = '[aria-label="upload progress"]'
     _ERROR_ALERT = '[role="alert"]'
     _MIME_ERROR_ALERT = '[role="alert"]'
+    _PROGRESS_BAR = '[role="progressbar"]'
+    _PROGRESS_CONTAINER = '[aria-label="upload progress"]'
+    _UPLOAD_PROGRESS_CONTAINER = '[aria-label="upload progress"]'
     _SUPPORTED_FORMATS_TEXT = "p.mt-1.text-sm.text-gray-500"
-    _HEADING = "h1"
 
     # Timeouts
-    _MIME_ERROR_TIMEOUT = 5_000  # ms — max time to wait for the error alert to appear
+    _MIME_ERROR_TIMEOUT = 5_000  # ms -- max time to wait for the error alert to appear
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -56,21 +62,28 @@ class UploadPage:
     # Navigation
     # ------------------------------------------------------------------
 
-    def navigate(self, url: str) -> None:
-        """Navigate the browser to the upload page URL.
+    def navigate(self, base_url: str) -> None:
+        """Navigate directly to /upload and wait for the page to settle.
 
-        Uses ``networkidle`` so that Firebase auth state resolves before the
-        page logic runs (the upload form redirects to /login when auth is still
-        loading).
+        Uses ``networkidle`` so that any client-side auth check and redirect
+        has time to complete before callers inspect the URL.
+
+        Parameters
+        ----------
+        base_url:
+            Base URL of the application (e.g. ``https://example.com``).
+            The method appends ``/upload`` automatically.
         """
-        self._page.goto(url, wait_until="networkidle")
-        # Wait for the file input to be present — confirms the auth guard has
-        # resolved and the upload form is fully rendered.
-        self._page.locator(self._FILE_INPUT).wait_for(state="attached", timeout=15_000)
+        url = f"{base_url.rstrip('/')}/upload"
+        self._page.goto(url, wait_until="networkidle", timeout=30_000)
 
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def set_video_file(self, file_path: str) -> None:
+        """Set the video file input to the file at *file_path*."""
+        self._page.set_input_files(self._FILE_INPUT, file_path)
 
     def simulate_large_file_selection(self, size_bytes: int, filename: str = "large.mp4") -> None:
         """Simulate selecting a file with a given size (in bytes) via the file input.
@@ -120,11 +133,11 @@ class UploadPage:
         self._page.set_input_files(self._FILE_INPUT, file_path)
 
     def fill_title(self, title: str) -> None:
-        """Type *title* into the title input field."""
+        """Fill the title input field."""
         self._page.fill(self._TITLE_INPUT, title)
 
     def fill_description(self, description: str) -> None:
-        """Type *description* into the description textarea."""
+        """Fill the description textarea."""
         self._page.fill(self._DESCRIPTION_INPUT, description)
 
     def select_category(self, value: str) -> None:
@@ -132,12 +145,35 @@ class UploadPage:
         self._page.select_option(self._CATEGORY_SELECT, value=value)
 
     def fill_tags(self, tags: str) -> None:
-        """Type comma-separated tags into the tags input field."""
+        """Fill the tags input with comma-separated tag string."""
         self._page.fill(self._TAGS_INPUT, tags)
 
     def click_upload(self) -> None:
-        """Click the Upload Video submit button."""
+        """Click the Upload video submit button."""
         self._page.click(self._UPLOAD_BUTTON)
+
+    def fill_form_and_upload(
+        self,
+        file_path: str,
+        title: str,
+        description: str = "",
+        category_value: str = "",
+        tags: str = "",
+    ) -> None:
+        """High-level action: fill the entire form and click Upload video.
+
+        Does NOT wait for navigation -- the caller is responsible for asserting
+        the post-upload state.
+        """
+        self.set_video_file(file_path)
+        self.fill_title(title)
+        if description:
+            self.fill_description(description)
+        if category_value:
+            self.select_category(category_value)
+        if tags:
+            self.fill_tags(tags)
+        self.click_upload()
 
     def set_input_file_by_mime(self, filename: str, mime_type: str, content: bytes = b"fake content") -> None:
         """Simulate selecting a file with a specific MIME type via the file input.
@@ -151,16 +187,11 @@ class UploadPage:
             self._FILE_INPUT,
             files=[{"name": filename, "mimeType": mime_type, "buffer": content}],
         )
-        # Wait for the React state update to propagate and the alert to appear.
-        # This is an event-driven wait — it resolves as soon as the element is
-        # visible and times out (raising) if it never appears within the timeout.
         try:
             self._page.locator(self._MIME_ERROR_ALERT).first.wait_for(
                 state="visible", timeout=self._MIME_ERROR_TIMEOUT
             )
         except Exception:
-            # The alert may not always appear (e.g. for the accept-attribute test).
-            # Silently swallow the timeout so callers can make their own assertions.
             pass
 
     # ------------------------------------------------------------------
@@ -189,8 +220,6 @@ class UploadPage:
         container = self._page.locator(self._PROGRESS_CONTAINER)
         if container.count() == 0:
             return None
-        # The percentage span is the second <span> inside the flex header row.
-        # Use a short timeout so we don't block if the element disappears.
         spans = container.locator("span")
         if spans.count() < 2:
             return None
@@ -200,7 +229,7 @@ class UploadPage:
             return None
 
     def get_phase_text(self) -> Optional[str]:
-        """Return the phase label text ('Uploading…' or 'Upload complete').
+        """Return the phase label text ('Uploading...' or 'Upload complete').
 
         Returns None if the container is not present.
         """
@@ -237,40 +266,25 @@ class UploadPage:
         - The phase label 'Upload complete' is visible in the progress container, OR
         - The page navigates away from /upload (which happens on success after
           router.replace('/dashboard?uploaded=...')).
-
-        This dual condition handles the case where the upload finishes so
-        quickly that the page navigates before the 'Upload complete' label is
-        observable.
         """
         try:
             self._page.locator(self._PROGRESS_CONTAINER).locator(
                 "span", has_text="Upload complete"
             ).wait_for(state="visible", timeout=timeout)
         except Exception:
-            # If the 'Upload complete' label is not visible, accept navigation
-            # away from /upload as implicit completion.
             current = self._page.url
             if "/upload" not in current:
-                return  # Navigated away successfully — upload completed
-            raise  # Unexpected state: still on /upload but no complete label
+                return
+            raise
 
     def collect_progress_snapshots(
         self,
         interval_ms: int = 200,
         max_snapshots: int = 50,
     ) -> list[UploadProgressSnapshot]:
-        """
-        Poll the progress bar repeatedly while uploading and return a list of
-        snapshots captured at *interval_ms* intervals.
-
-        Stops early when:
-        - 'Upload complete' is detected in the phase text, OR
-        - The page navigates away from /upload (implicit completion), OR
-        - *max_snapshots* is reached.
-        """
+        """Poll the progress bar repeatedly while uploading and return snapshots."""
         snapshots: list[UploadProgressSnapshot] = []
         for _ in range(max_snapshots):
-            # Stop if we've navigated away from the upload page
             if "/upload" not in self._page.url:
                 break
             snap = self.snapshot_progress()
@@ -283,6 +297,18 @@ class UploadPage:
     # ------------------------------------------------------------------
     # State queries
     # ------------------------------------------------------------------
+
+    def current_url(self) -> str:
+        """Return the current browser URL."""
+        return self._page.url
+
+    def get_current_url(self) -> str:
+        """Return the current browser URL."""
+        return self._page.url
+
+    def is_on_login_page(self) -> bool:
+        """Return True if the browser has been redirected to the /login page."""
+        return "/login" in self._page.url
 
     def get_file_size_warning_text(self, timeout: float = 5_000) -> Optional[str]:
         """Return the text of the file size warning note, or None if not shown."""
@@ -315,12 +341,12 @@ class UploadPage:
         return not self._page.locator(self._UPLOAD_BUTTON).is_enabled()
 
     def get_error_message(self) -> Optional[str]:
-        """Return the visible error alert text, or None if no alert is shown."""
+        """Return the visible error alert text, or None if absent."""
         locator = self._page.locator(self._ERROR_ALERT)
         if locator.count() == 0:
             return None
         text = locator.text_content()
-        return text if text else None
+        return text.strip() if text else None
 
     def get_mime_error_message(self) -> str | None:
         """Return the visible MIME type error alert text, or None if not shown."""
@@ -349,6 +375,29 @@ class UploadPage:
         """Return True when the file input is present in the DOM."""
         return self._page.locator(self._FILE_INPUT).count() > 0
 
-    def get_current_url(self) -> str:
-        """Return the current browser URL."""
+    def is_uploading(self) -> bool:
+        """Return True if the upload progress bar is visible."""
+        return self._page.locator(self._UPLOAD_PROGRESS_CONTAINER).count() > 0
+
+    def get_upload_progress(self) -> Optional[int]:
+        """Return the current upload progress value (0-100) or None."""
+        bar = self._page.locator(self._PROGRESS_BAR)
+        if bar.count() == 0:
+            return None
+        val = bar.get_attribute("aria-valuenow")
+        return int(val) if val is not None else None
+
+    def wait_for_upload_complete_and_redirect(
+        self,
+        dashboard_url_fragment: str = "/dashboard",
+        timeout: int = 60_000,
+    ) -> str:
+        """Wait for upload to complete and for the browser to redirect to the dashboard.
+
+        Returns the final URL after navigation.
+        """
+        self._page.wait_for_url(
+            lambda u: dashboard_url_fragment in u,
+            timeout=timeout,
+        )
         return self._page.url

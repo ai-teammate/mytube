@@ -43,7 +43,10 @@ _MIGRATIONS_DIR = os.path.join(
 _INITIAL_SCHEMA = os.path.join(_MIGRATIONS_DIR, "0001_initial_schema.up.sql")
 
 # Module-scoped DB connection fixture — wipes schema and re-applies migration.
-conn = make_conn_fixture([_INITIAL_SCHEMA])
+conn = make_conn_fixture(
+    [_INITIAL_SCHEMA],
+    test_usernames=["testuser_mytube79"],
+)
 
 
 # ---------------------------------------------------------------------------

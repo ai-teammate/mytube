@@ -12,3 +12,4 @@ node_modules
 .serena
 testing/testserver/testserver
 api/transcoder
+cloud-sql-proxy

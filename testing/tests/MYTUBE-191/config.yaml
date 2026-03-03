@@ -1,0 +1,12 @@
+test_id: MYTUBE-191
+type: api
+framework: subprocess+http
+platform: go-binary
+dependencies:
+  - FIREBASE_TEST_TOKEN
+  - FIREBASE_PROJECT_ID
+  - DB_HOST
+  - DB_PORT
+  - DB_USER
+  - DB_PASSWORD
+  - DB_NAME

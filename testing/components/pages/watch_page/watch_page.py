@@ -1,4 +1,15 @@
-"""Page Object for the public video watch page (/v/<id>)."""
+"""WatchPage — Page Object for the /v/:id watch page of the MyTube web application.
+
+Encapsulates all interactions with the video watch page, exposing only
+high-level state queries to callers.  Raw selectors never leak outside this
+class.
+
+Architecture notes
+------------------
+- Dependency-injected Playwright ``Page`` is passed via constructor.
+- No hardcoded URLs — the caller provides the base URL and video ID.
+- All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,20 +26,7 @@ class WatchPageState:
 
 
 class WatchPage:
-    """Encapsulates interactions with the video watch page at /v/<id>.
-
-    The watch page:
-    - Fetches video metadata from the API
-    - Renders the Video.js player when hlsManifestUrl is present
-    - Initialises HLS streaming via @videojs/http-streaming
-    - Sets OG meta tags client-side once the video has loaded
-
-    Usage
-    -----
-    watch = WatchPage(page)
-    watch.navigate(base_url, video_id)
-    assert watch.is_player_visible()
-    """
+    """Page Object for the MyTube video watch page (/v/:id)."""
 
     # Selectors
     _VJS_PLAYER_CONTAINER = "[data-vjs-player]"
@@ -42,6 +40,7 @@ class WatchPage:
     _NOT_FOUND_TEXT = "text=Video not found."
     _ERROR_ALERT = "[role='alert']"
 
+    _DEFAULT_LOAD_TIMEOUT = 15_000  # ms
     _PLAYER_INIT_TIMEOUT = 20_000   # ms — wait for Video.js to fully init
     _PAGE_LOAD_TIMEOUT = 30_000     # ms — max time for page load
     _OG_TAG_TIMEOUT = 15_000        # ms — wait for OG tags to be set
@@ -53,6 +52,11 @@ class WatchPage:
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
+
+    def navigate_to_video(self, base_url: str, video_id: str) -> None:
+        """Navigate to the watch page for *video_id* and wait for DOM load."""
+        url = f"{base_url.rstrip('/')}/v/{video_id}"
+        self._page.goto(url, wait_until="domcontentloaded")
 
     def navigate(self, base_url: str, video_id: str) -> None:
         """Navigate to /v/<video_id> and wait for the video metadata to load."""
@@ -78,12 +82,33 @@ class WatchPage:
         self._page.on("request", on_request)
         try:
             self.navigate(base_url, video_id)
-            # Give the player a moment to fire the manifest request
-            self._page.wait_for_timeout(3_000)
+            # Wait for at least one HLS manifest request (or timeout gracefully)
+            try:
+                self._page.wait_for_request(
+                    lambda req: ".m3u8" in req.url or "hls" in req.url.lower(),
+                    timeout=self._PLAYER_INIT_TIMEOUT,
+                )
+            except Exception:
+                pass  # manifest may not be requested (test will assert later)
         finally:
             self._page.remove_listener("request", on_request)
 
         return state
+
+    # ------------------------------------------------------------------
+    # Wait helpers
+    # ------------------------------------------------------------------
+
+    def wait_for_metadata(self, timeout: float = _DEFAULT_LOAD_TIMEOUT) -> None:
+        """Wait until the loading indicator disappears and the h1 title is visible."""
+        # Wait for the loading spinner to go away
+        loading = self._page.get_by_text("Loading")
+        try:
+            loading.wait_for(state="hidden", timeout=timeout)
+        except Exception:
+            pass  # loading indicator may not appear at all
+        # Then wait for the h1 title element to be present
+        self._page.locator("h1").wait_for(state="visible", timeout=timeout)
 
     # ------------------------------------------------------------------
     # Player state queries
@@ -125,6 +150,21 @@ class WatchPage:
         el = self._page.query_selector(self._VJS_BIG_PLAY_BUTTON)
         return bool(el and el.is_visible())
 
+    def click_play(self) -> None:
+        """Click the big-play-button to start playback."""
+        self._page.locator(self._VJS_BIG_PLAY_BUTTON).click()
+
+    def is_playing(self) -> bool:
+        """Return True when Video.js is in the playing state."""
+        try:
+            self._page.wait_for_selector(
+                "video.video-js.vjs-playing",
+                timeout=self._PLAYER_INIT_TIMEOUT,
+            )
+            return True
+        except Exception:
+            return False
+
     # ------------------------------------------------------------------
     # Page state queries
     # ------------------------------------------------------------------
@@ -136,12 +176,54 @@ class WatchPage:
             return None
         return (el.text_content() or "").strip()
 
+    def get_title(self) -> str | None:
+        """Return the visible video title (h1 text), or None if not present."""
+        locator = self._page.locator("h1")
+        if locator.count() == 0:
+            return None
+        return locator.text_content()
+
     def get_title_heading(self) -> Optional[str]:
         """Return the text content of the <h1> video title heading, or None."""
         el = self._page.query_selector(self._TITLE_HEADING)
         if el is None:
             return None
         return (el.text_content() or "").strip()
+
+    def get_description(self) -> str | None:
+        """Return the video description text, or None if not displayed."""
+        # Description is rendered in a div with whitespace-pre-wrap class
+        locator = self._page.locator("div.whitespace-pre-wrap")
+        if locator.count() == 0:
+            return None
+        text = locator.text_content()
+        return text if text else None
+
+    def get_tags(self) -> list[str]:
+        """Return a list of tag chip texts shown on the page."""
+        # Tags are rendered as <span> elements with rounded-full class inside the tags row
+        locator = self._page.locator("span.rounded-full")
+        count = locator.count()
+        return [locator.nth(i).text_content().strip() for i in range(count)]
+
+    def get_uploader_username(self) -> str | None:
+        """Return the uploader username link text, or None if not present."""
+        # The uploader link is an <a> with href starting with /u/
+        locator = self._page.locator('a[href^="/u/"]')
+        if locator.count() == 0:
+            return None
+        return locator.text_content()
+
+    def get_uploader_href(self) -> str | None:
+        """Return the href attribute of the uploader link, or None if not present."""
+        locator = self._page.locator('a[href^="/u/"]')
+        if locator.count() == 0:
+            return None
+        return locator.get_attribute("href")
+
+    def click_uploader_link(self) -> None:
+        """Click the uploader name link."""
+        self._page.locator('a[href^="/u/"]').click()
 
     def is_not_found(self) -> bool:
         """Return True if the 'Video not found.' message is displayed."""
@@ -160,6 +242,10 @@ class WatchPage:
         return bool(el and el.is_visible())
 
     def get_current_url(self) -> str:
+        """Return the current browser URL."""
+        return self._page.url
+
+    def current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
 
@@ -231,3 +317,100 @@ class WatchPage:
             return bool(result)
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Comment section queries (guest / authenticated state)
+    # ------------------------------------------------------------------
+
+    _COMMENT_SECTION = "section[aria-label='Comments']"
+    _COMMENT_HEADING = "section[aria-label='Comments'] h2"
+    _LOGIN_LINK = "section[aria-label='Comments'] a[href='/login']"
+    _COMMENT_TEXTAREA = "section[aria-label='Comments'] textarea[aria-label='Comment body']"
+    _COMMENT_SUBMIT = "section[aria-label='Comments'] button[type='submit']"
+    _AUTH_WAIT_TIMEOUT = 20_000  # ms — Firebase auth resolves quickly for guests
+
+    def wait_for_comment_section_auth_resolved(self, timeout: int = _AUTH_WAIT_TIMEOUT) -> None:
+        """Wait until the comment section finishes resolving auth state.
+
+        After auth resolves, either the login prompt (guest) or the comment
+        form (authenticated user) will be present.  Block until one of them
+        is visible.
+        """
+        self._page.wait_for_selector(
+            f"{self._LOGIN_LINK}, {self._COMMENT_TEXTAREA}",
+            timeout=timeout,
+        )
+
+    def is_comment_section_visible(self) -> bool:
+        """Return True if the Comments section heading is visible."""
+        el = self._page.query_selector(self._COMMENT_HEADING)
+        return bool(el and el.is_visible())
+
+    def has_login_to_comment_prompt(self) -> bool:
+        """Return True if the 'Login to comment' link is visible for guests."""
+        el = self._page.query_selector(self._LOGIN_LINK)
+        return bool(el and el.is_visible())
+
+    def get_login_link_href(self) -> Optional[str]:
+        """Return the href of the 'Login' link in the comment section, or None."""
+        el = self._page.query_selector(self._LOGIN_LINK)
+        if el is None:
+            return None
+        return el.get_attribute("href")
+
+    def has_comment_textarea(self) -> bool:
+        """Return True if the comment text area is present (only for auth users)."""
+        el = self._page.query_selector(self._COMMENT_TEXTAREA)
+        return bool(el and el.is_visible())
+
+    def has_comment_submit_button(self) -> bool:
+        """Return True if the comment submit button is present (only for auth users)."""
+        el = self._page.query_selector(self._COMMENT_SUBMIT)
+        return bool(el and el.is_visible())
+
+    # ------------------------------------------------------------------
+    # Rating widget queries and actions
+    # ------------------------------------------------------------------
+
+    _RATING_GROUP = '[role="group"][aria-label="Star rating"]'
+    _RATING_SUMMARY_TIMEOUT = 10_000  # ms — wait for the summary span to appear
+
+    def get_rating_summary_text(self) -> Optional[str]:
+        """Return the rating summary text (e.g. '4.2 / 5 (10 ratings)'), or None."""
+        locator = self._page.locator('span:has-text("/ 5")')
+        if locator.count() == 0:
+            return None
+        return (locator.first.text_content() or "").strip()
+
+    def wait_for_rating_summary(self, timeout: float = _RATING_SUMMARY_TIMEOUT) -> None:
+        """Wait until the rating summary span ('X.X / 5 ...') is visible."""
+        self._page.locator('span:has-text("/ 5")').wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def wait_for_rating_summary_text(self, expected: str, timeout: float = _RATING_SUMMARY_TIMEOUT) -> None:
+        """Wait until the rating summary span contains *expected* text."""
+        self._page.locator(f'span:has-text("{expected}")').wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def click_star(self, n: int) -> None:
+        """Click the nth star button (1–5) in the rating widget."""
+        label = f"Rate {n} star{'s' if n != 1 else ''}"
+        self._page.locator(f'button[aria-label="{label}"]').click()
+
+    def is_star_pressed(self, n: int) -> bool:
+        """Return True if star *n* has aria-pressed='true'."""
+        label = f"Rate {n} star{'s' if n != 1 else ''}"
+        el = self._page.query_selector(f'button[aria-label="{label}"]')
+        if el is None:
+            return False
+        return el.get_attribute("aria-pressed") == "true"
+
+    def is_rating_widget_visible(self) -> bool:
+        """Return True if the star rating group is present in the DOM."""
+        return self._page.locator(self._RATING_GROUP).count() > 0
+
+    def has_login_to_rate_prompt(self) -> bool:
+        """Return True if the 'Log in to rate this video.' link is visible."""
+        return self._page.get_by_text("to rate this video.").count() > 0
