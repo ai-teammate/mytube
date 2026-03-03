@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 
 class DashboardPage:
@@ -184,6 +184,80 @@ class DashboardPage:
             thumb_cell.locator("img").count() > 0
             or thumb_cell.locator("div").count() > 0
         )
+
+    # ------------------------------------------------------------------
+    # Video table queries
+    # ------------------------------------------------------------------
+
+    def get_video_row_count(self) -> int:
+        """Return the number of video rows in the dashboard table (0 if no table)."""
+        return self._page.locator("table tbody tr").count()
+
+    def is_video_visible_by_title(self, title: str, timeout: int = 3_000) -> bool:
+        """Return True if a table row containing *title* is visible."""
+        try:
+            row = self._page.locator("table tbody tr").filter(has_text=title).first
+            row.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def wait_for_video_to_disappear(self, title: str, timeout: int = 5_000) -> None:
+        """Wait until no table row containing *title* remains in the DOM."""
+        locator = self._page.locator("table tbody tr").filter(has_text=title)
+        expect(locator).to_have_count(0, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Delete flow actions & state queries
+    # ------------------------------------------------------------------
+
+    def is_delete_button_visible(self, video_title: str, timeout: int = 3_000) -> bool:
+        """Return True if the Delete button for *video_title* is visible.
+
+        The button carries ``aria-label="Delete <video_title>"``.
+        """
+        try:
+            btn = self._page.get_by_role(
+                "button", name=f"Delete {video_title}", exact=True
+            )
+            btn.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def click_delete_button(self, video_title: str) -> None:
+        """Click the Delete button for the video with *video_title*."""
+        self._page.get_by_role(
+            "button", name=f"Delete {video_title}", exact=True
+        ).click()
+
+    def is_confirm_delete_button_visible(self, timeout: int = 3_000) -> bool:
+        """Return True if the inline Confirm button (deletion confirmation) is visible."""
+        try:
+            self._page.get_by_role(
+                "button", name="Confirm", exact=True
+            ).wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def is_cancel_delete_button_visible(self, timeout: int = 3_000) -> bool:
+        """Return True if the inline Cancel button (deletion confirmation) is visible."""
+        try:
+            self._page.get_by_role(
+                "button", name="Cancel", exact=True
+            ).wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def click_confirm_delete(self) -> None:
+        """Click the Confirm button to confirm video deletion."""
+        self._page.get_by_role("button", name="Confirm", exact=True).click()
+
+    def click_cancel_delete(self) -> None:
+        """Click the Cancel button to dismiss the deletion confirmation."""
+        self._page.get_by_role("button", name="Cancel", exact=True).click()
 
     # ------------------------------------------------------------------
     # Upload CTA actions

@@ -8,6 +8,10 @@ on:
       - 'api/**'
       - '.github/workflows/deploy-api.yml'
 
+concurrency:
+  group: deploy-api-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: ${{ vars.GCP_REGION }}
