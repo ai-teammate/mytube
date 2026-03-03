@@ -1,7 +1,8 @@
 test_id: MYTUBE-204
 type: api
-framework: subprocess+http
-platform: go-binary
+framework: rest
+platform: http
 dependencies:
   - FIREBASE_TEST_TOKEN
-  - FIREBASE_PROJECT_ID
+  - CLOUD_SQL_CONNECTION_NAME
+  - DB_PASSWORD

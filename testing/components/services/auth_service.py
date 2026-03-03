@@ -60,3 +60,21 @@ class AuthService:
                 return resp.status, resp.read().decode()
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
+
+    def delete(self, path: str, extra_headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue an authenticated DELETE *path*.
+
+        Includes Authorization: Bearer header.
+
+        Returns (status_code, response_body).
+        """
+        url = f"{self._base_url}{path}"
+        headers = {"Authorization": f"Bearer {self._token}"}
+        if extra_headers:
+            headers.update(extra_headers)
+        req = urllib.request.Request(url, method="DELETE", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
