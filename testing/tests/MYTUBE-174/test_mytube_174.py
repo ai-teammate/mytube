@@ -79,6 +79,16 @@ _TAG_SUNSET = "sunset"
 # ---------------------------------------------------------------------------
 
 
+def _db_is_reachable(config: DBConfig) -> bool:
+    """Return True if a PostgreSQL connection can be established."""
+    try:
+        conn = psycopg2.connect(config.dsn(), connect_timeout=3)
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
 def _build_binary() -> None:
     """Build the Go API binary if it is not already present."""
     if os.path.isfile(API_BINARY):
@@ -99,6 +109,17 @@ def _build_binary() -> None:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_infrastructure():
+    """Skip the entire module when required infrastructure is unavailable."""
+    cfg = DBConfig()
+    if not _db_is_reachable(cfg):
+        pytest.skip(
+            f"PostgreSQL is not reachable at {cfg.host}:{cfg.port} — "
+            "skipping integration test. Start the test database to run this test."
+        )
 
 
 @pytest.fixture(scope="module")
@@ -160,7 +181,7 @@ def db_conn(db_config: DBConfig):
 
 
 @pytest.fixture(scope="module")
-def seeded_videos(api_server, db_conn):
+def seeded_videos(db_conn):
     """Seed the three test videos needed by this test module.
 
     Returns a dict with the IDs of each seeded video:
@@ -220,7 +241,7 @@ def seeded_videos(api_server, db_conn):
 
 @pytest.fixture(scope="module")
 def search_results(api_server, seeded_videos):
-    """Execute all three search requests once and return captured results.
+    """Execute two search requests once and return captured results.
 
     Steps:
       1. GET /api/search?q=dragon  — title full-text match.
