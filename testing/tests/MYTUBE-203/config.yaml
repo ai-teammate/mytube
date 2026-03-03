@@ -1,0 +1,7 @@
+test_id: MYTUBE-203
+type: api
+framework: subprocess+http
+platform: go-binary
+dependencies:
+  - FIREBASE_TEST_TOKEN
+  - FIREBASE_PROJECT_ID
