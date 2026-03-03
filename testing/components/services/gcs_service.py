@@ -56,36 +56,18 @@ class GCSService:
         """
         Return True if allUsers has roles/storage.objectViewer on the bucket.
 
-        Primary check: attempt to read the bucket's IAM policy directly.
-        Fallback: confirm public read by making an anonymous HTTP GET against
-        the public GCS XML API — a 200 response means allUsers can list/read.
-
-        This fallback is used when the CI service account lacks
-        storage.buckets.getIamPolicy (e.g. has object-level access only).
+        Requires storage.buckets.getIamPolicy on the CI service account.
+        Raises PermissionError if the SA lacks that permission so that callers
+        can skip or fail the assertion with a clear message rather than silently
+        passing via a proxy check that does not verify the IAM binding.
         """
-        try:
-            bucket = self._client.get_bucket(bucket_name)
-            policy = bucket.get_iam_policy(requested_policy_version=1)
-            for binding in policy.bindings:
-                if binding["role"] == "roles/storage.objectViewer":
-                    if "allUsers" in binding["members"]:
-                        return True
-            return False
-        except Exception:
-            # Fallback: anonymous public HTTP probe on the GCS XML API.
-            # If the listing returns HTTP 200, allUsers has read access.
-            url = self._config.public_object_url(bucket_name, "")
-            try:
-                # httpx does not inject GCP credentials, so this is an
-                # anonymous request — HTTP 200 confirms allUsers read access.
-                resp = httpx.get(
-                    url.rstrip("/") + "/",
-                    timeout=10.0,
-                    follow_redirects=True,
-                )
-                return resp.status_code == 200
-            except Exception:
-                return False
+        bucket = self._client.get_bucket(bucket_name)
+        policy = bucket.get_iam_policy(requested_policy_version=1)
+        for binding in policy.bindings:
+            if binding["role"] == "roles/storage.objectViewer":
+                if "allUsers" in binding["members"]:
+                    return True
+        return False
 
     # ------------------------------------------------------------------
     # Upload + public fetch
