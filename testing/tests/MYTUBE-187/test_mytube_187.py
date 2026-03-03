@@ -77,6 +77,10 @@ _FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 # The firebase_uid that the test token belongs to.
 _FIREBASE_TEST_UID = os.getenv("FIREBASE_TEST_UID", "test-uid-mytube-187")
 
+# RAW_UPLOADS_BUCKET is required by the API binary at startup; a placeholder
+# is sufficient here because this test never exercises the upload path.
+_RAW_UPLOADS_BUCKET = os.getenv("RAW_UPLOADS_BUCKET", "mytube-raw-uploads")
+
 # Test video titles — deterministic and unique to this test suite.
 _OWNER_VIDEO_TITLES = [
     "MYTUBE-187 Owner Video Alpha",
@@ -156,6 +160,7 @@ def api_server(db_config: DBConfig):
         "DB_NAME": db_config.dbname,
         "SSL_MODE": db_config.sslmode,
         "FIREBASE_PROJECT_ID": _FIREBASE_PROJECT_ID,
+        "RAW_UPLOADS_BUCKET": _RAW_UPLOADS_BUCKET,
     }
 
     svc = ApiProcessService(
