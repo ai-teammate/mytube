@@ -1,0 +1,10 @@
+test_id: MYTUBE-120
+type: api
+framework: subprocess+http
+platform: go-binary
+dependencies:
+  - DB_HOST
+  - DB_PORT
+  - DB_USER
+  - DB_PASSWORD
+  - DB_NAME
