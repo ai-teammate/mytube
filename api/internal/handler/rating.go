@@ -58,6 +58,12 @@ func NewRatingHandler(ratings RatingStore, users RatingUserProvider, videos Rati
 
 		switch r.Method {
 		case http.MethodGet:
+			// Rate-limit only the public GET endpoint to guard against enumeration
+			// and DB overload. POST is authenticated and not subject to this limit.
+			if !middleware.RateLimitPublicAllow(r) {
+				writeJSONError(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			}
 			getRatingHandler(ratings, videos, videoID, w, r)
 		case http.MethodPost:
 			postRatingHandler(ratings, users, videos, videoID, w, r)

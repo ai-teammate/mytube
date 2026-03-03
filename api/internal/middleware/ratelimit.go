@@ -3,35 +3,59 @@ package middleware
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/time/rate"
 )
 
-// ipLimiter holds a token-bucket rate limiter keyed by client IP.
+// ipEntry holds a per-IP rate limiter and tracks the last time the IP was seen
+// so stale entries can be evicted from the map.
+type ipEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+// ipLimiter holds a token-bucket rate limiter keyed by client IP with TTL-based
+// eviction to prevent unbounded memory growth under IP-spoofing or scanning attacks.
 type ipLimiter struct {
 	mu       sync.Mutex
-	limiters map[string]*rate.Limiter
+	limiters map[string]*ipEntry
 	r        rate.Limit
 	burst    int
 }
 
 func newIPLimiter(r rate.Limit, burst int) *ipLimiter {
-	return &ipLimiter{
-		limiters: make(map[string]*rate.Limiter),
+	l := &ipLimiter{
+		limiters: make(map[string]*ipEntry),
 		r:        r,
 		burst:    burst,
 	}
+	// Evict entries not seen in the last 5 minutes; run cleanup every minute.
+	go func() {
+		for range time.Tick(time.Minute) {
+			l.mu.Lock()
+			for ip, e := range l.limiters {
+				if time.Since(e.lastSeen) > 5*time.Minute {
+					delete(l.limiters, ip)
+				}
+			}
+			l.mu.Unlock()
+		}
+	}()
+	return l
 }
 
 func (l *ipLimiter) get(ip string) *rate.Limiter {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if lim, ok := l.limiters[ip]; ok {
-		return lim
+	if e, ok := l.limiters[ip]; ok {
+		e.lastSeen = time.Now()
+		return e.limiter
 	}
 	lim := rate.NewLimiter(l.r, l.burst)
-	l.limiters[ip] = lim
+	l.limiters[ip] = &ipEntry{limiter: lim, lastSeen: time.Now()}
 	return lim
 }
 
@@ -59,19 +83,30 @@ func RateLimitPublic(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP extracts the client IP from X-Forwarded-For (Cloud Run sets this)
-// or falls back to RemoteAddr.
+// RateLimitPublicAllow checks whether the request is allowed under the public
+// per-IP rate limit without wrapping a handler. Use this inside handlers to
+// apply rate limiting selectively (e.g. only to GET, not POST).
+func RateLimitPublicAllow(r *http.Request) bool {
+	return publicLimiter.get(clientIP(r)).Allow()
+}
+
+// clientIP extracts the client IP from X-Forwarded-For or falls back to
+// RemoteAddr. On Cloud Run, the Google load balancer appends the real client IP
+// at the end of the X-Forwarded-For chain; taking the rightmost non-empty entry
+// prevents clients from spoofing their IP by prepending arbitrary values.
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For may contain a comma-separated list; use the first entry.
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				return xff[:i]
+		ips := strings.Split(xff, ",")
+		// Use the rightmost non-empty entry; it is set by the nearest trusted
+		// proxy (Cloud Run load balancer) and cannot be forged by the client.
+		for i := len(ips) - 1; i >= 0; i-- {
+			ip := strings.TrimSpace(ips[i])
+			if ip != "" {
+				return ip
 			}
 		}
-		return xff
 	}
-	// RemoteAddr is "IP:port" for TCP connections.
+	// RemoteAddr is "IP:port" for TCP connections; strip the port.
 	addr := r.RemoteAddr
 	for i := len(addr) - 1; i >= 0; i-- {
 		if addr[i] == ':' {

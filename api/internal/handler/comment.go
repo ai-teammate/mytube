@@ -70,6 +70,12 @@ func NewVideoCommentsHandler(comments CommentStore, users CommentUserProvider, v
 
 		switch r.Method {
 		case http.MethodGet:
+			// Rate-limit only the public GET endpoint to guard against enumeration
+			// and DB overload. POST is authenticated and not subject to this limit.
+			if !middleware.RateLimitPublicAllow(r) {
+				writeJSONError(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			}
 			getCommentsHandler(comments, videos, videoID, w, r)
 		case http.MethodPost:
 			postCommentHandler(comments, users, videos, videoID, w, r)
