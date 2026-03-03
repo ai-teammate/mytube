@@ -1,12 +1,12 @@
 import WatchPageClient from "./WatchPageClient";
 
-// revalidate = 0 opts this route out of the static export
-// pre-render check. All rendering is client-side via the SPA
-// shell (404.html); Next.js routing still works client-side.
-export const revalidate = 0;
+export const dynamic = "force-static";
+export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return [];
+  // Return a placeholder so Next.js generates a static shell for this route.
+  // Real video IDs are handled client-side via the 404.html SPA fallback.
+  return [{ id: '_' }];
 }
 
 export default function Page(props: { params: Promise<{ id: string }> }) {
