@@ -44,3 +44,6 @@ class WebConfig:
 
     def upload_url(self) -> str:
         return f"{self.base_url}/upload/"
+
+    def dashboard_url(self) -> str:
+        return f"{self.base_url}/dashboard/"
