@@ -96,17 +96,19 @@ _DEFAULT_API_BASE = "https://mytube-api-80693608388.us-central1.run.app"
 def _discover_video_id(api_base_url: str) -> Optional[str]:
     """Return the ID of the first ready video found via the public search API.
 
-    Uses ``GET /api/search?q=a`` which is a public, unauthenticated endpoint.
+    Tries several search queries in order until a non-empty result is returned.
     Returns None when no video is found or the API is unreachable.
     """
-    url = f"{api_base_url.rstrip('/')}/api/search?q=a"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            if isinstance(data, list) and data:
-                return data[0].get("id")
-    except Exception:
-        pass
+    base = api_base_url.rstrip("/")
+    for query in ("a", "video", "test", ""):
+        url = f"{base}/api/search?q={query}"
+        try:
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+                if isinstance(data, list) and data:
+                    return data[0].get("id")
+        except Exception:
+            continue
     return None
 
 
