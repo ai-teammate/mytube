@@ -40,6 +40,27 @@ def db_config() -> DBConfig:
     return DBConfig()
 
 
+def _cleanup_users(connection, usernames: list) -> None:
+    """Delete test users and all their owned rows by username list."""
+    if not usernames:
+        return
+    with connection.cursor() as cur:
+        # Delete videos owned by these users first to satisfy FK constraints
+        cur.execute(
+            """
+            DELETE FROM videos
+            WHERE uploader_id IN (
+                SELECT id FROM users WHERE username = ANY(%s)
+            )
+            """,
+            (usernames,),
+        )
+        cur.execute(
+            "DELETE FROM users WHERE username = ANY(%s)",
+            (usernames,),
+        )
+
+
 def make_conn_fixture(migration_files: list[str]):
     """
     Factory that returns a module-scoped ``conn`` fixture applying the given
