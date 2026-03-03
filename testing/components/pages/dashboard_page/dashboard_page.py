@@ -11,6 +11,7 @@ Architecture notes
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from playwright.sync_api import Page
@@ -124,3 +125,35 @@ class DashboardPage:
             self._page.locator(self._UPLOAD_CTA_LINK).first.click()
         # Wait for the URL to change away from /dashboard/
         self._page.wait_for_url(lambda url: "/upload" in url, timeout=15_000)
+
+    # ------------------------------------------------------------------
+    # Status badge inspection
+    # ------------------------------------------------------------------
+
+    def has_status_badge(self, status: str, timeout: int = 5_000) -> bool:
+        """Return True if a status badge with the given text is visible.
+
+        Matches span elements whose entire text content (ignoring surrounding
+        whitespace) equals *status*.  Works with both the production app
+        (Tailwind-styled spans) and fixture HTML (inline-styled spans).
+        """
+        badge = self._page.locator("span").filter(
+            has_text=re.compile(rf"^\s*{re.escape(status)}\s*$")
+        )
+        try:
+            badge.first.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def get_status_badge_class(self, status: str) -> Optional[str]:
+        """Return the CSS class string of the first badge with the given status text.
+
+        Returns None when no matching badge is found.
+        """
+        badge = self._page.locator("span").filter(
+            has_text=re.compile(rf"^\s*{re.escape(status)}\s*$")
+        )
+        if badge.count() == 0:
+            return None
+        return badge.first.get_attribute("class")

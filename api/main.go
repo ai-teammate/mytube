@@ -55,6 +55,8 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	videoRepo := repository.NewVideoRepository(db)
+	ratingRepo := repository.NewRatingRepository(db)
+	commentRepo := repository.NewCommentRepository(db)
 	searchRepo := repository.NewSearchRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
@@ -86,6 +88,14 @@ func main() {
 	mux.Handle("/api/me/videos", authMiddleware(handler.NewMeVideosHandler(videoRepo, userRepo)))
 	optionalAuthMiddleware := middleware.OptionalAuth(verifier)
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
+	// Rating and comment sub-resources are registered with wildcard patterns
+	// (Go 1.22+ ServeMux), so they take precedence over the /api/videos/ subtree.
+	// Per-IP rate limiting is applied only to the public GET paths inside each
+	// handler so that authenticated POST requests use a separate, unlimited bucket.
+	mux.Handle("/api/videos/{id}/rating", handler.NewRatingHandler(ratingRepo, userRepo, videoRepo))
+	mux.Handle("/api/videos/{id}/comments", handler.NewVideoCommentsHandler(commentRepo, userRepo, videoRepo))
+	// Delete comment: authenticated
+	mux.Handle("/api/comments/", authMiddleware(handler.NewDeleteCommentHandler(commentRepo, userRepo)))
 	// /api/videos/recent and /api/videos/popular must be registered before
 	// the generic /api/videos/ prefix handler so they are matched first.
 	mux.Handle("/api/videos/recent", handler.NewRecentVideosHandler(searchRepo))
