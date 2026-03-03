@@ -191,6 +191,20 @@ jobs:
           git config --global user.email "agent.ai.native@gmail.com"
           echo "✅ Git author configured as AI Teammate"
 
+      - name: Start Cloud SQL Auth Proxy
+        run: |
+          curl -fsSL -o cloud-sql-proxy \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.2/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 ${{ vars.CLOUD_SQL_CONNECTION_NAME }} &
+          echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
+          # Wait for proxy to be ready
+          for i in $(seq 1 10); do
+            nc -z 127.0.0.1 5432 && echo "✅ Cloud SQL Proxy ready" && break
+            echo "Waiting for proxy... ($i/10)"
+            sleep 2
+          done
+
       - name: Get Firebase test token
         run: |
           RESP=$(curl -s -X POST \
@@ -272,9 +286,11 @@ jobs:
           RAW_OBJECT_PATH: ${{ vars.RAW_OBJECT_PATH }}
 
           # Database (for test automation)
+          DB_HOST: ${{ env.DB_HOST }}
           DB_NAME: ${{ vars.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          SSL_MODE: disable
 
           # Firebase Configuration (for test automation)
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
@@ -286,6 +302,7 @@ jobs:
           FIREBASE_TEST_EMAIL: ${{ env.FIREBASE_TEST_EMAIL }}
           FIREBASE_TEST_UID: ${{ env.FIREBASE_TEST_UID }}
           FIREBASE_TEST_TOKEN: ${{ env.FIREBASE_TEST_TOKEN }}
+          FIREBASE_TEST_PASSWORD: ${{ secrets.FIREBASE_TEST_PASSWORD }}
 
         run: |
           echo "Using configuration: ${{ inputs.config_file }}"

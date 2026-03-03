@@ -98,6 +98,28 @@ func main() {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]string{"video_id": "stub", "upload_url": "stub"})
 	})))
+	// POST /api/videos/:id/rating — protected by requireAuth (MYTUBE-198).
+	// The subtree pattern /api/videos/ matches any path under /api/videos/,
+	// complementing the exact-match /api/videos route above.  Auth fires before
+	// the handler body so no video lookup is performed.
+	mux.Handle("/api/videos/", requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+			return
+		}
+		if !strings.HasSuffix(r.URL.Path, "/rating") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "rating submitted"})
+	})))
 
 	addr := "127.0.0.1:" + port
 	srv := &http.Server{Addr: addr, Handler: mux}

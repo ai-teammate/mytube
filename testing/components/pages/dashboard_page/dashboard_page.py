@@ -11,6 +11,7 @@ Architecture notes
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from playwright.sync_api import Page
@@ -24,6 +25,8 @@ class DashboardPage:
     _VIDEO_LIST_ITEM = "[data-testid='video-item'], .video-item, [class*='video']"
     _PROCESSING_STATUS = "text=Processing"
     _NOT_FOUND = "text=404"
+    _UPLOAD_CTA_TEXT = "Upload new video"
+    _UPLOAD_CTA_LINK = "a[href*='upload']"
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -90,3 +93,67 @@ class DashboardPage:
     def wait_for_load(self, timeout: int = 15_000) -> None:
         """Wait for the dashboard content to load."""
         self._page.wait_for_load_state("networkidle", timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Upload CTA actions
+    # ------------------------------------------------------------------
+
+    def is_upload_cta_visible(self, timeout: int = 5_000) -> bool:
+        """Return True if the 'Upload new video' CTA is visible on the dashboard."""
+        try:
+            self._page.wait_for_selector(
+                f"text={self._UPLOAD_CTA_TEXT}", timeout=timeout
+            )
+            return True
+        except Exception:
+            try:
+                self._page.wait_for_selector(self._UPLOAD_CTA_LINK, timeout=1_000)
+                return True
+            except Exception:
+                return False
+
+    def click_upload_new_video_cta(self) -> None:
+        """Click the 'Upload new video' call-to-action on the dashboard.
+
+        Uses Playwright's built-in navigation handling to wait for the URL to
+        change after the click, avoiding race conditions with SPA routing.
+        """
+        cta = self._page.locator(f"text={self._UPLOAD_CTA_TEXT}").first
+        if cta.count() > 0 and cta.is_visible():
+            cta.click()
+        else:
+            self._page.locator(self._UPLOAD_CTA_LINK).first.click()
+        # Wait for the URL to change away from /dashboard/
+        self._page.wait_for_url(lambda url: "/upload" in url, timeout=15_000)
+
+    # ------------------------------------------------------------------
+    # Status badge inspection
+    # ------------------------------------------------------------------
+
+    def has_status_badge(self, status: str, timeout: int = 5_000) -> bool:
+        """Return True if a status badge with the given text is visible.
+
+        Matches span elements whose entire text content (ignoring surrounding
+        whitespace) equals *status*.  Works with both the production app
+        (Tailwind-styled spans) and fixture HTML (inline-styled spans).
+        """
+        badge = self._page.locator("span").filter(
+            has_text=re.compile(rf"^\s*{re.escape(status)}\s*$")
+        )
+        try:
+            badge.first.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def get_status_badge_class(self, status: str) -> Optional[str]:
+        """Return the CSS class string of the first badge with the given status text.
+
+        Returns None when no matching badge is found.
+        """
+        badge = self._page.locator("span").filter(
+            has_text=re.compile(rf"^\s*{re.escape(status)}\s*$")
+        )
+        if badge.count() == 0:
+            return None
+        return badge.first.get_attribute("class")
