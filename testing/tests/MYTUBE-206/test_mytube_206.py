@@ -232,17 +232,7 @@ def loaded_watch_page(test_context, page: Page) -> WatchPage:
     watch = WatchPage(page)
     watch.navigate_to_video(test_context["base_url"], test_context["video_id"])
 
-    if test_context["mode"] == "live":
-        # In live mode, wait for Firebase auth to resolve before asserting
-        watch.wait_for_comment_section_auth_resolved()
-    else:
-        # In fixture mode, the DOM is rendered immediately — just wait for
-        # the login link to be visible (no async auth flow)
-        page.wait_for_selector(
-            "section[aria-label='Comments'] a[href='/login']",
-            timeout=_PAGE_LOAD_TIMEOUT,
-        )
-
+    watch.wait_for_comment_section_auth_resolved()
     return watch
 
 
