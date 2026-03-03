@@ -38,10 +38,15 @@ spec:
           timeoutSeconds: "3600"
           containers:
             - image: gcr.io/${GCP_PROJECT_ID}/mytube-transcoder:latest
-              # Per-execution overrides (VIDEO_ID, RAW_OBJECT_PATH) are injected
-              # by the trigger service at runtime via the Cloud Run Jobs API
-              # "overrides" field.  Static env vars that never change live here.
               env:
+                # RAW_OBJECT_PATH and VIDEO_ID are injected at runtime via the
+                # Cloud Run Jobs API "overrides" field by the trigger service.
+                # Declared here as documented placeholders so the job spec is a
+                # complete source of truth for all required env vars.
+                - name: RAW_OBJECT_PATH
+                  value: ""
+                - name: VIDEO_ID
+                  value: ""
                 - name: HLS_BUCKET
                   value: mytube-hls-output
                 - name: RAW_BUCKET
