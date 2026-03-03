@@ -73,7 +73,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 
 	videoID := strings.TrimPrefix(r.URL.Path, "/api/videos/")
 	videoID = strings.TrimRight(videoID, "/")
-	if videoID == "" || !isValidVideoID(videoID) {
+	if videoID == "" || !isValidUUID(videoID) {
 		writeJSONError(w, "invalid video id", http.StatusBadRequest)
 		return
 	}
@@ -169,7 +169,7 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 
 	videoID := strings.TrimPrefix(r.URL.Path, "/api/videos/")
 	videoID = strings.TrimRight(videoID, "/")
-	if videoID == "" || !isValidVideoID(videoID) {
+	if videoID == "" || !isValidUUID(videoID) {
 		writeJSONError(w, "invalid video id", http.StatusBadRequest)
 		return
 	}
