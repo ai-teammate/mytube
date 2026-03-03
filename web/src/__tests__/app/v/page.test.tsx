@@ -6,6 +6,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
 import type { RatingRepository } from "@/domain/rating";
 import type { CommentRepository } from "@/domain/comment";
+import type { PlaylistRepository } from "@/domain/playlist";
 
 // ─── Mock useAuth ─────────────────────────────────────────────────────────────
 jest.mock("@/context/AuthContext", () => ({
@@ -101,6 +102,19 @@ function makeCommentRepo(): CommentRepository {
   };
 }
 
+function makePlaylistRepo(): PlaylistRepository {
+  return {
+    getByID: jest.fn(),
+    create: jest.fn(),
+    listMine: jest.fn().mockResolvedValue([]),
+    listByUsername: jest.fn(),
+    updateTitle: jest.fn(),
+    deletePlaylist: jest.fn(),
+    addVideo: jest.fn(),
+    removeVideo: jest.fn(),
+  };
+}
+
 // Render WatchPage with default stub repos to avoid real fetch calls.
 function renderWatchPage(repo: VideoRepository, videoID = "vid-1") {
   return render(
@@ -109,6 +123,7 @@ function renderWatchPage(repo: VideoRepository, videoID = "vid-1") {
       repository={repo}
       ratingRepository={makeRatingRepo()}
       commentRepository={makeCommentRepo()}
+      playlistRepository={makePlaylistRepo()}
     />
   );
 }
@@ -319,6 +334,18 @@ describe("WatchPage", () => {
 
     await waitFor(() => {
       expect(getByID).toHaveBeenCalledWith("my-video-id");
+    });
+  });
+
+  it("renders Save to Playlist button when video is loaded", async () => {
+    const repo = makeRepo(() => Promise.resolve(makeVideo()));
+
+    renderWatchPage(repo, "vid-1");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /save to playlist/i })
+      ).toBeInTheDocument();
     });
   });
 });

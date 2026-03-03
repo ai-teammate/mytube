@@ -58,6 +58,7 @@ func main() {
 	ratingRepo := repository.NewRatingRepository(db)
 	commentRepo := repository.NewCommentRepository(db)
 	searchRepo := repository.NewSearchRepository(db)
+	playlistRepo := repository.NewPlaylistRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
@@ -104,6 +105,23 @@ func main() {
 	mux.Handle("/api/videos", videosHandler)
 	mux.Handle("/api/search", handler.NewSearchHandler(searchRepo))
 	mux.Handle("/api/categories", handler.NewCategoriesHandler(searchRepo))
+
+	// Playlist routes.
+	// /api/me/playlists must be registered before /api/me to avoid swallowing
+	// sub-paths on the /api/me prefix handler.
+	mux.Handle("/api/me/playlists", authMiddleware(handler.NewMePlaylistsHandler(playlistRepo, userRepo)))
+	// /api/users/<username>/playlists (public) — must precede the /api/users/ prefix.
+	mux.Handle("/api/users/{username}/playlists", handler.NewUserPlaylistsHandler(playlistRepo))
+	// /api/playlists/<id>/videos/<video_id> — more specific, must precede /api/playlists/<id>/videos.
+	mux.Handle("/api/playlists/{id}/videos/{video_id}", authMiddleware(handler.NewRemoveVideoFromPlaylistHandler(playlistRepo, userRepo)))
+	// /api/playlists/<id>/videos
+	mux.Handle("/api/playlists/{id}/videos", authMiddleware(handler.NewAddVideoToPlaylistHandler(playlistRepo, userRepo)))
+	// /api/playlists/<id> — GET (public), PUT/DELETE (owner only, auth enforced in handler).
+	// Use optionalAuth so GET works without a token and PUT/DELETE can still read claims.
+	mux.Handle("/api/playlists/{id}", optionalAuthMiddleware(handler.NewPlaylistByIDHandler(playlistRepo, userRepo)))
+	// /api/playlists — POST (auth required).
+	mux.Handle("/api/playlists", authMiddleware(handler.NewCreatePlaylistHandler(playlistRepo, userRepo)))
+
 	// Catch-all: return 404 for any path not matched above.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
