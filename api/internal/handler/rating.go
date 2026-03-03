@@ -32,8 +32,8 @@ type RatingVideoChecker interface {
 
 // RatingResponse is the JSON body returned by the rating endpoints.
 type RatingResponse struct {
-	AverageRating float64 `json:"average_rating"`
-	RatingCount   int64   `json:"rating_count"`
+	AverageRating float64 `json:"average"`
+	RatingCount   int64   `json:"count"`
 	MyRating      *int    `json:"my_rating"`
 }
 
@@ -64,7 +64,7 @@ func NewRatingHandler(ratings RatingStore, users RatingUserProvider, videos Rati
 				writeJSONError(w, "rate limit exceeded", http.StatusTooManyRequests)
 				return
 			}
-			getRatingHandler(ratings, videos, videoID, w, r)
+			getRatingHandler(ratings, users, videos, videoID, w, r)
 		case http.MethodPost:
 			postRatingHandler(ratings, users, videos, videoID, w, r)
 		default:
@@ -100,16 +100,25 @@ func checkVideoExists(videos RatingVideoChecker, videoID string, w http.Response
 }
 
 // getRatingHandler handles GET /api/videos/:id/rating.
-func getRatingHandler(ratings RatingStore, videos RatingVideoChecker, videoID string, w http.ResponseWriter, r *http.Request) {
+func getRatingHandler(ratings RatingStore, users RatingUserProvider, videos RatingVideoChecker, videoID string, w http.ResponseWriter, r *http.Request) {
 	if !checkVideoExists(videos, videoID, w, r) {
 		return
 	}
 
-	// Optionally resolve the caller's user ID for my_rating.
+	// Optionally resolve the caller's internal user ID for my_rating.
+	// The ratings table stores the internal UUID (users.id), not the Firebase
+	// UID, so we must look up the user record first — exactly as postRatingHandler does.
 	var userID *string
 	if claims := middleware.ClaimsFromContext(r.Context()); claims != nil {
-		uid := claims.UID
-		userID = &uid
+		user, err := users.GetByFirebaseUID(r.Context(), claims.UID)
+		if err != nil {
+			log.Printf("GET /api/videos/%s/rating: get user %s: %v", videoID, claims.UID, err)
+			writeJSONError(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if user != nil {
+			userID = &user.ID
+		}
 	}
 
 	summary, err := ratings.GetSummary(r.Context(), videoID, userID)
