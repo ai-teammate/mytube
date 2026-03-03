@@ -219,20 +219,9 @@ class TestCategoryBrowseAPI:
         self, category_service: CategoryBrowseService
     ) -> None:
         """GET /api/videos without category_id returns HTTP 400."""
-        # Directly call the raw URL without category_id
-        import urllib.request
-        import urllib.error
-
-        url = f"{category_service._base_url}/api/videos"
-        try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
-                # Some APIs may return 200 with empty — but spec says 400
-                status = resp.status
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-
-        assert status == 400, (
-            f"Expected HTTP 400 when category_id is missing, got {status}. "
+        result = category_service.get_videos_no_category()
+        assert result.status_code == 400, (
+            f"Expected HTTP 400 when category_id is missing, got {result.status_code}. "
             "GET /api/videos without category_id should return 400 Bad Request."
         )
 
@@ -240,18 +229,9 @@ class TestCategoryBrowseAPI:
         self, category_service: CategoryBrowseService
     ) -> None:
         """GET /api/videos?category_id=abc returns HTTP 400."""
-        import urllib.request
-        import urllib.error
-
-        url = f"{category_service._base_url}/api/videos?category_id=abc"
-        try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
-                status = resp.status
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-
-        assert status == 400, (
-            f"Expected HTTP 400 for invalid category_id='abc', got {status}."
+        result = category_service.get_videos_with_invalid_category("abc")
+        assert result.status_code == 400, (
+            f"Expected HTTP 400 for invalid category_id='abc', got {result.status_code}."
         )
 
     def test_nonexistent_category_returns_empty_array(

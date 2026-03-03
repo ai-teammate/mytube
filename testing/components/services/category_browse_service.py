@@ -72,6 +72,16 @@ class CategoryBrowseService:
         )
         return self._fetch_browse(url)
 
+    def get_videos_no_category(self) -> CategoryBrowseResponse:
+        """GET /api/videos without category_id — expects 400."""
+        url = f"{self._base_url}/api/videos"
+        return self._fetch_browse(url)
+
+    def get_videos_with_invalid_category(self, invalid_id: str) -> CategoryBrowseResponse:
+        """GET /api/videos?category_id=<invalid> — expects 400."""
+        url = f"{self._base_url}/api/videos?category_id={invalid_id}"
+        return self._fetch_browse(url)
+
     def get_all_categories(self) -> list[CategoryInfo]:
         """GET /api/categories and return parsed list of categories."""
         url = f"{self._base_url}/api/categories"
