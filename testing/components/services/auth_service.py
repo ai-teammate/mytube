@@ -64,11 +64,8 @@ class AuthService:
     def delete(self, path: str, extra_headers: Optional[dict] = None) -> tuple[int, str]:
         """Issue an authenticated DELETE *path*.
 
-<<<<<<< HEAD
-=======
         Includes Authorization: Bearer header.
 
->>>>>>> origin/main
         Returns (status_code, response_body).
         """
         url = f"{self._base_url}{path}"
