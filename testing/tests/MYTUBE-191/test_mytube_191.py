@@ -150,6 +150,10 @@ def api_server(db_config: DBConfig):
         "DB_NAME": db_config.dbname,
         "SSL_MODE": db_config.sslmode,
         "FIREBASE_PROJECT_ID": _FIREBASE_PROJECT_ID,
+        # RAW_UPLOADS_BUCKET is required by the binary at startup even though
+        # the delete endpoint never touches GCS. Provide a placeholder value so
+        # the process does not exit immediately.
+        "RAW_UPLOADS_BUCKET": os.getenv("RAW_UPLOADS_BUCKET", "unused-bucket-mytube-191"),
     }
 
     svc = ApiProcessService(
