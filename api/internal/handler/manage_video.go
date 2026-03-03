@@ -149,6 +149,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		ID:           updated.ID,
 		Title:        updated.Title,
 		Description:  updated.Description,
+		CategoryID:   updated.CategoryID,
 		Status:       updated.Status,
 		ThumbnailURL: updated.ThumbnailURL,
 		ViewCount:    updated.ViewCount,
