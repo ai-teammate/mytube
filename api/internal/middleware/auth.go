@@ -57,6 +57,35 @@ func RequireAuth(verifier auth.TokenVerifier) func(http.Handler) http.Handler {
 	}
 }
 
+// OptionalAuth returns a middleware that verifies the Firebase ID token if one
+// is present in the "Authorization: Bearer <token>" header. When no token is
+// provided the request is forwarded without claims in the context. When a token
+// is provided but is invalid, a 401 response is returned.
+//
+// Use this for endpoints that are public but can optionally act differently for
+// authenticated callers (e.g. GET /api/videos/:id with PUT/DELETE on same path).
+func OptionalAuth(verifier auth.TokenVerifier) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token, ok := bearerToken(r)
+			if !ok {
+				// No token provided — pass through without claims.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			claims, err := verifier.VerifyIDToken(r.Context(), token)
+			if err != nil {
+				writeUnauthorized(w, "invalid or expired token")
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // bearerToken extracts the token from an "Authorization: Bearer <token>"
 // header.  Returns ("", false) when the header is absent or not a Bearer
 // scheme.

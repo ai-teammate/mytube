@@ -204,3 +204,81 @@ func TestClaimsFromContext_Empty(t *testing.T) {
 		t.Errorf("expected nil claims from empty context, got %+v", got)
 	}
 }
+
+// ─── OptionalAuth tests ───────────────────────────────────────────────────────
+
+func TestOptionalAuth_NoToken_CallsNextWithoutClaims(t *testing.T) {
+	v := &stubVerifier{claims: &auth.TokenClaims{UID: "uid", Email: "a@b.com"}}
+	var gotClaims *auth.TokenClaims
+	captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotClaims = middleware.ClaimsFromContext(r.Context())
+	})
+
+	h := middleware.OptionalAuth(v)(captureHandler)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/vid-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotClaims != nil {
+		t.Errorf("expected nil claims when no token, got %+v", gotClaims)
+	}
+}
+
+func TestOptionalAuth_ValidToken_InjectsClaims(t *testing.T) {
+	claims := &auth.TokenClaims{UID: "firebase-uid", Email: "user@example.com"}
+	v := &stubVerifier{claims: claims}
+	var gotClaims *auth.TokenClaims
+	captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotClaims = middleware.ClaimsFromContext(r.Context())
+	})
+
+	h := middleware.OptionalAuth(v)(captureHandler)
+	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-1", nil)
+	req.Header.Set("Authorization", "Bearer valid.token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotClaims == nil {
+		t.Fatal("expected claims in context, got nil")
+	}
+	if gotClaims.UID != claims.UID {
+		t.Errorf("UID: got %q, want %q", gotClaims.UID, claims.UID)
+	}
+}
+
+func TestOptionalAuth_InvalidToken_Returns401(t *testing.T) {
+	v := &stubVerifier{err: errors.New("token expired")}
+	called := false
+	h := middleware.OptionalAuth(v)(nextHandlerCalled(&called))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-1", nil)
+	req.Header.Set("Authorization", "Bearer bad.token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for invalid token, got %d", rec.Code)
+	}
+	if called {
+		t.Error("next handler must not be called for invalid token")
+	}
+}
+
+func TestOptionalAuth_NonBearerScheme_CallsNextWithoutClaims(t *testing.T) {
+	// Non-Bearer scheme: treat as no token (pass through without claims).
+	v := &stubVerifier{claims: &auth.TokenClaims{UID: "uid"}}
+	var gotClaims *auth.TokenClaims
+	captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotClaims = middleware.ClaimsFromContext(r.Context())
+	})
+
+	h := middleware.OptionalAuth(v)(captureHandler)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/vid-1", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotClaims != nil {
+		t.Errorf("expected nil claims for non-Bearer scheme, got %+v", gotClaims)
+	}
+}
