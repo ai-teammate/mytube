@@ -319,7 +319,17 @@ WHERE  id          = $4
 		return nil, fmt.Errorf("update video rows affected: %w", err)
 	}
 	if rows == 0 {
-		return nil, nil
+		// Distinguish "video not found" from "video exists but caller is not owner".
+		const existsSQL = `SELECT 1 FROM videos WHERE id = $1 LIMIT 1`
+		var dummy int
+		if err := tx.QueryRowContext(ctx, existsSQL, videoID).Scan(&dummy); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			return nil, fmt.Errorf("check video exists: %w", err)
+		}
+		// Row exists but uploader_id did not match.
+		return nil, ErrForbidden
 	}
 
 	// Replace tags: delete existing then insert new set.
