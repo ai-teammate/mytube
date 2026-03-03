@@ -1,9 +1,16 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
+import type { RatingRepository } from "@/domain/rating";
+import type { CommentRepository } from "@/domain/comment";
 import { ApiVideoRepository } from "@/data/videoRepository";
+import { ApiRatingRepository } from "@/data/ratingRepository";
+import { ApiCommentRepository } from "@/data/commentRepository";
+import { useAuth } from "@/context/AuthContext";
+import StarRating from "@/components/StarRating";
+import CommentSection from "@/components/CommentSection";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
 import dynamic from "next/dynamic";
@@ -16,21 +23,29 @@ const VideoPlayer = dynamic(() => import("@/components/VideoPlayer"), {
   ),
 });
 
-// Default singleton repository used in production.
+// Default singleton repositories used in production.
 const defaultRepository: VideoRepository = new ApiVideoRepository();
+const defaultRatingRepository: RatingRepository = new ApiRatingRepository();
+const defaultCommentRepository: CommentRepository = new ApiCommentRepository();
 
 interface WatchPageProps {
   // Next.js 15+ passes params as a Promise; unwrap with React.use().
   params: Promise<{ id: string }>;
-  // Optional repository for dependency injection (e.g. in tests).
+  // Optional repositories for dependency injection (e.g. in tests).
   repository?: VideoRepository;
+  ratingRepository?: RatingRepository;
+  commentRepository?: CommentRepository;
 }
 
 export default function WatchPage({
   params,
   repository = defaultRepository,
+  ratingRepository = defaultRatingRepository,
+  commentRepository = defaultCommentRepository,
 }: WatchPageProps) {
   const { id } = use(params);
+
+  const { getIdToken, loading: authLoading } = useAuth();
 
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -91,6 +106,9 @@ export default function WatchPage({
       setMeta("og:image", video.thumbnailUrl);
     }
   }, [video]);
+
+  // Stable token getter passed to child components.
+  const getToken = useCallback(() => getIdToken(), [getIdToken]);
 
   if (loading) {
     return (
@@ -172,6 +190,16 @@ export default function WatchPage({
           </span>
         </div>
 
+        {/* Star rating widget */}
+        <div className="mb-4">
+          <StarRating
+            videoID={id}
+            repository={ratingRepository}
+            getToken={getToken}
+            authLoading={authLoading}
+          />
+        </div>
+
         {/* Tags */}
         {video.tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
@@ -192,6 +220,14 @@ export default function WatchPage({
             {video.description}
           </div>
         )}
+
+        {/* Comment section */}
+        <CommentSection
+          videoID={id}
+          repository={commentRepository}
+          getToken={getToken}
+          authLoading={authLoading}
+        />
       </div>
     </div>
   );

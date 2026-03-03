@@ -51,7 +51,7 @@ jest.mock("@/data/dashboardRepository", () => ({
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 
-import DashboardPage from "@/app/dashboard/page";
+import { DashboardContent as DashboardPage } from "@/app/dashboard/_content";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
