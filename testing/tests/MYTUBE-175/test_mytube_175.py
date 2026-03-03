@@ -74,13 +74,13 @@ def video_service() -> VideoApiService:
 
 
 @pytest.fixture(scope="module")
-def recent_response(video_service: VideoApiService) -> tuple[int, list[dict]]:
+def recent_response(video_service: VideoApiService) -> tuple[int, list[dict] | None]:
     """GET /api/videos/recent?limit=20 and return (status_code, body)."""
     return video_service.get_recent_videos(limit=_LIMIT)
 
 
 @pytest.fixture(scope="module")
-def popular_response(video_service: VideoApiService) -> tuple[int, list[dict]]:
+def popular_response(video_service: VideoApiService) -> tuple[int, list[dict] | None]:
     """GET /api/videos/popular?limit=20 and return (status_code, body)."""
     return video_service.get_popular_videos(limit=_LIMIT)
 
@@ -102,20 +102,22 @@ class TestRecentVideosEndpoint:
             f"Expected HTTP 200 from /api/videos/recent, got {status_code}."
         )
 
-    def test_recent_returns_json_array(self, recent_response: tuple[int, list[dict]]):
+    def test_recent_returns_json_array(self, recent_response: tuple[int, list[dict] | None]):
         """The response body must be a JSON array."""
         status_code, videos = recent_response
         if status_code == 0:
             pytest.skip("API is not reachable.")
-        assert isinstance(videos, list), (
-            f"Expected a JSON array from /api/videos/recent, got: {type(videos).__name__}."
+        assert videos is not None, (
+            "Expected a JSON array from /api/videos/recent but got a non-array JSON response."
         )
 
-    def test_recent_respects_limit(self, recent_response: tuple[int, list[dict]]):
+    def test_recent_respects_limit(self, recent_response: tuple[int, list[dict] | None]):
         """The number of returned videos must not exceed the requested limit."""
         status_code, videos = recent_response
         if status_code == 0:
             pytest.skip("API is not reachable.")
+        if videos is None:
+            pytest.fail("API did not return a JSON array from /api/videos/recent.")
         assert len(videos) <= _LIMIT, (
             f"Expected at most {_LIMIT} videos from /api/videos/recent, "
             f"got {len(videos)}."
@@ -216,20 +218,22 @@ class TestPopularVideosEndpoint:
             f"Expected HTTP 200 from /api/videos/popular, got {status_code}."
         )
 
-    def test_popular_returns_json_array(self, popular_response: tuple[int, list[dict]]):
+    def test_popular_returns_json_array(self, popular_response: tuple[int, list[dict] | None]):
         """The response body must be a JSON array."""
         status_code, videos = popular_response
         if status_code == 0:
             pytest.skip("API is not reachable.")
-        assert isinstance(videos, list), (
-            f"Expected a JSON array from /api/videos/popular, got: {type(videos).__name__}."
+        assert videos is not None, (
+            "Expected a JSON array from /api/videos/popular but got a non-array JSON response."
         )
 
-    def test_popular_respects_limit(self, popular_response: tuple[int, list[dict]]):
+    def test_popular_respects_limit(self, popular_response: tuple[int, list[dict] | None]):
         """The number of returned videos must not exceed the requested limit."""
         status_code, videos = popular_response
         if status_code == 0:
             pytest.skip("API is not reachable.")
+        if videos is None:
+            pytest.fail("API did not return a JSON array from /api/videos/popular.")
         assert len(videos) <= _LIMIT, (
             f"Expected at most {_LIMIT} videos from /api/videos/popular, "
             f"got {len(videos)}."

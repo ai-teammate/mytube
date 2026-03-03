@@ -77,20 +77,20 @@ class VideoApiService:
             "or ensure a ready video exists for a known test user."
         )
 
-    def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict]]:
+    def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
         """GET /api/videos/recent?limit=*limit* and return (status_code, videos).
 
-        Returns (0, []) when the host is unreachable or the response cannot be
-        parsed as a JSON array.
+        Returns (0, []) when the host is unreachable.
+        Returns (status_code, None) when the response is not a JSON array.
         """
         url = f"{self._base_url}/api/videos/recent?limit={limit}"
         return self._fetch_list(url)
 
-    def get_popular_videos(self, limit: int = 20) -> tuple[int, list[dict]]:
+    def get_popular_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
         """GET /api/videos/popular?limit=*limit* and return (status_code, videos).
 
-        Returns (0, []) when the host is unreachable or the response cannot be
-        parsed as a JSON array.
+        Returns (0, []) when the host is unreachable.
+        Returns (status_code, None) when the response is not a JSON array.
         """
         url = f"{self._base_url}/api/videos/popular?limit={limit}"
         return self._fetch_list(url)
@@ -107,9 +107,10 @@ class VideoApiService:
         except Exception:
             return None
 
-    def _fetch_list(self, url: str) -> tuple[int, list[dict]]:
+    def _fetch_list(self, url: str) -> tuple[int, list[dict] | None]:
         """GET *url* and return (status_code, parsed_json_list).
 
+        Returns (status_code, None) when the response is not a JSON array.
         Returns (status_code, []) on HTTP error or JSON parse failure.
         Returns (0, []) when the host is unreachable.
         """
@@ -118,7 +119,7 @@ class VideoApiService:
             with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
                 body = resp.read().decode()
                 data = json.loads(body)
-                return resp.status, data if isinstance(data, list) else []
+                return resp.status, data if isinstance(data, list) else None
         except urllib.error.HTTPError as exc:
             return exc.code, []
         except Exception:
