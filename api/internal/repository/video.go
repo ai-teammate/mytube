@@ -293,7 +293,8 @@ ORDER BY created_at DESC`
 // with the given ID, enforcing ownership atomically in the WHERE clause.
 // Tags are replaced: existing tags are deleted and the new set is inserted, all
 // within a single transaction to prevent partial updates.
-// Returns (nil, nil) when no row matches the given videoID or uploaderID.
+// Returns ErrNotFound when the video does not exist, and ErrForbidden when
+// the video exists but uploaderID does not match the uploader.
 func (r *VideoRepository) Update(ctx context.Context, videoID string, uploaderID string, p UpdateVideoParams) (*VideoDetail, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
