@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 
 @dataclass
@@ -62,8 +62,9 @@ class HomePage:
 
     # Loading indicator
     _LOADING_TEXT = "text=Loading…"
-    # Error indicator
-    _ERROR_ALERT = "[role='alert']"
+    # Error indicator — p[role='alert'] targets the app error paragraph,
+    # excluding the always-present Next.js route announcer div
+    _ERROR_ALERT = "p[role='alert']"
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -86,13 +87,13 @@ class HomePage:
             # Loading text may never appear if load is instant
             pass
 
-    def is_recently_uploaded_section_visible(self) -> bool:
-        """Return True if the Recently Uploaded section is visible."""
-        return self._page.locator(self._RECENTLY_UPLOADED_SECTION).is_visible()
+    def assert_recently_uploaded_section_visible(self) -> None:
+        """Assert that the Recently Uploaded section is visible (auto-retries until timeout)."""
+        expect(self._page.locator(self._RECENTLY_UPLOADED_SECTION)).to_be_visible()
 
-    def is_most_viewed_section_visible(self) -> bool:
-        """Return True if the Most Viewed section is visible."""
-        return self._page.locator(self._MOST_VIEWED_SECTION).is_visible()
+    def assert_most_viewed_section_visible(self) -> None:
+        """Assert that the Most Viewed section is visible (auto-retries until timeout)."""
+        expect(self._page.locator(self._MOST_VIEWED_SECTION)).to_be_visible()
 
     def get_recently_uploaded_heading(self) -> str:
         """Return the text of the Recently Uploaded section heading."""

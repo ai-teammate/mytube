@@ -102,6 +102,9 @@ def loaded_home(web_config: WebConfig, home_page: HomePage):
     the resulting page state.
     """
     home_page.navigate(web_config.base_url)
+    assert not home_page.is_error_displayed(), (
+        "Homepage is showing an error — all discovery section tests would be invalid."
+    )
     yield home_page
 
 
@@ -115,17 +118,11 @@ class TestHomepageDiscoverySections:
 
     def test_recently_uploaded_section_is_visible(self, loaded_home: HomePage):
         """The 'Recently Uploaded' section must be visible on the homepage."""
-        assert loaded_home.is_recently_uploaded_section_visible(), (
-            "Expected the 'Recently Uploaded' section to be visible on the homepage, "
-            "but it was not found or not visible."
-        )
+        loaded_home.assert_recently_uploaded_section_visible()
 
     def test_most_viewed_section_is_visible(self, loaded_home: HomePage):
         """The 'Most Viewed' section must be visible on the homepage."""
-        assert loaded_home.is_most_viewed_section_visible(), (
-            "Expected the 'Most Viewed' section to be visible on the homepage, "
-            "but it was not found or not visible."
-        )
+        loaded_home.assert_most_viewed_section_visible()
 
     def test_recently_uploaded_heading_text(self, loaded_home: HomePage):
         """The 'Recently Uploaded' section heading must show the correct text."""
