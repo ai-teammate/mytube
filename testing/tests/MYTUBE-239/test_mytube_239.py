@@ -71,8 +71,6 @@ import os
 import re
 import sys
 import threading
-import urllib.error
-import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -82,6 +80,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.components.pages.profile_page.profile_page import ProfilePage
 from testing.components.services.auth_service import AuthService
+from testing.components.services.playlist_api_service import PlaylistApiService
 from testing.core.config.web_config import WebConfig
 
 # ---------------------------------------------------------------------------
@@ -104,43 +103,6 @@ _VALID_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]+$")
 def _sanitise_username(username: str) -> str:
     """Replace all chars outside [a-zA-Z0-9_] with underscores."""
     return re.sub(r"[^a-zA-Z0-9_]", "_", username)
-
-
-def _fetch_user_playlists(api_base_url: str, username: str) -> tuple[bool, list]:
-    """Return (request_succeeded, playlists).
-
-    Returns (True, []) for a user with no playlists (HTTP 200 + empty list).
-    Returns (False, []) on any HTTP error or network failure.
-    """
-    url = api_base_url.rstrip("/") + "/api/users/" + username + "/playlists"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            return True, (data if isinstance(data, list) else [])
-    except urllib.error.HTTPError:
-        return False, []
-    except Exception:
-        return False, []
-
-
-def _profile_page_renders_profile(page: Page, base_url: str, username: str) -> bool:
-    """Return True if /u/<username> renders the profile component (not the home page).
-
-    Navigates to the URL and checks whether the <h1> contains the username or
-    the 'User not found.' message — confirming SPA routing is working for this
-    username on the deployed static export.
-    """
-    url = base_url.rstrip("/") + "/u/" + username
-    try:
-        page.goto(url)
-        page.wait_for_timeout(5_000)
-        h1 = page.locator("h1")
-        if h1.count() == 0:
-            return False
-        h1_text = h1.first.text_content() or ""
-        return username in h1_text or "not found" in h1_text.lower()
-    except Exception:
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +236,8 @@ def test_context(web_config: WebConfig):
                     if not _VALID_USERNAME_RE.match(username):
                         username = _sanitise_username(username)
 
-                    ok, playlists = _fetch_user_playlists(api, username)
+                    playlist_svc = PlaylistApiService(api)
+                    ok, playlists = playlist_svc.get_user_playlists(username)
                     if ok and len(playlists) == 0:
                         yield {
                             "username": username,
@@ -345,12 +308,10 @@ def loaded_profile_no_playlists(
     mode = test_context["mode"]
 
     if mode == "live":
-        live_works = _profile_page_renders_profile(
-            raw_page, web_config.base_url, username
-        )
+        profile = ProfilePage(raw_page)
+        live_works = profile.renders_profile(web_config.base_url, username)
         if live_works:
-            profile = ProfilePage(raw_page)
-            # Page was already navigated by _profile_page_renders_profile.
+            # Page was already navigated by renders_profile.
             try:
                 profile.click_playlists_tab()
                 profile.wait_for_playlists_loaded()
@@ -418,20 +379,16 @@ class TestProfileNoPublicPlaylists:
         loaded_profile_no_playlists: ProfilePage,
         test_context: dict,
     ) -> None:
-        """When a user has no public playlists the page must either show a clear
-        message ('No playlists yet.') or not render the playlists section at all.
+        """When a user has no public playlists the page must show 'No playlists yet.'
 
-        Showing an empty, blank area with no message violates the spec.
+        Asserting only has_message catches the specific failure mode the ticket
+        targets: a blank playlists section with no cards and no message. Using
+        ``card_count == 0`` as a fallback would be trivially true (already
+        guaranteed by test_no_playlist_cards_visible) and would silently pass
+        even when the app renders a blank section with no explanatory text.
         """
-        has_message = loaded_profile_no_playlists.has_no_playlists_message()
-        card_count = loaded_profile_no_playlists.get_playlist_card_count()
-
-        # The playlists tab button presence (if any) is irrelevant; what matters
-        # is that the content area is not blank — either a message is shown or
-        # there are no cards at all (section not rendered).
-        assert has_message or card_count == 0, (
-            f"Expected either 'No playlists yet.' message or zero playlist cards "
-            f"for user '{test_context['username']}', but found: "
-            f"has_message={has_message}, card_count={card_count}. "
-            "The profile must not show an empty playlists section without a message."
+        assert loaded_profile_no_playlists.has_no_playlists_message(), (
+            f"Expected 'No playlists yet.' message for user "
+            f"'{test_context['username']}', but none was found. "
+            "An empty blank section without a message is not acceptable per the spec."
         )
