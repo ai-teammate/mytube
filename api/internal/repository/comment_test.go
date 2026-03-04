@@ -166,6 +166,52 @@ func TestListByVideoID_QueryError_ReturnsError(t *testing.T) {
 	}
 }
 
+// ─── GetByID tests ────────────────────────────────────────────────────────────
+
+func TestGetByID_Found_ReturnsComment(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	avatarURL := "https://example.com/avatar.png"
+	expected := &repository.Comment{
+		ID:              "c1",
+		Body:            "Hello!",
+		AuthorID:        "user-1",
+		AuthorUsername:  "alice",
+		AuthorAvatarURL: &avatarURL,
+		CreatedAt:       now,
+	}
+	q := &commentQuerier{t: t, comment: expected}
+	repo := repository.NewCommentRepository(q)
+
+	got, err := repo.GetByID(context.Background(), "c1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil comment")
+	}
+	if got.ID != "c1" {
+		t.Errorf("ID: got %q, want c1", got.ID)
+	}
+	if got.AuthorID != "user-1" {
+		t.Errorf("AuthorID: got %q, want user-1", got.AuthorID)
+	}
+}
+
+func TestGetByID_NotFound_ReturnsNil(t *testing.T) {
+	q := &commentQuerier{t: t, queryRowErr: true}
+	repo := repository.NewCommentRepository(q)
+
+	got, err := repo.GetByID(context.Background(), "nonexistent")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil comment for not-found, got %+v", got)
+	}
+}
+
 // ─── Delete tests ─────────────────────────────────────────────────────────────
 
 func TestDelete_CommentExists_ReturnsTrue(t *testing.T) {

@@ -34,8 +34,9 @@ func nextDSN() string {
 var resultRegistry = map[string][]fakeQueryResult{}
 
 type fakeQueryResult struct {
-	columns []string
-	rows    [][]driver.Value
+	columns     []string
+	rows        [][]driver.Value
+	zeroRowsAff bool // if true, Exec returns 0 rows affected instead of 1
 }
 
 // registerResults stores results under a unique DSN and returns that DSN.
@@ -82,7 +83,10 @@ type fakeStmt struct{ qr fakeQueryResult }
 
 func (*fakeStmt) Close() error   { return nil }
 func (*fakeStmt) NumInput() int  { return -1 }
-func (*fakeStmt) Exec(_ []driver.Value) (driver.Result, error) {
+func (s *fakeStmt) Exec(_ []driver.Value) (driver.Result, error) {
+	if s.qr.zeroRowsAff {
+		return zeroResult{}, nil
+	}
 	return fakeDriverResult{}, nil
 }
 func (s *fakeStmt) Query(_ []driver.Value) (driver.Rows, error) {
@@ -93,6 +97,11 @@ type fakeDriverResult struct{}
 
 func (fakeDriverResult) LastInsertId() (int64, error) { return 0, nil }
 func (fakeDriverResult) RowsAffected() (int64, error) { return 1, nil }
+
+type zeroResult struct{}
+
+func (zeroResult) LastInsertId() (int64, error) { return 0, nil }
+func (zeroResult) RowsAffected() (int64, error) { return 0, nil }
 
 type fakeRows struct {
 	cols []string
