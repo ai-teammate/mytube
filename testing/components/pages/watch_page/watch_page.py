@@ -36,8 +36,8 @@ class WatchPage:
     _LOADING_SPINNER = "[class*='vjs-loading-spinner']"
     _VIDEO_TITLE = "h1"
     _TITLE_HEADING = "h1"
-    _LOADING_TEXT = "Loading"
-    _NOT_FOUND_TEXT = "Video not found."
+    _LOADING_TEXT = "text=Loading…"
+    _NOT_FOUND_TEXT = "text=Video not found."
     _ERROR_ALERT = "[role='alert']"
 
     _DEFAULT_LOAD_TIMEOUT = 15_000  # ms
@@ -64,7 +64,7 @@ class WatchPage:
         self._page.goto(url, wait_until="domcontentloaded")
         # Wait for the loading indicator to disappear (video data fetched)
         self._page.wait_for_selector(
-            f"text={self._LOADING_TEXT}", state="hidden", timeout=self._PAGE_LOAD_TIMEOUT
+            self._LOADING_TEXT, state="hidden", timeout=self._PAGE_LOAD_TIMEOUT
         )
 
     def navigate_and_capture_network(
@@ -82,8 +82,14 @@ class WatchPage:
         self._page.on("request", on_request)
         try:
             self.navigate(base_url, video_id)
-            # Give the player a moment to fire the manifest request
-            self._page.wait_for_timeout(3_000)
+            # Wait for at least one HLS manifest request (or timeout gracefully)
+            try:
+                self._page.wait_for_request(
+                    lambda req: ".m3u8" in req.url or "hls" in req.url.lower(),
+                    timeout=self._PLAYER_INIT_TIMEOUT,
+                )
+            except Exception:
+                pass  # manifest may not be requested (test will assert later)
         finally:
             self._page.remove_listener("request", on_request)
 
@@ -96,7 +102,7 @@ class WatchPage:
     def wait_for_metadata(self, timeout: float = _DEFAULT_LOAD_TIMEOUT) -> None:
         """Wait until the loading indicator disappears and the h1 title is visible."""
         # Wait for the loading spinner to go away
-        loading = self._page.get_by_text(self._LOADING_TEXT)
+        loading = self._page.get_by_text("Loading")
         try:
             loading.wait_for(state="hidden", timeout=timeout)
         except Exception:
@@ -105,8 +111,70 @@ class WatchPage:
         self._page.locator("h1").wait_for(state="visible", timeout=timeout)
 
     # ------------------------------------------------------------------
-    # State queries — metadata
+    # Player state queries
     # ------------------------------------------------------------------
+
+    def is_player_container_visible(self) -> bool:
+        """Return True if the [data-vjs-player] wrapper div is visible."""
+        el = self._page.query_selector(self._VJS_PLAYER_CONTAINER)
+        return bool(el and el.is_visible())
+
+    def is_video_element_present(self) -> bool:
+        """Return True if a <video> element with class video-js exists in the DOM."""
+        el = self._page.query_selector(self._VIDEO_JS_ELEMENT)
+        return el is not None
+
+    def is_player_initialised(self) -> bool:
+        """Return True when Video.js has attached its classes to the video element.
+
+        Video.js adds the `vjs-paused` (or `vjs-playing`) class to the video
+        element once the player is fully initialised.
+        """
+        try:
+            # Wait up to _PLAYER_INIT_TIMEOUT for any vjs-* state class to appear
+            self._page.wait_for_selector(
+                "video.video-js.vjs-paused, video.video-js.vjs-playing",
+                timeout=self._PLAYER_INIT_TIMEOUT,
+            )
+            return True
+        except Exception:
+            return False
+
+    def is_controls_visible(self) -> bool:
+        """Return True if the Video.js control bar is visible."""
+        el = self._page.query_selector(self._VJS_CONTROL_BAR)
+        return bool(el and el.is_visible())
+
+    def is_big_play_button_visible(self) -> bool:
+        """Return True if the big-play-button overlay is visible (player ready, paused)."""
+        el = self._page.query_selector(self._VJS_BIG_PLAY_BUTTON)
+        return bool(el and el.is_visible())
+
+    def click_play(self) -> None:
+        """Click the big-play-button to start playback."""
+        self._page.locator(self._VJS_BIG_PLAY_BUTTON).click()
+
+    def is_playing(self) -> bool:
+        """Return True when Video.js is in the playing state."""
+        try:
+            self._page.wait_for_selector(
+                "video.video-js.vjs-playing",
+                timeout=self._PLAYER_INIT_TIMEOUT,
+            )
+            return True
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------------
+    # Page state queries
+    # ------------------------------------------------------------------
+
+    def get_video_title(self) -> Optional[str]:
+        """Return the <h1> title text, or None if not present."""
+        el = self._page.query_selector(self._VIDEO_TITLE)
+        if el is None:
+            return None
+        return (el.text_content() or "").strip()
 
     def get_title(self) -> str | None:
         """Return the visible video title (h1 text), or None if not present."""
@@ -157,52 +225,33 @@ class WatchPage:
         """Click the uploader name link."""
         self._page.locator('a[href^="/u/"]').click()
 
-    # ------------------------------------------------------------------
-    # Player state queries
-    # ------------------------------------------------------------------
+    def is_not_found(self) -> bool:
+        """Return True if the 'Video not found.' message is displayed."""
+        return self._page.locator(self._NOT_FOUND_TEXT).count() > 0
 
-    def is_player_container_visible(self) -> bool:
-        """Return True if the [data-vjs-player] wrapper div is visible."""
-        el = self._page.query_selector(self._VJS_PLAYER_CONTAINER)
-        return bool(el and el.is_visible())
-
-    def is_video_element_present(self) -> bool:
-        """Return True if a <video> element with class video-js exists in the DOM."""
-        el = self._page.query_selector(self._VIDEO_JS_ELEMENT)
-        return el is not None
-
-    def is_player_initialised(self) -> bool:
-        """Return True when Video.js has attached its classes to the video element.
-
-        Video.js adds the `vjs-paused` (or `vjs-playing`) class to the video
-        element once the player is fully initialised.
-        """
-        try:
-            # Wait up to _PLAYER_INIT_TIMEOUT for any vjs-* state class to appear
-            self._page.wait_for_selector(
-                "video.video-js.vjs-paused, video.video-js.vjs-playing",
-                timeout=self._PLAYER_INIT_TIMEOUT,
-            )
-            return True
-        except Exception:
-            return False
-
-    def is_controls_visible(self) -> bool:
-        """Return True if the Video.js control bar is visible."""
-        el = self._page.query_selector(self._VJS_CONTROL_BAR)
-        return bool(el and el.is_visible())
-
-    def is_big_play_button_visible(self) -> bool:
-        """Return True if the big-play-button overlay is visible (player ready, paused)."""
-        el = self._page.query_selector(self._VJS_BIG_PLAY_BUTTON)
-        return bool(el and el.is_visible())
-
-    def get_video_title(self) -> Optional[str]:
-        """Return the <h1> title text, or None if not present."""
-        el = self._page.query_selector(self._VIDEO_TITLE)
+    def get_error_message(self) -> Optional[str]:
+        """Return the text of the error alert element, or None."""
+        el = self._page.query_selector(self._ERROR_ALERT)
         if el is None:
             return None
         return (el.text_content() or "").strip()
+
+    def is_error_displayed(self) -> bool:
+        """Return True if an error alert is visible."""
+        el = self._page.query_selector(self._ERROR_ALERT)
+        return bool(el and el.is_visible())
+
+    def get_current_url(self) -> str:
+        """Return the current browser URL."""
+        return self._page.url
+
+    def current_url(self) -> str:
+        """Return the current browser URL."""
+        return self._page.url
+
+    def get_page_title(self) -> str:
+        """Return the document.title value."""
+        return self._page.title()
 
     # ------------------------------------------------------------------
     # OG Meta Tag Queries
@@ -227,43 +276,6 @@ class WatchPage:
         )
 
     # ------------------------------------------------------------------
-    # Page State Queries
-    # ------------------------------------------------------------------
-
-    def is_not_found(self, timeout: float = _DEFAULT_LOAD_TIMEOUT) -> bool:
-        """Return True when the 'Video not found.' message is visible."""
-        locator = self._page.get_by_text(self._NOT_FOUND_TEXT, exact=True)
-        try:
-            locator.wait_for(state="visible", timeout=timeout)
-            return True
-        except Exception:
-            return False
-
-    def get_error_message(self) -> Optional[str]:
-        """Return the text of the error alert element, or None."""
-        el = self._page.query_selector(self._ERROR_ALERT)
-        if el is None:
-            return None
-        return (el.text_content() or "").strip()
-
-    def is_error_displayed(self) -> bool:
-        """Return True if an error alert is visible."""
-        el = self._page.query_selector(self._ERROR_ALERT)
-        return bool(el and el.is_visible())
-
-    def current_url(self) -> str:
-        """Return the current browser URL."""
-        return self._page.url
-
-    def get_current_url(self) -> str:
-        """Return the current browser URL."""
-        return self._page.url
-
-    def get_page_title(self) -> str:
-        """Return the document.title value."""
-        return self._page.title()
-
-    # ------------------------------------------------------------------
     # JavaScript helpers
     # ------------------------------------------------------------------
 
@@ -281,6 +293,30 @@ class WatchPage:
             return result if result else None
         except Exception:
             return None
+
+    def has_hls_source_configured(self) -> bool:
+        """Return True if the Video.js player has an HLS (m3u8) source configured."""
+        try:
+            result = self._page.evaluate(
+                """() => {
+                    const video = document.querySelector('video.video-js');
+                    if (!video) return false;
+                    // Check source elements
+                    const sources = Array.from(video.querySelectorAll('source'));
+                    for (const s of sources) {
+                        if (s.type === 'application/x-mpegURL' ||
+                            (s.src && s.src.includes('.m3u8'))) {
+                            return true;
+                        }
+                    }
+                    // Also check currentSrc/src directly
+                    const src = video.currentSrc || video.src || '';
+                    return src.includes('.m3u8') || src.includes('m3u8');
+                }"""
+            )
+            return bool(result)
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Comment section queries (guest / authenticated state)
@@ -332,26 +368,49 @@ class WatchPage:
         el = self._page.query_selector(self._COMMENT_SUBMIT)
         return bool(el and el.is_visible())
 
-    def has_hls_source_configured(self) -> bool:
-        """Return True if the Video.js player has an HLS (m3u8) source configured."""
-        try:
-            result = self._page.evaluate(
-                """() => {
-                    const video = document.querySelector('video.video-js');
-                    if (!video) return false;
-                    // Check source elements
-                    const sources = Array.from(video.querySelectorAll('source'));
-                    for (const s of sources) {
-                        if (s.type === 'application/x-mpegURL' ||
-                            (s.src && s.src.includes('.m3u8'))) {
-                            return true;
-                        }
-                    }
-                    // Also check currentSrc/src directly
-                    const src = video.currentSrc || video.src || '';
-                    return src.includes('.m3u8') || src.includes('m3u8');
-                }"""
-            )
-            return bool(result)
-        except Exception:
+    # ------------------------------------------------------------------
+    # Rating widget queries and actions
+    # ------------------------------------------------------------------
+
+    _RATING_GROUP = '[role="group"][aria-label="Star rating"]'
+    _RATING_SUMMARY_TIMEOUT = 10_000  # ms — wait for the summary span to appear
+
+    def get_rating_summary_text(self) -> Optional[str]:
+        """Return the rating summary text (e.g. '4.2 / 5 (10 ratings)'), or None."""
+        locator = self._page.locator('span:has-text("/ 5")')
+        if locator.count() == 0:
+            return None
+        return (locator.first.text_content() or "").strip()
+
+    def wait_for_rating_summary(self, timeout: float = _RATING_SUMMARY_TIMEOUT) -> None:
+        """Wait until the rating summary span ('X.X / 5 ...') is visible."""
+        self._page.locator('span:has-text("/ 5")').wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def wait_for_rating_summary_text(self, expected: str, timeout: float = _RATING_SUMMARY_TIMEOUT) -> None:
+        """Wait until the rating summary span contains *expected* text."""
+        self._page.locator(f'span:has-text("{expected}")').wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def click_star(self, n: int) -> None:
+        """Click the nth star button (1–5) in the rating widget."""
+        label = f"Rate {n} star{'s' if n != 1 else ''}"
+        self._page.locator(f'button[aria-label="{label}"]').click()
+
+    def is_star_pressed(self, n: int) -> bool:
+        """Return True if star *n* has aria-pressed='true'."""
+        label = f"Rate {n} star{'s' if n != 1 else ''}"
+        el = self._page.query_selector(f'button[aria-label="{label}"]')
+        if el is None:
             return False
+        return el.get_attribute("aria-pressed") == "true"
+
+    def is_rating_widget_visible(self) -> bool:
+        """Return True if the star rating group is present in the DOM."""
+        return self._page.locator(self._RATING_GROUP).count() > 0
+
+    def has_login_to_rate_prompt(self) -> bool:
+        """Return True if the 'Log in to rate this video.' link is visible."""
+        return self._page.get_by_text("to rate this video.").count() > 0

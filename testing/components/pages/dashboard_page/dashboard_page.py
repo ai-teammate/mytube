@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 
 class DashboardPage:
@@ -25,6 +25,8 @@ class DashboardPage:
     _VIDEO_LIST_ITEM = "[data-testid='video-item'], .video-item, [class*='video']"
     _PROCESSING_STATUS = "text=Processing"
     _NOT_FOUND = "text=404"
+    _TABLE = "table"
+    _TABLE_ROWS = "table tbody tr"
     _UPLOAD_CTA_TEXT = "Upload new video"
     _UPLOAD_CTA_LINK = "a[href*='upload']"
 
@@ -93,6 +95,169 @@ class DashboardPage:
     def wait_for_load(self, timeout: int = 15_000) -> None:
         """Wait for the dashboard content to load."""
         self._page.wait_for_load_state("networkidle", timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Table inspection — video list
+    # ------------------------------------------------------------------
+
+    def wait_for_videos_table(self, timeout: int = 20_000) -> None:
+        """Wait until at least one video row is visible in the table body."""
+        self._page.wait_for_selector(self._TABLE_ROWS, timeout=timeout)
+
+    def is_table_visible(self) -> bool:
+        """Return True if the video <table> element is present in the DOM."""
+        return self._page.locator(self._TABLE).count() > 0
+
+    def get_row_count(self) -> int:
+        """Return the number of video rows currently visible in the table body."""
+        return self._page.locator(self._TABLE_ROWS).count()
+
+    def get_all_titles(self) -> list[str]:
+        """Return a list of all video title strings from the table body rows.
+
+        The title is taken from the second ``<td>`` of each row, which may
+        contain a plain-text string or a ``<a>`` link element.
+        """
+        rows = self._page.locator(self._TABLE_ROWS)
+        count = rows.count()
+        titles: list[str] = []
+        for i in range(count):
+            cell = rows.nth(i).locator("td:nth-child(2)")
+            text = (cell.text_content() or "").strip()
+            titles.append(text)
+        return titles
+
+    def get_status_badge_for_title(self, title: str) -> Optional[str]:
+        """Return the status badge text for the first row whose title contains *title*.
+
+        The badge is the ``<span>`` inside the third ``<td>`` of each row.
+        Returns None if no row matches or the badge element is absent.
+        """
+        rows = self._page.locator(self._TABLE_ROWS).filter(has_text=title)
+        if rows.count() == 0:
+            return None
+        badge = rows.first.locator("td:nth-child(3) span")
+        if badge.count() == 0:
+            return None
+        return (badge.text_content() or "").strip()
+
+    def get_view_count_for_title(self, title: str) -> Optional[str]:
+        """Return the formatted view count text for the first row matching *title*.
+
+        The view count is the text of the fourth ``<td>`` (right-aligned).
+        Returns None if no row matches or the cell is absent.
+        """
+        rows = self._page.locator(self._TABLE_ROWS).filter(has_text=title)
+        if rows.count() == 0:
+            return None
+        cell = rows.first.locator("td:nth-child(4)")
+        if cell.count() == 0:
+            return None
+        return (cell.text_content() or "").strip()
+
+    def get_creation_date_for_title(self, title: str) -> Optional[str]:
+        """Return the creation date text for the first row matching *title*.
+
+        The date is the text of the fifth ``<td>``, formatted by
+        ``new Date(createdAt).toLocaleDateString()`` on the frontend.
+        Returns None if no row matches or the cell is absent.
+        """
+        rows = self._page.locator(self._TABLE_ROWS).filter(has_text=title)
+        if rows.count() == 0:
+            return None
+        cell = rows.first.locator("td:nth-child(5)")
+        if cell.count() == 0:
+            return None
+        return (cell.text_content() or "").strip()
+
+    def has_thumbnail_element_for_title(self, title: str) -> bool:
+        """Return True if the thumbnail cell for the first row matching *title*
+        contains an ``<img>`` (real thumbnail) or a placeholder ``<div>``.
+        """
+        rows = self._page.locator(self._TABLE_ROWS).filter(has_text=title)
+        if rows.count() == 0:
+            return False
+        thumb_cell = rows.first.locator("td:nth-child(1)")
+        if thumb_cell.count() == 0:
+            return False
+        return (
+            thumb_cell.locator("img").count() > 0
+            or thumb_cell.locator("div").count() > 0
+        )
+
+    # ------------------------------------------------------------------
+    # Video table queries
+    # ------------------------------------------------------------------
+
+    def get_video_row_count(self) -> int:
+        """Return the number of video rows in the dashboard table (0 if no table)."""
+        return self._page.locator("table tbody tr").count()
+
+    def is_video_visible_by_title(self, title: str, timeout: int = 3_000) -> bool:
+        """Return True if a table row containing *title* is visible."""
+        try:
+            row = self._page.locator("table tbody tr").filter(has_text=title).first
+            row.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def wait_for_video_to_disappear(self, title: str, timeout: int = 5_000) -> None:
+        """Wait until no table row containing *title* remains in the DOM."""
+        locator = self._page.locator("table tbody tr").filter(has_text=title)
+        expect(locator).to_have_count(0, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Delete flow actions & state queries
+    # ------------------------------------------------------------------
+
+    def is_delete_button_visible(self, video_title: str, timeout: int = 3_000) -> bool:
+        """Return True if the Delete button for *video_title* is visible.
+
+        The button carries ``aria-label="Delete <video_title>"``.
+        """
+        try:
+            btn = self._page.get_by_role(
+                "button", name=f"Delete {video_title}", exact=True
+            )
+            btn.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def click_delete_button(self, video_title: str) -> None:
+        """Click the Delete button for the video with *video_title*."""
+        self._page.get_by_role(
+            "button", name=f"Delete {video_title}", exact=True
+        ).click()
+
+    def is_confirm_delete_button_visible(self, timeout: int = 3_000) -> bool:
+        """Return True if the inline Confirm button (deletion confirmation) is visible."""
+        try:
+            self._page.get_by_role(
+                "button", name="Confirm", exact=True
+            ).wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def is_cancel_delete_button_visible(self, timeout: int = 3_000) -> bool:
+        """Return True if the inline Cancel button (deletion confirmation) is visible."""
+        try:
+            self._page.get_by_role(
+                "button", name="Cancel", exact=True
+            ).wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def click_confirm_delete(self) -> None:
+        """Click the Confirm button to confirm video deletion."""
+        self._page.get_by_role("button", name="Confirm", exact=True).click()
+
+    def click_cancel_delete(self) -> None:
+        """Click the Cancel button to dismiss the deletion confirmation."""
+        self._page.get_by_role("button", name="Cancel", exact=True).click()
 
     # ------------------------------------------------------------------
     # Upload CTA actions
