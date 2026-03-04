@@ -2,8 +2,10 @@
  * Unit tests for src/app/u/[username]/page.tsx
  */
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { UserProfile, UserProfileRepository } from "@/domain/userProfile";
+import type { PlaylistRepository, PlaylistSummary } from "@/domain/playlist";
 
 // ─── Mock React.use to unwrap Promise synchronously in tests ──────────────────
 // In production, React.use() suspends the component until the Promise resolves.
@@ -330,5 +332,173 @@ describe("UserProfilePage", () => {
     });
     const thumbImg = screen.getByAltText("With Thumb");
     expect(thumbImg).toHaveAttribute("src", "https://example.com/t.jpg");
+  });
+
+  // ─── Playlists tab ──────────────────────────────────────────────────────────
+
+  function makePlaylistSummary(
+    overrides: Partial<PlaylistSummary> = {}
+  ): PlaylistSummary {
+    return {
+      id: "pl-1",
+      title: "My Playlist",
+      ownerUsername: "alice",
+      createdAt: "2024-01-01T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  function makePlaylistRepo(
+    overrides: Partial<PlaylistRepository> = {}
+  ): PlaylistRepository {
+    return {
+      listByUsername: jest.fn().mockResolvedValue([]),
+      listMine: jest.fn(),
+      getByID: jest.fn(),
+      create: jest.fn(),
+      updateTitle: jest.fn(),
+      deletePlaylist: jest.fn(),
+      addVideo: jest.fn(),
+      removeVideo: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  it("renders Videos and Playlists tab buttons", async () => {
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "alice", avatarUrl: null, videos: [] })
+    );
+    render(<UserProfilePage params={makeParams("alice")} repository={repo} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^videos$/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument();
+    });
+  });
+
+  it("shows playlists when Playlists tab is clicked", async () => {
+    const user = userEvent.setup();
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "alice", avatarUrl: null, videos: [] })
+    );
+    const playlistRepo = makePlaylistRepo({
+      listByUsername: jest.fn().mockResolvedValue([
+        makePlaylistSummary({ title: "Favourites" }),
+        makePlaylistSummary({ id: "pl-2", title: "Watch Later" }),
+      ]),
+    });
+
+    render(
+      <UserProfilePage
+        params={makeParams("alice")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^playlists$/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Favourites")).toBeInTheDocument();
+      expect(screen.getByText("Watch Later")).toBeInTheDocument();
+    });
+  });
+
+  it("shows 'No playlists yet.' when user has no playlists", async () => {
+    const user = userEvent.setup();
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "carol", avatarUrl: null, videos: [] })
+    );
+    const playlistRepo = makePlaylistRepo({
+      listByUsername: jest.fn().mockResolvedValue([]),
+    });
+
+    render(
+      <UserProfilePage
+        params={makeParams("carol")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^playlists$/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/no playlists yet/i)).toBeInTheDocument();
+    });
+  });
+
+  it("each playlist card links to /pl/:id", async () => {
+    const user = userEvent.setup();
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "dave", avatarUrl: null, videos: [] })
+    );
+    const playlistRepo = makePlaylistRepo({
+      listByUsername: jest.fn().mockResolvedValue([
+        makePlaylistSummary({ id: "pl-abc", title: "Test Playlist" }),
+      ]),
+    });
+
+    render(
+      <UserProfilePage
+        params={makeParams("dave")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^playlists$/i }));
+    });
+
+    await waitFor(() => {
+      const link = screen.getByRole("link", { name: /test playlist/i });
+      expect(link).toHaveAttribute("href", "/pl/pl-abc");
+    });
+  });
+
+  it("calls listByUsername with correct username for playlists", async () => {
+    const user = userEvent.setup();
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "eve", avatarUrl: null, videos: [] })
+    );
+    const listByUsername = jest.fn().mockResolvedValue([]);
+    const playlistRepo = makePlaylistRepo({ listByUsername });
+
+    render(
+      <UserProfilePage
+        params={makeParams("eve")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^playlists$/i }));
+    });
+
+    await waitFor(() => {
+      expect(listByUsername).toHaveBeenCalledWith("eve");
+    });
   });
 });
