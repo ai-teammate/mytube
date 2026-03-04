@@ -16,6 +16,7 @@ type SearchVideo struct {
 	ViewCount        int64
 	UploaderUsername string
 	CreatedAt        time.Time
+	Status           string
 }
 
 // Category represents a row in the categories table.
@@ -133,7 +134,8 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  %s
@@ -163,7 +165,8 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
@@ -191,7 +194,8 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
@@ -253,7 +257,8 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
@@ -286,6 +291,7 @@ func scanSearchVideos(rows interface {
 			&v.ViewCount,
 			&v.UploaderUsername,
 			&v.CreatedAt,
+			&v.Status,
 		); err != nil {
 			return nil, fmt.Errorf("scan search video row: %w", err)
 		}

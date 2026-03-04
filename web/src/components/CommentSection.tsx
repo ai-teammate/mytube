@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { Comment, CommentRepository } from "@/domain/comment";
 
 interface CommentSectionProps {
@@ -131,9 +132,9 @@ export default function CommentSection({
       {/* Login prompt for unauthenticated users */}
       {!authLoading && !isAuthenticated && (
         <p className="text-sm text-gray-600 mb-6">
-          <a href="/login" className="text-blue-600 hover:underline">
+          <Link href="/login" className="text-blue-600 hover:underline">
             Login
-          </a>{" "}
+          </Link>{" "}
           to comment.
         </p>
       )}
@@ -174,12 +175,12 @@ export default function CommentSection({
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2">
-                <a
+                <Link
                   href={`/u/${comment.author.username}`}
                   className="text-sm font-medium text-gray-900 hover:underline"
                 >
                   {comment.author.username}
-                </a>
+                </Link>
                 <span className="text-xs text-gray-500">
                   {new Date(comment.createdAt).toLocaleDateString()}
                 </span>

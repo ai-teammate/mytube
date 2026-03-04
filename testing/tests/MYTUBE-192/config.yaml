@@ -1,0 +1,14 @@
+test_id: MYTUBE-192
+type: web
+framework: playwright
+platform: chromium
+dependencies:
+  - FIREBASE_TEST_EMAIL
+  - FIREBASE_TEST_PASSWORD
+  - FIREBASE_TEST_UID
+  - WEB_BASE_URL
+  - DB_HOST
+  - DB_PORT
+  - DB_USER
+  - DB_PASSWORD
+  - DB_NAME
