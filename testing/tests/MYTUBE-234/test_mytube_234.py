@@ -76,7 +76,6 @@ import re
 import sys
 import threading
 import urllib.request
-import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional
 
@@ -87,6 +86,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
 from testing.components.pages.profile_page.profile_page import ProfilePage
+from testing.components.services.auth_service import AuthService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -109,109 +109,20 @@ _VIDEO_COUNT_RE = re.compile(r"^\d+\s+videos?$", re.IGNORECASE)
 # ---------------------------------------------------------------------------
 
 
-def _fetch_json(url: str, timeout: int = 10) -> Optional[object]:
-    """Issue a GET request and return the parsed JSON body, or None on error."""
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
-
-
-def _post_json(url: str, body: dict, token: str, timeout: int = 10) -> Optional[dict]:
-    """POST body as JSON with Bearer auth; return parsed response."""
-    try:
-        data = json.dumps(body).encode()
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + token,
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
-
-
-def _put_json(url: str, body: dict, token: str, timeout: int = 10) -> Optional[dict]:
-    """PUT body as JSON with Bearer auth; return parsed response."""
-    try:
-        data = json.dumps(body).encode()
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + token,
-            },
-            method="PUT",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
-
-
-def _delete_resource(url: str, token: str, timeout: int = 10) -> bool:
-    """Send a DELETE request with Bearer auth; return True on HTTP 2xx."""
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"Authorization": "Bearer " + token},
-            method="DELETE",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status < 300
-    except Exception:
-        return False
-
-
-def _get_firebase_token(api_key: str, email: str, password: str) -> Optional[str]:
-    """Sign in with email/password and return the Firebase ID token."""
-    url = (
-        "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
-        "?key=" + api_key
-    )
-    try:
-        data = json.dumps(
-            {"email": email, "password": password, "returnSecureToken": True}
-        ).encode()
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}, method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode()).get("idToken")
-    except Exception:
-        return None
-
-
-def _get_me(api_base_url: str, token: str) -> Optional[dict]:
-    """Return the current user profile from GET /api/me."""
-    try:
-        req = urllib.request.Request(
-            api_base_url.rstrip("/") + "/api/me",
-            headers={"Authorization": "Bearer " + token},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
-    except Exception:
-        return None
-
-
 def _sanitise_username(username: str) -> str:
     """Replace all chars outside [a-zA-Z0-9_] with underscores."""
     return re.sub(r"[^a-zA-Z0-9_]", "_", username)
 
 
 def _fetch_user_playlists(api_base_url: str, username: str) -> list:
-    """Return public playlists for username, or []."""
+    """Return public playlists for username via an unauthenticated GET, or []."""
     url = api_base_url.rstrip("/") + "/api/users/" + username + "/playlists"
-    data = _fetch_json(url)
-    return data if isinstance(data, list) else []
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def _profile_page_renders_profile(page: Page, base_url: str, username: str) -> bool:
@@ -380,11 +291,14 @@ def test_context(web_config: WebConfig):
             "User 'tester' has no playlists and Firebase credentials are not set."
         )
 
-    token = _get_firebase_token(api_key, email, password)
+    token = AuthService.sign_in_with_email_password(api_key, email, password)
     if not token:
         pytest.skip("Could not obtain a Firebase ID token.")
 
-    me = _get_me(api, token)
+    auth_svc = AuthService(api, token)
+
+    status, body = auth_svc.get("/api/me")
+    me = json.loads(body) if status < 300 else None
     if not me or not me.get("username"):
         pytest.skip("Could not determine CI test user's username via /api/me.")
 
@@ -394,21 +308,19 @@ def test_context(web_config: WebConfig):
 
     if not _VALID_USERNAME_RE.match(original_username):
         test_username = _sanitise_username(original_username)
-        updated = _put_json(api.rstrip("/") + "/api/me", {"username": test_username}, token)
+        status, body = auth_svc.put("/api/me", {"username": test_username})
+        updated = json.loads(body) if status < 300 else None
         if not updated or not updated.get("username"):
             pytest.skip(
                 "Could not rename CI user to '" + test_username + "' via PUT /api/me."
             )
         renamed_from = original_username
 
-    playlist_resp = _post_json(
-        api.rstrip("/") + "/api/playlists",
-        {"title": _TEMP_PLAYLIST_TITLE},
-        token,
-    )
+    status, body = auth_svc.post("/api/playlists", {"title": _TEMP_PLAYLIST_TITLE})
+    playlist_resp = json.loads(body) if status < 300 else None
     if not playlist_resp or not playlist_resp.get("id"):
         if renamed_from and token:
-            _put_json(api.rstrip("/") + "/api/me", {"username": renamed_from}, token)
+            auth_svc.put("/api/me", {"username": renamed_from})
         pytest.skip("Could not create a temporary test playlist.")
 
     created_id = playlist_resp["id"]
@@ -423,9 +335,9 @@ def test_context(web_config: WebConfig):
         }
     finally:
         if created_id and token:
-            _delete_resource(api.rstrip("/") + "/api/playlists/" + created_id, token)
+            auth_svc.delete("/api/playlists/" + created_id)
         if renamed_from and token:
-            _put_json(api.rstrip("/") + "/api/me", {"username": renamed_from}, token)
+            auth_svc.put("/api/me", {"username": renamed_from})
 
 
 @pytest.fixture(scope="module")
