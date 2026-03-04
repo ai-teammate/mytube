@@ -19,12 +19,14 @@ import (
 // ─── stub CommentStore ────────────────────────────────────────────────────────
 
 type stubCommentStore struct {
-	comment    *repository.Comment
-	createErr  error
-	comments   []repository.Comment
-	listErr    error
-	deleted    bool
-	deleteErr  error
+	comment      *repository.Comment
+	createErr    error
+	comments     []repository.Comment
+	listErr      error
+	deleted      bool
+	deleteErr    error
+	getByID      *repository.Comment
+	getByIDErr   error
 }
 
 func (s *stubCommentStore) Create(_ context.Context, _ repository.CreateCommentParams) (*repository.Comment, error) {
@@ -37,6 +39,10 @@ func (s *stubCommentStore) ListByVideoID(_ context.Context, _ string) ([]reposit
 
 func (s *stubCommentStore) Delete(_ context.Context, _, _ string) (bool, error) {
 	return s.deleted, s.deleteErr
+}
+
+func (s *stubCommentStore) GetByID(_ context.Context, _ string) (*repository.Comment, error) {
+	return s.getByID, s.getByIDErr
 }
 
 // ─── stub CommentUserProvider ─────────────────────────────────────────────────
@@ -245,7 +251,7 @@ func TestVideoCommentsHandler_POST_EmptyBody_Returns422(t *testing.T) {
 	}
 }
 
-func TestVideoCommentsHandler_POST_BodyTooLong_Returns422(t *testing.T) {
+func TestVideoCommentsHandler_POST_BodyTooLong_Returns400(t *testing.T) {
 	longBody := strings.Repeat("a", 2001)
 	store := &stubCommentStore{}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
@@ -258,8 +264,16 @@ func TestVideoCommentsHandler_POST_BodyTooLong_Returns422(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected 422 for body too long, got %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for body too long, got %d", rec.Code)
+	}
+
+	var errBody map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&errBody); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if errBody["error"] != "comment body must not exceed 2000 characters" {
+		t.Errorf("error message: got %q, want %q", errBody["error"], "comment body must not exceed 2000 characters")
 	}
 }
 
@@ -381,7 +395,8 @@ func TestVideoCommentsHandler_POST_InvalidJSON_Returns400(t *testing.T) {
 // ─── DELETE /api/comments/:id tests ──────────────────────────────────────────
 
 func TestDeleteCommentHandler_DELETE_Success_Returns204(t *testing.T) {
-	store := &stubCommentStore{deleted: true}
+	ownedComment := &repository.Comment{ID: commentTestCommentID, AuthorID: "user-1"}
+	store := &stubCommentStore{deleted: true, getByID: ownedComment}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
 	h := handler.NewDeleteCommentHandler(store, users)
@@ -397,7 +412,7 @@ func TestDeleteCommentHandler_DELETE_Success_Returns204(t *testing.T) {
 }
 
 func TestDeleteCommentHandler_DELETE_NotFound_Returns404(t *testing.T) {
-	store := &stubCommentStore{deleted: false}
+	store := &stubCommentStore{getByID: nil}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
 	h := handler.NewDeleteCommentHandler(store, users)
@@ -409,6 +424,26 @@ func TestDeleteCommentHandler_DELETE_NotFound_Returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+// TestDeleteCommentHandler_DELETE_NotOwner_Returns403 is the reproduction test
+// for MYTUBE-210: a user who does not own the comment must receive 403.
+func TestDeleteCommentHandler_DELETE_NotOwner_Returns403(t *testing.T) {
+	// Comment owned by "user-2", but the authenticated user is "user-1".
+	otherUserComment := &repository.Comment{ID: commentTestCommentID, AuthorID: "user-2"}
+	store := &stubCommentStore{getByID: otherUserComment}
+	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
+	users := &stubCommentUserProvider{user: user}
+	h := handler.NewDeleteCommentHandler(store, users)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/comments/"+commentTestCommentID, nil)
+	req = authCommentRequest(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden when deleting another user's comment, got %d", rec.Code)
 	}
 }
 
@@ -441,8 +476,25 @@ func TestDeleteCommentHandler_DELETE_UserNotFound_Returns404(t *testing.T) {
 	}
 }
 
+func TestDeleteCommentHandler_DELETE_GetByIDError_Returns500(t *testing.T) {
+	store := &stubCommentStore{getByIDErr: errors.New("db error")}
+	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
+	users := &stubCommentUserProvider{user: user}
+	h := handler.NewDeleteCommentHandler(store, users)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/comments/"+commentTestCommentID, nil)
+	req = authCommentRequest(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
 func TestDeleteCommentHandler_DELETE_DeleteError_Returns500(t *testing.T) {
-	store := &stubCommentStore{deleteErr: errors.New("db error")}
+	ownedComment := &repository.Comment{ID: commentTestCommentID, AuthorID: "user-1"}
+	store := &stubCommentStore{deleteErr: errors.New("db error"), getByID: ownedComment}
 	user := &repository.User{ID: "user-1", FirebaseUID: "firebase-uid-1", Username: "alice"}
 	users := &stubCommentUserProvider{user: user}
 	h := handler.NewDeleteCommentHandler(store, users)
