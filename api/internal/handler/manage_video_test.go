@@ -179,12 +179,11 @@ func TestPutVideo_GetUserError_Returns500(t *testing.T) {
 	}
 }
 
-// TestPutVideo_VideoNotFoundOrNotOwner_Returns404 verifies that when Update()
-// returns nil (video not found or caller is not the owner), the handler returns
-// 404. Ownership is enforced atomically in the DB WHERE clause.
-func TestPutVideo_VideoNotFoundOrNotOwner_Returns404(t *testing.T) {
+// TestPutVideo_VideoNotFound_Returns404 verifies that when Update() returns
+// ErrNotFound (video does not exist), the handler returns 404.
+func TestPutVideo_VideoNotFound_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{updateResult: nil}
+	manager := &stubVideoManager{updateErr: repository.ErrNotFound}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -198,6 +197,35 @@ func TestPutVideo_VideoNotFoundOrNotOwner_Returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+// TestPutVideo_NonOwner_Returns403 is the regression test for MYTUBE-213.
+// When Update() returns ErrForbidden (video exists but caller is not the owner),
+// the handler must return 403 Forbidden — not 404.
+func TestPutVideo_NonOwner_Returns403(t *testing.T) {
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{updateErr: repository.ErrForbidden}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
+			bytes.NewBufferString(`{"title":"Modified Title"}`)),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "forbidden" {
+		t.Errorf("error body: got %q, want \"forbidden\"", body["error"])
 	}
 }
 
@@ -304,27 +332,6 @@ func TestPutVideo_UpdateError_Returns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", rec.Code)
-	}
-}
-
-func TestPutVideo_UpdateReturnsNil_Returns404(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{
-		updateResult: nil, // row not found or not owner
-	}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
-			bytes.NewBufferString(`{"title":"New Title"}`)),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", rec.Code)
 	}
 }
 

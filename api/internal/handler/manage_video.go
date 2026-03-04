@@ -132,14 +132,16 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		Tags:        tags,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrForbidden) {
+			writeJSONError(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			writeJSONError(w, "video not found", http.StatusNotFound)
+			return
+		}
 		log.Printf("PUT /api/videos/%s: update: %v", videoID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	if updated == nil {
-		// Update returned nil: either the video doesn't exist or the caller is not
-		// the owner. Return 404 — do not reveal ownership information.
-		writeJSONError(w, "video not found", http.StatusNotFound)
 		return
 	}
 
