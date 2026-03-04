@@ -44,9 +44,10 @@ type VideoResponse struct {
 // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 var uuidRE = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// isValidVideoID returns true when id matches the UUID format used as the
-// videos primary key.  This guards against non-UUID garbage reaching the DB.
-func isValidVideoID(id string) bool {
+// isValidUUID returns true when id matches the UUID format (RFC 4122).
+// This guards against non-UUID garbage reaching the DB for any resource whose
+// primary key is a UUID (videos, comments, users, etc.).
+func isValidUUID(id string) bool {
 	return uuidRE.MatchString(id)
 }
 
@@ -94,7 +95,7 @@ func NewVideoHandler(videos VideoProvider, cdnBaseURL string) http.Handler {
 			return
 		}
 
-		if !isValidVideoID(videoID) {
+		if !isValidUUID(videoID) {
 			writeJSONError(w, "invalid video id", http.StatusBadRequest)
 			return
 		}
