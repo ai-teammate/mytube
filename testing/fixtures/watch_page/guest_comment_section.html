@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Test Video — mytube</title>
+</head>
+<body>
+  <!--
+    Standalone fixture that replicates the guest (unauthenticated) rendering
+    of CommentSection.tsx (web/src/components/CommentSection.tsx).
+
+    When the user is NOT logged in, CommentSection renders:
+      - The section heading "Comments"
+      - A "Login to comment" link  (no textarea, no submit button)
+      - "No comments yet." placeholder
+
+    This fixture is used by MYTUBE-206 as the fallback mode when the deployed
+    app is unavailable.  It mirrors the exact DOM structure produced by the
+    React component so that the same Playwright selectors work against both
+    the live app and the fixture.
+  -->
+  <div id="root">
+    <div class="min-h-screen bg-gray-50">
+      <div class="max-w-5xl mx-auto px-4 py-6">
+        <!-- Video title -->
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">Fixture Test Video</h1>
+
+        <!-- Comment section — guest state (mirrors CommentSection.tsx output) -->
+        <section aria-label="Comments" class="mt-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Comments</h2>
+
+          <!-- Login prompt for unauthenticated users -->
+          <p class="text-sm text-gray-600 mb-6">
+            <a href="/login" class="text-blue-600 hover:underline">Login</a>
+            to comment.
+          </p>
+
+          <!-- No comments yet -->
+          <p class="text-sm text-gray-500">No comments yet.</p>
+
+          <ul class="space-y-4"></ul>
+        </section>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

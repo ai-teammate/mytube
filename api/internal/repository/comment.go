@@ -104,6 +104,27 @@ LIMIT 100`
 	return comments, nil
 }
 
+// GetByID returns the comment with the given ID, or (nil, nil) if no such
+// comment exists.
+func (r *CommentRepository) GetByID(ctx context.Context, commentID string) (*Comment, error) {
+	const selectSQL = `
+SELECT c.id, c.body, c.author_id, u.username, u.avatar_url, c.created_at
+FROM   comments c
+JOIN   users    u ON u.id = c.author_id
+WHERE  c.id = $1`
+
+	row := r.db.QueryRowContext(ctx, selectSQL, commentID)
+
+	var c Comment
+	if err := row.Scan(&c.ID, &c.Body, &c.AuthorID, &c.AuthorUsername, &c.AuthorAvatarURL, &c.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get comment by id: %w", err)
+	}
+	return &c, nil
+}
+
 // Delete hard-deletes a comment by ID. ownerID is the authenticated user; the
 // delete is conditional on the comment belonging to ownerID.
 // Returns (true, nil) when deleted, (false, nil) when not found or not owned.
