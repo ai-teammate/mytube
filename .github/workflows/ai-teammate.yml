@@ -89,9 +89,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: web/node_modules
-          key: ${{ runner.os }}-web-node-modules-${{ hashFiles('web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-web-node-modules-
+          key: ${{ runner.os }}-node20-web-node-modules-${{ hashFiles('web/package-lock.json') }}
 
       - name: Install web dependencies
         if: steps.cache-web-deps.outputs.cache-hit != 'true'
