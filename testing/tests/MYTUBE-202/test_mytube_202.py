@@ -50,7 +50,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
-from testing.components.services.comment_service import CommentService
+from testing.components.services.comment_service import CommentDBService as CommentService
 
 # ---------------------------------------------------------------------------
 # Constants
