@@ -93,24 +93,6 @@ class VideoApiService:
         url = f"{self._base_url}/api/videos/popular?limit={limit}"
         return self._fetch_list(url)
 
-    def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
-        """GET /api/videos/recent?limit=*limit* and return (status_code, videos).
-
-        Returns (0, []) when the host is unreachable.
-        Returns (status_code, None) when the response is not a JSON array.
-        """
-        url = f"{self._base_url}/api/videos/recent?limit={limit}"
-        return self._fetch_list(url)
-
-    def get_popular_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
-        """GET /api/videos/popular?limit=*limit* and return (status_code, videos).
-
-        Returns (0, []) when the host is unreachable.
-        Returns (status_code, None) when the response is not a JSON array.
-        """
-        url = f"{self._base_url}/api/videos/popular?limit={limit}"
-        return self._fetch_list(url)
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
