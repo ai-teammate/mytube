@@ -80,10 +80,20 @@ jobs:
           cache-key-suffix: '-cursor'
 
       - name: Set up Node.js
-        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Cache web node_modules
+        id: cache-web-deps
+        uses: actions/cache@v4
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node20-web-node-modules-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install web dependencies
+        if: steps.cache-web-deps.outputs.cache-hit != 'true'
+        run: cd web && npm ci --no-audit --progress=false
 
       - name: Configure npm global prefix
         if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
