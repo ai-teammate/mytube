@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { VideoCardItem } from "@/domain/search";
 
 interface VideoCardProps {
@@ -15,7 +16,7 @@ export default function VideoCard({ video }: VideoCardProps) {
   return (
     <div className="rounded-lg overflow-hidden bg-white shadow hover:shadow-md transition-shadow">
       {/* 16:9 Thumbnail — links to watch page */}
-      <a
+      <Link
         href={`/v/${video.id}`}
         aria-label={video.title}
         className="block relative w-full aspect-video bg-gray-200"
@@ -32,22 +33,20 @@ export default function VideoCard({ video }: VideoCardProps) {
             No thumbnail
           </div>
         )}
-      </a>
-
-      {/* Metadata */}
+      </Link>
       <div className="p-3">
-        <a
+        <Link
           href={`/v/${video.id}`}
           className="text-sm font-medium text-gray-900 line-clamp-2 hover:underline"
         >
           {video.title}
-        </a>
-        <a
+        </Link>
+        <Link
           href={`/u/${video.uploaderUsername}`}
           className="text-xs text-blue-600 hover:underline mt-1 block"
         >
           {video.uploaderUsername}
-        </a>
+        </Link>
         <p className="text-xs text-gray-500 mt-0.5">
           {video.viewCount.toLocaleString()} views &middot;{" "}
           {new Date(video.createdAt).toLocaleDateString()}
