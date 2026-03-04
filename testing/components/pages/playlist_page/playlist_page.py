@@ -7,7 +7,7 @@ outside this class.
 Architecture notes
 ------------------
 - Dependency-injected Playwright ``Page`` is passed via constructor.
-- No hardcoded URLs — the caller provides the base URL and playlist ID.
+- No hardcoded URLs -- the caller provides the base URL and playlist ID.
 - All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
 """
 from __future__ import annotations
@@ -20,10 +20,10 @@ from playwright.sync_api import Page
 class PlaylistPage:
     """Page Object for the MyTube playlist page (/pl/:id)."""
 
-    # ── Selectors ─────────────────────────────────────────────────────────────
+    # -- Selectors ----------------------------------------------------------------
 
     # Loading / error states
-    _LOADING_TEXT = "text=Loading…"
+    _LOADING_TEXT = "text=Loading..."
     _NOT_FOUND_TEXT = "text=Playlist not found."
     _ERROR_ALERT = "[role='alert']"
 
@@ -47,22 +47,22 @@ class PlaylistPage:
     # "Now playing (X/N)" label
     _NOW_PLAYING = "p:has-text('Now playing')"
 
-    # Queue items in the sidebar — aria-label="Play <title>"
+    # Queue items in the sidebar -- aria-label="Play <title>"
     _QUEUE_ITEMS = "button[aria-label^='Play ']"
     _CURRENT_QUEUE_ITEM = "button[aria-current='true']"
 
-    # ── Timeouts ──────────────────────────────────────────────────────────────
+    # -- Timeouts -----------------------------------------------------------------
 
     _PAGE_LOAD_TIMEOUT = 30_000   # ms
     _PLAYER_INIT_TIMEOUT = 20_000 # ms
-    _AUTO_ADVANCE_TIMEOUT = 8_000 # ms — how long to wait for queue to advance
+    _AUTO_ADVANCE_TIMEOUT = 8_000 # ms -- how long to wait for queue to advance
 
-    # ── Constructor ───────────────────────────────────────────────────────────
+    # -- Constructor --------------------------------------------------------------
 
     def __init__(self, page: Page) -> None:
         self._page = page
 
-    # ── Navigation ────────────────────────────────────────────────────────────
+    # -- Navigation ---------------------------------------------------------------
 
     def navigate(self, base_url: str, playlist_id: str) -> None:
         """Navigate to /pl/<playlist_id> and wait for the loading indicator to clear."""
@@ -77,7 +77,7 @@ class PlaylistPage:
         except Exception:
             pass  # loading indicator may not appear or may vanish before we check
 
-    # ── Playlist header queries ───────────────────────────────────────────────
+    # -- Playlist header queries --------------------------------------------------
 
     def get_playlist_title(self) -> Optional[str]:
         """Return the <h1> playlist title text, or None if absent."""
@@ -93,7 +93,7 @@ class PlaylistPage:
         el = self._page.query_selector(self._ERROR_ALERT)
         return bool(el and el.is_visible())
 
-    # ── "Now playing" label ───────────────────────────────────────────────────
+    # -- "Now playing" label ------------------------------------------------------
 
     def get_now_playing_text(self) -> Optional[str]:
         """Return the 'Now playing (X/N)' paragraph text, or None."""
@@ -115,7 +115,7 @@ class PlaylistPage:
             timeout=timeout,
         )
 
-    # ── Queue panel queries ───────────────────────────────────────────────────
+    # -- Queue panel queries ------------------------------------------------------
 
     def get_queue_item_count(self) -> int:
         """Return the number of items in the queue sidebar."""
@@ -146,7 +146,7 @@ class PlaylistPage:
             return False
         return items.nth(index).get_attribute("aria-current") == "true"
 
-    # ── Player state queries ──────────────────────────────────────────────────
+    # -- Player state queries -----------------------------------------------------
 
     def wait_for_video_element(
         self,
@@ -192,7 +192,7 @@ class PlaylistPage:
         """Return True if the end-of-playlist overlay is visible."""
         return self._page.locator(self._END_OF_PLAYLIST).count() > 0
 
-    # ── Video event helpers ───────────────────────────────────────────────────
+    # -- Video event helpers ------------------------------------------------------
 
     def fire_video_ended_event(self) -> bool:
         """Dispatch a native 'ended' event on the first <video.video-js> element.
