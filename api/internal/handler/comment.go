@@ -23,6 +23,7 @@ const (
 type CommentStore interface {
 	Create(ctx context.Context, p repository.CreateCommentParams) (*repository.Comment, error)
 	ListByVideoID(ctx context.Context, videoID string) ([]repository.Comment, error)
+	GetByID(ctx context.Context, commentID string) (*repository.Comment, error)
 	Delete(ctx context.Context, commentID, ownerID string) (bool, error)
 }
 
@@ -120,6 +121,21 @@ func NewDeleteCommentHandler(comments CommentStore, users CommentUserProvider) h
 			return
 		}
 
+		existing, err := comments.GetByID(r.Context(), commentID)
+		if err != nil {
+			log.Printf("DELETE /api/comments/%s: get: %v", commentID, err)
+			writeJSONError(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if existing == nil {
+			writeJSONError(w, "comment not found", http.StatusNotFound)
+			return
+		}
+		if existing.AuthorID != user.ID {
+			writeJSONError(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
 		deleted, err := comments.Delete(r.Context(), commentID, user.ID)
 		if err != nil {
 			log.Printf("DELETE /api/comments/%s: delete: %v", commentID, err)
@@ -210,7 +226,7 @@ func postCommentHandler(comments CommentStore, users CommentUserProvider, videos
 		return
 	}
 	if utf8.RuneCountInString(req.Body) > maxCommentBodyLength {
-		writeJSONError(w, "body exceeds maximum length of 2000 characters", http.StatusUnprocessableEntity)
+		writeJSONError(w, "comment body must not exceed 2000 characters", http.StatusBadRequest)
 		return
 	}
 

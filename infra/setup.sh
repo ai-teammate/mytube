@@ -19,6 +19,8 @@ RAW_BUCKET="mytube-raw-uploads"
 HLS_BUCKET="mytube-hls-output"
 TRANSCODER_SA="mytube-transcoder"
 TRANSCODER_SA_EMAIL="${TRANSCODER_SA}@${PROJECT}.iam.gserviceaccount.com"
+CI_SA="ai-teammate-gcloud"
+CI_SA_EMAIL="${CI_SA}@${PROJECT}.iam.gserviceaccount.com"
 TRIGGER_SERVICE="mytube-transcoder-trigger"
 JOB_NAME="mytube-transcoder"
 
@@ -42,7 +44,7 @@ if ! gcloud storage buckets describe "gs://${RAW_BUCKET}" --project="${PROJECT}"
   gcloud storage buckets create "gs://${RAW_BUCKET}" \
     --location="${REGION}" \
     --uniform-bucket-level-access \
-    --no-public-access-prevention \
+    --public-access-prevention \
     --project="${PROJECT}"
   echo "    Created gs://${RAW_BUCKET}"
 else
@@ -96,6 +98,20 @@ echo "==> Granting ${TRANSCODER_SA_EMAIL} objectCreator on ${HLS_BUCKET}..."
 gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
   --member="serviceAccount:${TRANSCODER_SA_EMAIL}" \
   --role="roles/storage.objectCreator" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} legacyBucketReader on ${RAW_BUCKET} (CI/testing read access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.legacyBucketReader" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} legacyBucketReader on ${HLS_BUCKET} (CI/testing read access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.legacyBucketReader" \
   --project="${PROJECT}"
 
 # ── 5. Allow trigger service to invoke Cloud Run Jobs ─────────────────────────

@@ -64,8 +64,7 @@ describe("StarRating", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/4\.2 \/ 5/)).toBeInTheDocument();
-      expect(screen.getByText(/10 ratings/)).toBeInTheDocument();
+      expect(screen.getByText(/4\.2 \/ 5 \(10\)/)).toBeInTheDocument();
     });
   });
 
@@ -211,7 +210,7 @@ describe("StarRating", () => {
     });
   });
 
-  it("shows 1 rating (singular) when count is 1", async () => {
+  it("shows count in parentheses when count is 1", async () => {
     const repo = makeRepo({
       getSummary: jest.fn().mockResolvedValue({
         averageRating: 5.0,
@@ -228,7 +227,29 @@ describe("StarRating", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/1 rating\b/)).toBeInTheDocument();
+      expect(screen.getByText(/5\.0 \/ 5 \(1\)/)).toBeInTheDocument();
+    });
+  });
+
+  it("displays vote count as plain number in parentheses without a label", async () => {
+    const repo = makeRepo({
+      getSummary: jest.fn().mockResolvedValue({
+        averageRating: 4.2,
+        ratingCount: 10,
+        myRating: null,
+      }),
+    });
+    render(
+      <StarRating
+        videoID="vid-1"
+        repository={repo}
+        getToken={noOpGetToken}
+      />
+    );
+
+    await waitFor(() => {
+      // Expected format: "4.2 / 5 (10)" — the closing paren must follow the number immediately.
+      expect(screen.getByText(/4\.2 \/ 5 \(10\)/)).toBeInTheDocument();
     });
   });
 
@@ -252,8 +273,7 @@ describe("StarRating", () => {
     fireEvent.click(buttons[3]); // 4th star
 
     await waitFor(() => {
-      expect(screen.getByText(/4\.0 \/ 5/)).toBeInTheDocument();
-      expect(screen.getByText(/5 ratings/)).toBeInTheDocument();
+      expect(screen.getByText(/4\.0 \/ 5 \(5\)/)).toBeInTheDocument();
     });
   });
 });
