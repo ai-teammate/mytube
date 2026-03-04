@@ -103,7 +103,6 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('testing/requirements.txt') }}
 
       - name: Install Python test dependencies
-        if: steps.cache-python-deps.outputs.cache-hit != 'true'
         run: pip install -q -r testing/requirements.txt
 
       - name: Cache Playwright browsers
