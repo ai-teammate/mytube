@@ -25,8 +25,12 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
 
     let isMounted = true;
 
-    // Dynamically import video.js to ensure it runs client-side only.
-    import("video.js").then(({ default: videoJs }) => {
+    // Dynamically import video.js and the HLS plugin to ensure they run client-side only.
+    // @videojs/http-streaming is required for HLS playback on non-Safari browsers.
+    Promise.all([
+      import("video.js"),
+      import("@videojs/http-streaming"),
+    ]).then(([{ default: videoJs }]) => {
       if (!isMounted || !videoRef.current) return;
 
       playerRef.current = videoJs(videoRef.current, {
