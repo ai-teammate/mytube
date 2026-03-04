@@ -95,6 +95,28 @@ jobs:
         if: steps.cache-web-deps.outputs.cache-hit != 'true'
         run: cd web && npm ci --no-audit --progress=false
 
+      - name: Cache Python packages
+        id: cache-python-deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('testing/requirements.txt') }}
+
+      - name: Install Python test dependencies
+        if: steps.cache-python-deps.outputs.cache-hit != 'true'
+        run: pip install -q -r testing/requirements.txt
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('testing/requirements.txt') }}
+
+      - name: Install Playwright Chromium browser
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: playwright install chromium --with-deps
+
       - name: Configure npm global prefix
         if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         run: |
