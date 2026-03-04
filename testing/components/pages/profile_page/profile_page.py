@@ -98,3 +98,73 @@ class ProfilePage:
     def get_current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    # -----------------------------------------------------------------
+    # Playlists tab
+    # -----------------------------------------------------------------
+
+    _PLAYLISTS_TAB_BTN = "nav button:has-text('Playlists')"
+    _PLAYLIST_CARD = "a[href^='/pl/']"
+    _PLAYLISTS_LOADING = "text=Loading playlists…"
+    _NO_PLAYLISTS = "text=No playlists yet."
+
+    def click_playlists_tab(self) -> None:
+        """Click the 'Playlists' tab button to activate the playlists view."""
+        self._page.click(self._PLAYLISTS_TAB_BTN)
+
+    def wait_for_playlists_loaded(self, timeout: int = 15_000) -> None:
+        """Wait until the 'Loading playlists…' spinner disappears."""
+        try:
+            self._page.wait_for_selector(
+                self._PLAYLISTS_LOADING, state="hidden", timeout=timeout
+            )
+        except Exception:
+            pass  # spinner already gone or never appeared
+
+    def get_playlist_card_count(self) -> int:
+        """Return the number of playlist cards currently in the DOM."""
+        return len(self._page.query_selector_all(self._PLAYLIST_CARD))
+
+    def get_playlist_hrefs(self) -> list[str]:
+        """Return the href attribute of every playlist card."""
+        cards = self._page.query_selector_all(self._PLAYLIST_CARD)
+        hrefs: list[str] = []
+        for card in cards:
+            href = card.get_attribute("href") or ""
+            if href:
+                hrefs.append(href)
+        return hrefs
+
+    def get_playlist_cards_data(self) -> list[dict]:
+        """Return structured data (href, title, subtitle) for each playlist card.
+
+        ``subtitle`` is the text below the title inside each card.
+        Per the ticket spec this should be the video count (e.g. '3 videos'),
+        but the current implementation renders the creation date instead.
+        """
+        cards = self._page.query_selector_all(self._PLAYLIST_CARD)
+        result: list[dict] = []
+        for card in cards:
+            href = card.get_attribute("href") or ""
+            paragraphs = card.query_selector_all("p")
+            title = (paragraphs[0].text_content() or "").strip() if paragraphs else ""
+            subtitle = (
+                (paragraphs[1].text_content() or "").strip()
+                if len(paragraphs) > 1
+                else ""
+            )
+            result.append({"href": href, "title": title, "subtitle": subtitle})
+        return result
+
+    def all_playlist_hrefs_match_pattern(self) -> bool:
+        """Return True if every playlist card href matches /pl/<id>."""
+        import re
+        pattern = re.compile(r"^/pl/.+")
+        hrefs = self.get_playlist_hrefs()
+        if not hrefs:
+            return False
+        return all(pattern.match(href) for href in hrefs)
+
+    def has_no_playlists_message(self) -> bool:
+        """Return True when 'No playlists yet.' is visible on the playlists tab."""
+        return self._page.locator("text=No playlists yet.").count() > 0
