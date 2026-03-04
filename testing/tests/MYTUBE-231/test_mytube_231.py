@@ -40,10 +40,9 @@ Environment variables
 
 Architecture notes
 ------------------
-- ApiProcessService starts and stops the Go API binary; all HTTP calls go through it
-  (GET) or through AuthService (DELETE/GET with Bearer token).
+- ApiProcessService starts and stops the Go API binary; all HTTP calls go through it.
 - PlaylistApiService (testing/components/services/playlist_api_service.py) wraps
-  the authenticated DELETE and GET playlist calls via AuthService.
+  the authenticated DELETE and unauthenticated GET playlist calls.
 - Direct psycopg2 SQL is used for idempotent test-data setup and DB assertions.
 - No hardcoded waits; ApiProcessService.wait_for_ready() polls /health.
 """
@@ -60,7 +59,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
-from testing.components.services.auth_service import AuthService
 from testing.components.services.playlist_api_service import PlaylistApiService
 
 # ---------------------------------------------------------------------------
@@ -266,11 +264,10 @@ def seeded_data(api_server, db_conn):
 @pytest.fixture(scope="module")
 def playlist_service(api_server) -> PlaylistApiService:
     """Return a PlaylistApiService that calls the local API server with the test token."""
-    auth = AuthService(
+    return PlaylistApiService(
         base_url=f"http://127.0.0.1:{_PORT}",
         token=_FIREBASE_TOKEN,
     )
-    return PlaylistApiService(auth)
 
 
 @pytest.fixture(scope="module")

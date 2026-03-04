@@ -63,11 +63,10 @@ jobs:
 
       - name: Update agents submodule to latest main
         run: |
-          for i in 1 2 3; do
-            git submodule update --remote --merge agents && break
-            echo "Attempt $i failed, retrying in 15s..."
-            sleep 15
-          done
+          cd agents
+          git fetch origin main
+          git checkout origin/main
+          cd ..
 
       - name: Cache JDK 23
         uses: actions/cache@v4
