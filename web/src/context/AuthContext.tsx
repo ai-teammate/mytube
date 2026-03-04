@@ -33,11 +33,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const auth = getFirebaseAuth();
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+    let auth;
+    try {
+      auth = getFirebaseAuth();
+    } catch {
+      // Firebase failed to initialise (e.g. missing/invalid API key at build
+      // time).  Treat the user as unauthenticated so public pages still render.
       setLoading(false);
-    });
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (firebaseUser) => {
+        setUser(firebaseUser);
+        setLoading(false);
+      },
+      () => {
+        // Firebase auth error (e.g. auth/invalid-api-key due to missing env
+        // vars at build time). Stop loading so the page can render.
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, []);
