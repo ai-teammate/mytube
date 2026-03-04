@@ -343,6 +343,7 @@ describe("UserProfilePage", () => {
       id: "pl-1",
       title: "My Playlist",
       ownerUsername: "alice",
+      videoCount: 0,
       createdAt: "2024-01-01T00:00:00Z",
       ...overrides,
     };
@@ -470,6 +471,40 @@ describe("UserProfilePage", () => {
     await waitFor(() => {
       const link = screen.getByRole("link", { name: /test playlist/i });
       expect(link).toHaveAttribute("href", "/pl/pl-abc");
+    });
+  });
+
+  it("displays video count on each playlist card", async () => {
+    const user = userEvent.setup();
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "alice", avatarUrl: null, videos: [] })
+    );
+    const playlistRepo = makePlaylistRepo({
+      listByUsername: jest.fn().mockResolvedValue([
+        makePlaylistSummary({ id: "pl-1", title: "My Mix", videoCount: 3 }),
+        makePlaylistSummary({ id: "pl-2", title: "Empty List", videoCount: 0 }),
+      ]),
+    });
+
+    render(
+      <UserProfilePage
+        params={makeParams("alice")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^playlists$/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("3 videos")).toBeInTheDocument();
+      expect(screen.getByText("0 videos")).toBeInTheDocument();
     });
   });
 
