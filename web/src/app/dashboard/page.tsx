@@ -3,6 +3,7 @@ import {
   DashboardContent,
   defaultDashboardRepo,
   defaultManagementRepo,
+  defaultPlaylistRepo,
 } from "./_content";
 
 export default function DashboardPage() {
@@ -11,6 +12,7 @@ export default function DashboardPage() {
       <DashboardContent
         dashboardRepo={defaultDashboardRepo}
         managementRepo={defaultManagementRepo}
+        playlistRepo={defaultPlaylistRepo}
       />
     </Suspense>
   );

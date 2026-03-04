@@ -122,7 +122,7 @@ export default function StarRating({
         {summary !== null && (
           <span className="text-sm text-gray-600">
             {displayCount > 0
-              ? `${displayRating.toFixed(1)} / 5 (${displayCount.toLocaleString()} ${displayCount === 1 ? "rating" : "ratings"})`
+              ? `${displayRating.toFixed(1)} / 5 (${displayCount.toLocaleString()})`
               : "No ratings yet"}
           </span>
         )}
