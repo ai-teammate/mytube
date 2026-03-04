@@ -41,6 +41,7 @@ type PlaylistSummaryResponse struct {
 	ID            string    `json:"id"`
 	Title         string    `json:"title"`
 	OwnerUsername string    `json:"owner_username"`
+	VideoCount    int       `json:"video_count"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -128,6 +129,7 @@ func mapSummary(p repository.PlaylistSummary) PlaylistSummaryResponse {
 		ID:            p.ID,
 		Title:         p.Title,
 		OwnerUsername: p.OwnerUsername,
+		VideoCount:    p.VideoCount,
 		CreatedAt:     p.CreatedAt,
 	}
 }
