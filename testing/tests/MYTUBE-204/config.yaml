@@ -1,0 +1,8 @@
+test_id: MYTUBE-204
+type: api
+framework: rest
+platform: http
+dependencies:
+  - FIREBASE_TEST_TOKEN
+  - CLOUD_SQL_CONNECTION_NAME
+  - DB_PASSWORD

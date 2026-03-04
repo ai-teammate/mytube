@@ -1,12 +1,14 @@
-"""UploadPage — Page Object for the /upload page of the MyTube web application.
+"""UploadPage -- Page Object for the /upload page of the MyTube web application.
 
 Encapsulates all interactions with the video upload form, including file selection,
 metadata entry, upload submission, and real-time progress bar observation.
+Also used for access-control tests -- verifying that unauthenticated users are
+redirected away from this protected page.
 
 Architecture notes
 ------------------
 - Dependency-injected Playwright ``Page`` is passed via constructor.
-- No hardcoded URLs — the caller provides the full upload URL.
+- No hardcoded URLs -- the caller provides the base URL.
 - All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
 - Progress bar snapshots are captured at intervals for incremental verification.
 """
@@ -49,10 +51,9 @@ class UploadPage:
     _PROGRESS_CONTAINER = '[aria-label="upload progress"]'
     _UPLOAD_PROGRESS_CONTAINER = '[aria-label="upload progress"]'
     _SUPPORTED_FORMATS_TEXT = "p.mt-1.text-sm.text-gray-500"
-    _HEADING = "h1"
 
     # Timeouts
-    _MIME_ERROR_TIMEOUT = 5_000  # ms — max time to wait for the error alert to appear
+    _MIME_ERROR_TIMEOUT = 5_000  # ms -- max time to wait for the error alert to appear
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -61,17 +62,20 @@ class UploadPage:
     # Navigation
     # ------------------------------------------------------------------
 
-    def navigate(self, url: str) -> None:
-        """Navigate to the /upload page and wait for it to load.
+    def navigate(self, base_url: str) -> None:
+        """Navigate directly to /upload and wait for the page to settle.
 
-        Uses ``networkidle`` so that Firebase auth state resolves before the
-        page logic runs (the upload form redirects to /login when auth is still
-        loading).
+        Uses ``networkidle`` so that any client-side auth check and redirect
+        has time to complete before callers inspect the URL.
+
+        Parameters
+        ----------
+        base_url:
+            Base URL of the application (e.g. ``https://example.com``).
+            The method appends ``/upload`` automatically.
         """
-        self._page.goto(url, wait_until="networkidle")
-        # Wait for the file input to be present — confirms the auth guard has
-        # resolved and the upload form is fully rendered.
-        self._page.locator(self._FILE_INPUT).wait_for(state="attached", timeout=15_000)
+        url = f"{base_url.rstrip('/')}/upload"
+        self._page.goto(url, wait_until="networkidle", timeout=30_000)
 
     # ------------------------------------------------------------------
     # Actions
@@ -183,16 +187,11 @@ class UploadPage:
             self._FILE_INPUT,
             files=[{"name": filename, "mimeType": mime_type, "buffer": content}],
         )
-        # Wait for the React state update to propagate and the alert to appear.
-        # This is an event-driven wait — it resolves as soon as the element is
-        # visible and times out (raising) if it never appears within the timeout.
         try:
             self._page.locator(self._MIME_ERROR_ALERT).first.wait_for(
                 state="visible", timeout=self._MIME_ERROR_TIMEOUT
             )
         except Exception:
-            # The alert may not always appear (e.g. for the accept-attribute test).
-            # Silently swallow the timeout so callers can make their own assertions.
             pass
 
     # ------------------------------------------------------------------
@@ -221,8 +220,6 @@ class UploadPage:
         container = self._page.locator(self._PROGRESS_CONTAINER)
         if container.count() == 0:
             return None
-        # The percentage span is the second <span> inside the flex header row.
-        # Use a short timeout so we don't block if the element disappears.
         spans = container.locator("span")
         if spans.count() < 2:
             return None
@@ -232,7 +229,7 @@ class UploadPage:
             return None
 
     def get_phase_text(self) -> Optional[str]:
-        """Return the phase label text ('Uploading…' or 'Upload complete').
+        """Return the phase label text ('Uploading...' or 'Upload complete').
 
         Returns None if the container is not present.
         """
@@ -269,40 +266,25 @@ class UploadPage:
         - The phase label 'Upload complete' is visible in the progress container, OR
         - The page navigates away from /upload (which happens on success after
           router.replace('/dashboard?uploaded=...')).
-
-        This dual condition handles the case where the upload finishes so
-        quickly that the page navigates before the 'Upload complete' label is
-        observable.
         """
         try:
             self._page.locator(self._PROGRESS_CONTAINER).locator(
                 "span", has_text="Upload complete"
             ).wait_for(state="visible", timeout=timeout)
         except Exception:
-            # If the 'Upload complete' label is not visible, accept navigation
-            # away from /upload as implicit completion.
             current = self._page.url
             if "/upload" not in current:
-                return  # Navigated away successfully — upload completed
-            raise  # Unexpected state: still on /upload but no complete label
+                return
+            raise
 
     def collect_progress_snapshots(
         self,
         interval_ms: int = 200,
         max_snapshots: int = 50,
     ) -> list[UploadProgressSnapshot]:
-        """
-        Poll the progress bar repeatedly while uploading and return a list of
-        snapshots captured at *interval_ms* intervals.
-
-        Stops early when:
-        - 'Upload complete' is detected in the phase text, OR
-        - The page navigates away from /upload (implicit completion), OR
-        - *max_snapshots* is reached.
-        """
+        """Poll the progress bar repeatedly while uploading and return snapshots."""
         snapshots: list[UploadProgressSnapshot] = []
         for _ in range(max_snapshots):
-            # Stop if we've navigated away from the upload page
             if "/upload" not in self._page.url:
                 break
             snap = self.snapshot_progress()
