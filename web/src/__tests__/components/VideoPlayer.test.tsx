@@ -16,6 +16,12 @@ jest.mock("video.js", () => ({
   default: mockVideoJs,
 }));
 
+// Mock @videojs/http-streaming — the plugin auto-registers when imported.
+jest.mock("@videojs/http-streaming", () => ({
+  __esModule: true,
+  default: {},
+}));
+
 // Mock the CSS import — jsdom cannot handle CSS files.
 jest.mock("video.js/dist/video-js.css", () => ({}), { virtual: true });
 
