@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
 import type { RatingRepository } from "@/domain/rating";
 import type { CommentRepository } from "@/domain/comment";
@@ -184,12 +185,12 @@ export default function WatchPage({
               {video.uploader.username.charAt(0).toUpperCase()}
             </div>
           )}
-          <a
+          <Link
             href={`/u/${video.uploader.username}`}
             className="text-sm font-medium text-gray-900 hover:underline"
           >
             {video.uploader.username}
-          </a>
+          </Link>
           <span className="text-sm text-gray-500 ml-auto">
             {video.viewCount.toLocaleString()} views ·{" "}
             {new Date(video.createdAt).toLocaleDateString()}
