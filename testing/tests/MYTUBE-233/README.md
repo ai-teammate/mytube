@@ -87,6 +87,12 @@ testing/tests/MYTUBE-233/test_mytube_233.py::TestSaveToPlaylistDropdown::test_se
 
 ## Test setup / teardown
 
-The fixture creates two playlists via `POST /api/playlists` before the tests run
-and deletes them via `DELETE /api/playlists/:id` after the module completes.
-No database access required — all setup is done through the deployed API.
+The `watch_page_loaded` fixture registers Playwright route interceptors that
+serve deterministic mock data for every API call the watch page makes:
+
+- `GET **/api/videos/_` → static mock video object
+- `GET **/api/me/playlists` → two in-memory mock playlist objects (`_MOCK_PLAYLISTS`)
+- `POST **/api/playlists/*/videos` → HTTP 204 (successful save)
+
+No real playlists are created or deleted; the test is fully self-contained and
+does not depend on any backend state.

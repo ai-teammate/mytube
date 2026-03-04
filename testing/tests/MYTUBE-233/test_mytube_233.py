@@ -277,6 +277,7 @@ class TestSaveToPlaylistDropdown:
     def test_dropdown_opens_on_button_click(
         self,
         watch_page_loaded: dict,
+        web_config: WebConfig,
     ):
         """Clicking the 'Save to playlist' button opens the dropdown menu.
 
@@ -288,7 +289,6 @@ class TestSaveToPlaylistDropdown:
 
         # Navigate fresh to ensure dropdown is closed
         watch_pg: WatchPage = watch_page_loaded["watch_page"]
-        web_config = WebConfig()
         watch_pg.navigate(web_config.base_url, _PLACEHOLDER_VIDEO_ID)
 
         widget.open_dropdown()
@@ -303,6 +303,7 @@ class TestSaveToPlaylistDropdown:
     def test_dropdown_contains_both_mock_playlist_titles(
         self,
         watch_page_loaded: dict,
+        web_config: WebConfig,
     ):
         """The dropdown lists the titles of the user's playlists.
 
@@ -314,7 +315,6 @@ class TestSaveToPlaylistDropdown:
         watch_pg: WatchPage = watch_page_loaded["watch_page"]
         page: Page = watch_page_loaded["page"]
 
-        web_config = WebConfig()
         watch_pg.navigate(web_config.base_url, _PLACEHOLDER_VIDEO_ID)
 
         widget.open_dropdown()
@@ -334,6 +334,7 @@ class TestSaveToPlaylistDropdown:
     def test_selecting_playlist_shows_success_indicator(
         self,
         watch_page_loaded: dict,
+        web_config: WebConfig,
     ):
         """Selecting a playlist from the dropdown triggers a successful save.
 
@@ -346,7 +347,6 @@ class TestSaveToPlaylistDropdown:
         watch_pg: WatchPage = watch_page_loaded["watch_page"]
         page: Page = watch_page_loaded["page"]
 
-        web_config = WebConfig()
         watch_pg.navigate(web_config.base_url, _PLACEHOLDER_VIDEO_ID)
 
         widget.open_dropdown()
