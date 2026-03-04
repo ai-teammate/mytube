@@ -62,7 +62,11 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Update agents submodule to latest main
-        run: git submodule update --remote --merge agents
+        run: |
+          cd agents
+          git fetch origin main
+          git checkout origin/main
+          cd ..
 
       - name: Cache JDK 23
         uses: actions/cache@v4
