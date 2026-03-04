@@ -365,6 +365,7 @@ class TestUpdatePlaylistAsNonOwner:
         put_response: tuple[int, str],
         seeded_test_data,
         api_server,
+        auth_client_user_b: AuthService,
     ):
         """After a 403, a public GET must show the playlist title is still the original.
 
@@ -379,18 +380,7 @@ class TestUpdatePlaylistAsNonOwner:
         playlist_id = seeded_test_data["playlist_id"]
         original_title = seeded_test_data["original_title"]
 
-        # GET /api/playlists/:id is a public endpoint; no auth needed.
-        import urllib.request
-        import urllib.error
-
-        url = f"http://127.0.0.1:{_PORT}/api/playlists/{playlist_id}"
-        try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
-                get_status = resp.status
-                get_body = resp.read().decode()
-        except urllib.error.HTTPError as exc:
-            get_status = exc.code
-            get_body = exc.read().decode()
+        get_status, get_body = auth_client_user_b.get(f"/api/playlists/{playlist_id}")
 
         assert get_status == 200, (
             f"Expected HTTP 200 from GET /api/playlists/{playlist_id}, got {get_status}. "
