@@ -22,6 +22,7 @@ type PlaylistSummary struct {
 	ID            string
 	Title         string
 	OwnerUsername string
+	VideoCount    int
 	CreatedAt     time.Time
 }
 
@@ -68,14 +69,14 @@ WITH inserted AS (
     VALUES ($1, $2)
     RETURNING id, title, owner_id, created_at
 )
-SELECT i.id, i.title, u.username, i.created_at
+SELECT i.id, i.title, u.username, 0 AS video_count, i.created_at
 FROM   inserted i
 JOIN   users    u ON u.id = i.owner_id`
 
 	row := r.db.QueryRowContext(ctx, insertSQL, ownerID, title)
 
 	var p PlaylistSummary
-	if err := row.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.CreatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.VideoCount, &p.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("create playlist: no row returned")
 		}
@@ -135,10 +136,12 @@ ORDER BY pv.position ASC`
 // ListByOwnerID returns all playlists for the given internal owner user ID.
 func (r *PlaylistRepository) ListByOwnerID(ctx context.Context, ownerID string) ([]PlaylistSummary, error) {
 	const selectSQL = `
-SELECT p.id, p.title, u.username, p.created_at
+SELECT p.id, p.title, u.username, COUNT(pv.video_id) AS video_count, p.created_at
 FROM   playlists p
-JOIN   users     u ON u.id = p.owner_id
+JOIN   users          u  ON u.id = p.owner_id
+LEFT JOIN playlist_videos pv ON pv.playlist_id = p.id
 WHERE  p.owner_id = $1
+GROUP BY p.id, p.title, u.username, p.created_at
 ORDER BY p.created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, selectSQL, ownerID)
@@ -150,7 +153,7 @@ ORDER BY p.created_at DESC`
 	playlists := []PlaylistSummary{}
 	for rows.Next() {
 		var p PlaylistSummary
-		if err := rows.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.VideoCount, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan playlist row: %w", err)
 		}
 		playlists = append(playlists, p)
@@ -165,10 +168,12 @@ ORDER BY p.created_at DESC`
 // ListByOwnerUsername returns all playlists for the given owner username (public endpoint).
 func (r *PlaylistRepository) ListByOwnerUsername(ctx context.Context, username string) ([]PlaylistSummary, error) {
 	const selectSQL = `
-SELECT p.id, p.title, u.username, p.created_at
+SELECT p.id, p.title, u.username, COUNT(pv.video_id) AS video_count, p.created_at
 FROM   playlists p
-JOIN   users     u ON u.id = p.owner_id
+JOIN   users          u  ON u.id = p.owner_id
+LEFT JOIN playlist_videos pv ON pv.playlist_id = p.id
 WHERE  u.username = $1
+GROUP BY p.id, p.title, u.username, p.created_at
 ORDER BY p.created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, selectSQL, username)
@@ -180,7 +185,7 @@ ORDER BY p.created_at DESC`
 	playlists := []PlaylistSummary{}
 	for rows.Next() {
 		var p PlaylistSummary
-		if err := rows.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.VideoCount, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan playlist row: %w", err)
 		}
 		playlists = append(playlists, p)
@@ -221,14 +226,16 @@ WHERE  id       = $2
 	}
 
 	const selectSQL = `
-SELECT p.id, p.title, u.username, p.created_at
+SELECT p.id, p.title, u.username,
+       (SELECT COUNT(*) FROM playlist_videos pv WHERE pv.playlist_id = p.id) AS video_count,
+       p.created_at
 FROM   playlists p
 JOIN   users     u ON u.id = p.owner_id
 WHERE  p.id = $1`
 
 	refetchRow := r.db.QueryRowContext(ctx, selectSQL, playlistID)
 	var p PlaylistSummary
-	if err := refetchRow.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.CreatedAt); err != nil {
+	if err := refetchRow.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.VideoCount, &p.CreatedAt); err != nil {
 		return nil, fmt.Errorf("fetch updated playlist: %w", err)
 	}
 	return &p, nil

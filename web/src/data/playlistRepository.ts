@@ -13,6 +13,7 @@ interface RawPlaylistSummary {
   id: string;
   title: string;
   owner_username: string;
+  video_count: number;
   created_at: string;
 }
 
@@ -35,6 +36,7 @@ function mapSummary(raw: RawPlaylistSummary): PlaylistSummary {
     id: raw.id,
     title: raw.title,
     ownerUsername: raw.owner_username,
+    videoCount: raw.video_count,
     createdAt: raw.created_at,
   };
 }

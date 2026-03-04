@@ -266,7 +266,7 @@ export default function UserProfilePage({
                         {pl.title}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
-                        {new Date(pl.createdAt).toLocaleDateString()}
+                        {pl.videoCount} videos
                       </p>
                     </div>
                   </Link>

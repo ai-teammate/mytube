@@ -6,6 +6,7 @@ export interface PlaylistSummary {
   id: string;
   title: string;
   ownerUsername: string;
+  videoCount: number;
   createdAt: string; // ISO-8601
 }
 

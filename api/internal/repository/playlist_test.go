@@ -66,14 +66,15 @@ func (q *playlistQuerier) QueryRowContext(_ context.Context, sqlStr string, _ ..
 		return emptyDB().QueryRowContext(context.Background(), "SELECT 1 WHERE 1=0")
 	}
 
-	// Playlist summary row: id, title, owner_username, created_at
+	// Playlist summary row: id, title, username, video_count, created_at
 	dsn := registerResults(q.t, []fakeQueryResult{
 		{
-			columns: []string{"id", "title", "username", "created_at"},
+			columns: []string{"id", "title", "username", "video_count", "created_at"},
 			rows: [][]driver.Value{{
 				q.queryRowSummary.ID,
 				q.queryRowSummary.Title,
 				q.queryRowSummary.OwnerUsername,
+				int64(q.queryRowSummary.VideoCount),
 				q.queryRowSummary.CreatedAt,
 			}},
 		},
@@ -120,11 +121,11 @@ func (q *playlistQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*
 
 	var rows [][]driver.Value
 	for _, p := range q.summaries {
-		rows = append(rows, []driver.Value{p.ID, p.Title, p.OwnerUsername, p.CreatedAt})
+		rows = append(rows, []driver.Value{p.ID, p.Title, p.OwnerUsername, int64(p.VideoCount), p.CreatedAt})
 	}
 	dsn := registerResults(q.t, []fakeQueryResult{
 		{
-			columns: []string{"id", "title", "username", "created_at"},
+			columns: []string{"id", "title", "username", "video_count", "created_at"},
 			rows:    rows,
 		},
 	})
@@ -447,9 +448,9 @@ func (q *updateTitleQuerier) QueryRowContext(_ context.Context, _ string, _ ...a
 	}
 	dsn := registerResults(q.t, []fakeQueryResult{
 		{
-			columns: []string{"id", "title", "username", "created_at"},
+			columns: []string{"id", "title", "username", "video_count", "created_at"},
 			rows: [][]driver.Value{{
-				q.summary.ID, q.summary.Title, q.summary.OwnerUsername, q.summary.CreatedAt,
+				q.summary.ID, q.summary.Title, q.summary.OwnerUsername, int64(q.summary.VideoCount), q.summary.CreatedAt,
 			}},
 		},
 	})
