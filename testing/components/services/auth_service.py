@@ -102,3 +102,23 @@ class AuthService:
                 return resp.status, resp.read().decode()
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
+
+    @staticmethod
+    def sign_in_with_email_password(api_key: str, email: str, password: str) -> Optional[str]:
+        """Sign in with Firebase email/password; return the ID token or None on error."""
+        import json
+        url = (
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+            "?key=" + api_key
+        )
+        try:
+            data = json.dumps(
+                {"email": email, "password": password, "returnSecureToken": True}
+            ).encode()
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode()).get("idToken")
+        except Exception:
+            return None
