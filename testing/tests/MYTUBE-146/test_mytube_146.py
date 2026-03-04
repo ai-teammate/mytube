@@ -19,6 +19,7 @@ Test steps
 4. Assert that the Video.js player has initialised (vjs-paused or vjs-playing class applied).
 5. Capture network requests and assert that a request matching the hls_manifest_url
    was fired.
+6. Click the play button and assert the video enters the vjs-playing state.
 
 Environment variables
 ---------------------
@@ -84,9 +85,22 @@ def video_api_service(api_config: APIConfig) -> VideoApiService:
 
 @pytest.fixture(scope="module")
 def ready_video(video_api_service: VideoApiService) -> tuple[str, str | None]:
-    """Return (video_id, hls_manifest_url) for a ready video."""
+    """Return (video_id, hls_manifest_url) for a ready video, or skip if none found."""
     override_id = os.getenv("MYTUBE_146_VIDEO_ID", "").strip()
-    return video_api_service.find_ready_video(override_id=override_id)
+    result = video_api_service.find_ready_video(override_id=override_id)
+    if result is None:
+        if override_id:
+            pytest.skip(
+                f"Video ID {override_id!r} not found or not ready. "
+                "Ensure the video exists and has status='ready'."
+            )
+        else:
+            pytest.skip(
+                "No ready video found via API. "
+                "Set MYTUBE_146_VIDEO_ID to a valid video UUID with status='ready', "
+                "or ensure a ready video exists for a known test user."
+            )
+    return result
 
 
 @pytest.fixture(scope="module")
@@ -225,4 +239,16 @@ class TestVideoWatchPagePlayerInit:
         title = watch_page.get_video_title()
         assert title, (
             f"Expected a non-empty <h1> title on the watch page, but got: {title!r}"
+        )
+
+    def test_video_plays_after_click(
+        self, watch_page_loaded: tuple[WatchPage, WatchPageState, str | None]
+    ):
+        """Clicking the play button must cause Video.js to enter the vjs-playing state."""
+        watch_page, _state, _expected_url = watch_page_loaded
+        watch_page.click_play()
+        assert watch_page.is_playing(), (
+            "Expected video to enter vjs-playing state after clicking the play button, "
+            "but vjs-playing class was not applied within the timeout. "
+            "The video may have failed to start playback."
         )

@@ -10,3 +10,4 @@ class GcpConfig:
         self.hls_bucket: str = os.environ.get("GCP_HLS_BUCKET", "mytube-hls-output")
         self.transcoder_job: str = os.environ.get("GCP_TRANSCODER_JOB", "mytube-transcoder")
         self.transcoder_sa: str = os.environ.get("GCP_TRANSCODER_SA", "mytube-transcoder")
+        self.cdn_base_url: str = os.environ.get("CDN_BASE_URL", "https://cdn.example.com").rstrip("/")

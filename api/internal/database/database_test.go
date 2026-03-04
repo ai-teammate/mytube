@@ -110,6 +110,44 @@ func TestGetenv_EnvSet(t *testing.T) {
 	}
 }
 
+// TestDSN_WithDBDsn verifies that when DB_DSN is set it is returned directly,
+// bypassing INSTANCE_UNIX_SOCKET and individual DB_* vars.
+// This is the reproduction test for MYTUBE-226: the integration test harness
+// passes DB_DSN so the transcoder connects to the same test database; if
+// database.DSN() ignores DB_DSN the job connects to the wrong DB and fails to
+// update the videos table (status, hls_manifest_path, thumbnail_url).
+func TestDSN_WithDBDsn(t *testing.T) {
+	want := "host=test-host port=5432 user=testuser password=secret dbname=testdb sslmode=disable"
+	t.Setenv("DB_DSN", want)
+	// These should be ignored when DB_DSN is set.
+	t.Setenv("INSTANCE_UNIX_SOCKET", "/cloudsql/proj:reg:inst")
+	t.Setenv("DB_HOST", "other-host")
+	t.Setenv("DB_PORT", "9999")
+	t.Setenv("DB_USER", "other-user")
+	t.Setenv("DB_PASSWORD", "other-pass")
+	t.Setenv("DB_NAME", "other-db")
+
+	got := DSN()
+	if got != want {
+		t.Errorf("DSN() = %q, want %q", got, want)
+	}
+}
+
+// TestDSN_DBDsnEmpty_FallsBackToOtherVars verifies that when DB_DSN is empty
+// the function falls back to existing behaviour (Unix socket or TCP vars).
+func TestDSN_DBDsnEmpty_FallsBackToOtherVars(t *testing.T) {
+	t.Setenv("DB_DSN", "")
+	t.Setenv("INSTANCE_UNIX_SOCKET", "/cloudsql/project:region:instance")
+	t.Setenv("DB_USER", "svc")
+	t.Setenv("DB_PASSWORD", "pw")
+	t.Setenv("DB_NAME", "prod")
+
+	got := DSN()
+	if !strings.Contains(got, "host=/cloudsql/project:region:instance") {
+		t.Errorf("DSN() expected Unix socket DSN, got %q", got)
+	}
+}
+
 // TestOpen_ReturnsDB verifies that Open() returns a non-nil *sql.DB.
 // sql.Open with the postgres driver does not establish a connection, so this
 // succeeds without a running database.
