@@ -1,13 +1,12 @@
 "use client";
 
-import { use, useState, useCallback } from "react";
+import { use, useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { PlaylistDetail, PlaylistRepository, PlaylistVideoItem } from "@/domain/playlist";
 import type { VideoRepository } from "@/domain/video";
 import { ApiPlaylistRepository } from "@/data/playlistRepository";
 import { ApiVideoRepository } from "@/data/videoRepository";
-import { useEffect } from "react";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
 const VideoPlayer = dynamic(() => import("@/components/VideoPlayer"), {
@@ -371,15 +370,17 @@ function AutoAdvancePlayer({ src, poster, onEnded }: AutoAdvancePlayerProps) {
 function useCallbackRef<T extends HTMLElement>(
   setup: (node: T | null) => (() => void) | void
 ) {
-  const cleanupRef = { current: (() => {}) as () => void };
+  const cleanupRef = useRef<() => void>(() => {});
+  const setupRef = useRef(setup);
 
-  return useCallback(
-    (node: T | null) => {
-      cleanupRef.current?.();
-      const cleanup = setup(node);
-      cleanupRef.current = cleanup ?? (() => {});
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setup]
-  );
+  // Keep setupRef current without invalidating the stable callback.
+  useEffect(() => {
+    setupRef.current = setup;
+  });
+
+  return useCallback((node: T | null) => {
+    cleanupRef.current?.();
+    const cleanup = setupRef.current(node);
+    cleanupRef.current = cleanup ?? (() => {});
+  }, []); // stable — no deps needed
 }
