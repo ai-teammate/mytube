@@ -128,10 +128,10 @@ class TestRegisterPageRefresh:
         A raw GitHub Pages 404 response includes 'File not found' in the body.
         If this text appears it confirms the server-side routing fallback is absent.
         """
-        RegisterPage(page).navigate(web_config.base_url)
+        register_page = RegisterPage(page)
+        register_page.navigate(web_config.base_url)
 
-        body_text = page.inner_text("body").lower()
-        assert "file not found" not in body_text, (
+        assert not register_page.has_file_not_found_error(), (
             f"Direct navigation to {web_config.register_url()} produced a "
             "'File not found' error in the page body. "
             "GitHub Pages is not configured to serve the SPA for sub-routes. "
@@ -157,13 +157,7 @@ class TestRegisterPageRefresh:
         register_page.navigate(web_config.base_url)
 
         # Simulate a hard browser refresh (Ctrl+R / Cmd+R)
-        page.reload(wait_until="networkidle")
-
-        # Wait for the SPA to hydrate and Firebase auth to settle
-        try:
-            page.wait_for_selector("h1", timeout=_AUTH_SETTLE_TIMEOUT)
-        except Exception:
-            pass  # The assertion below will produce a clear failure message
+        register_page.hard_refresh()
 
         assert register_page.is_on_register_page(), (
             "After hard refresh (page.reload()) on /register/, the "
@@ -183,19 +177,13 @@ class TestRegisterPageRefresh:
         'File not found' after reload, GitHub Pages served a raw 404 response
         for /register/, confirming the SPA routing fallback is missing or broken.
         """
-        RegisterPage(page).navigate(web_config.base_url)
+        register_page = RegisterPage(page)
+        register_page.navigate(web_config.base_url)
 
         # Simulate hard refresh
-        page.reload(wait_until="networkidle")
+        register_page.hard_refresh()
 
-        # Allow the page to settle after reload
-        try:
-            page.wait_for_selector("h1", timeout=_AUTH_SETTLE_TIMEOUT)
-        except Exception:
-            pass
-
-        body_text = page.inner_text("body").lower()
-        assert "file not found" not in body_text, (
+        assert not register_page.has_file_not_found_error(), (
             "After hard refresh on /register/, the page shows 'File not found'. "
             "This confirms GitHub Pages returned HTTP 404 for the /register/ "
             "sub-route on a direct server request. "
