@@ -40,7 +40,10 @@ BEGIN
 END;
 $$;
 
-ALTER TABLE users ADD CONSTRAINT users_username_unique UNIQUE (username);
+DO $$ BEGIN
+    ALTER TABLE users ADD CONSTRAINT users_username_unique UNIQUE (username);
+EXCEPTION WHEN duplicate_table THEN NULL;
+END $$;
 
 -- Add an index on username to support fast profile lookups.
-CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);

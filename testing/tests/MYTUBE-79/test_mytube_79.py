@@ -43,7 +43,10 @@ _MIGRATIONS_DIR = os.path.join(
 _INITIAL_SCHEMA = os.path.join(_MIGRATIONS_DIR, "0001_initial_schema.up.sql")
 
 # Module-scoped DB connection fixture — wipes schema and re-applies migration.
-conn = make_conn_fixture([_INITIAL_SCHEMA])
+conn = make_conn_fixture(
+    [_INITIAL_SCHEMA],
+    test_usernames=["testuser_mytube79"],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +115,13 @@ def transcoder_service(gcp_config: GcpConfig, storage_client) -> HLSTranscoderSe
 
 
 @pytest.fixture(scope="module")
-def transcoded_video(conn, transcoder_service: HLSTranscoderService, raw_object_path: str, db_dsn: str) -> dict:
+def transcoded_video(
+    conn,
+    gcp_config: GcpConfig,
+    transcoder_service: HLSTranscoderService,
+    raw_object_path: str,
+    db_dsn: str,
+) -> dict:
     """
     Insert a video row with status 'processing', trigger the real Cloud Run
     transcoding job for that video, then return the row the transcoder updated.
@@ -125,7 +134,7 @@ def transcoded_video(conn, transcoder_service: HLSTranscoderService, raw_object_
       - expected_hls_manifest_path (derived from config for comparison)
       - expected_thumbnail_url     (derived from config for comparison)
     """
-    gcp_cfg = transcoder_service._config
+    gcp_cfg = gcp_config
 
     # ── Precondition: insert a user (FK dependency) via UserService ───────
     user_svc = UserService(conn)
@@ -168,9 +177,7 @@ def transcoded_video(conn, transcoder_service: HLSTranscoderService, raw_object_
     # These are used as the expected side of the assertions, but the actual
     # values are whatever the transcoder wrote — not pre-computed by the test.
     expected_hls_manifest_path = f"gs://{gcp_cfg.hls_bucket}/videos/{video_id}/index.m3u8"
-    cdn_base_url = os.environ.get("CDN_BASE_URL", "").rstrip("/")
-    effective_cdn = cdn_base_url if cdn_base_url else "https://cdn.example.com"
-    expected_thumbnail_url = f"{effective_cdn}/videos/{video_id}/thumbnail.jpg"
+    expected_thumbnail_url = f"{gcp_cfg.cdn_base_url}/videos/{video_id}/thumbnail.jpg"
 
     return {
         "video_id": video_id,

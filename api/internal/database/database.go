@@ -16,11 +16,15 @@ func Open() (*sql.DB, error) {
 }
 
 // DSN builds a PostgreSQL DSN from environment variables.
-// When INSTANCE_UNIX_SOCKET is set (Cloud SQL via Unix socket) that path is
-// used as the host and sslmode is always disabled (traffic never leaves the VM).
-// For TCP connections, SSL_MODE defaults to "require"; set SSL_MODE=disable for
-// local development only.
+// Priority order:
+//  1. DB_DSN — if set, returned as-is (allows callers such as test harnesses to
+//     supply a complete pre-built DSN).
+//  2. INSTANCE_UNIX_SOCKET — Cloud SQL via Unix socket (sslmode always disabled).
+//  3. Individual TCP vars: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, SSL_MODE.
 func DSN() string {
+	if dsn := os.Getenv("DB_DSN"); dsn != "" {
+		return dsn
+	}
 	if socket := os.Getenv("INSTANCE_UNIX_SOCKET"); socket != "" {
 		return fmt.Sprintf(
 			"host=%s user=%s password=%s dbname=%s sslmode=disable",

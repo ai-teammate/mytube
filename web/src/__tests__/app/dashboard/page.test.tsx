@@ -11,6 +11,7 @@ import type {
   UpdatedVideo,
   VideoManagementRepository,
 } from "@/domain/dashboard";
+import type { PlaylistRepository, PlaylistSummary } from "@/domain/playlist";
 
 // ─── Mock next/navigation ─────────────────────────────────────────────────────
 
@@ -49,9 +50,22 @@ jest.mock("@/data/dashboardRepository", () => ({
   })),
 }));
 
+jest.mock("@/data/playlistRepository", () => ({
+  ApiPlaylistRepository: jest.fn().mockImplementation(() => ({
+    listMine: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    updateTitle: jest.fn(),
+    deletePlaylist: jest.fn(),
+    addVideo: jest.fn(),
+    removeVideo: jest.fn(),
+    getByID: jest.fn(),
+    listByUsername: jest.fn(),
+  })),
+}));
+
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 
-import DashboardPage from "@/app/dashboard/page";
+import { DashboardContent as DashboardPage } from "@/app/dashboard/_content";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,14 +109,42 @@ function makeManagementRepo(overrides?: Partial<VideoManagementRepository>): Vid
   };
 }
 
+function makePlaylist(overrides: Partial<PlaylistSummary> = {}): PlaylistSummary {
+  return {
+    id: "pl-1",
+    title: "My Playlist",
+    ownerUsername: "alice",
+    createdAt: "2024-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function makePlaylistRepo(
+  overrides: Partial<PlaylistRepository> = {}
+): PlaylistRepository {
+  return {
+    listMine: jest.fn().mockResolvedValue([]),
+    create: jest.fn().mockResolvedValue(makePlaylist()),
+    updateTitle: jest.fn().mockResolvedValue(makePlaylist({ title: "Renamed" })),
+    deletePlaylist: jest.fn().mockResolvedValue(undefined),
+    addVideo: jest.fn(),
+    removeVideo: jest.fn(),
+    getByID: jest.fn(),
+    listByUsername: jest.fn(),
+    ...overrides,
+  };
+}
+
 function renderDashboard(
   dashboardRepo?: DashboardVideoRepository,
-  managementRepo?: VideoManagementRepository
+  managementRepo?: VideoManagementRepository,
+  playlistRepo?: PlaylistRepository
 ) {
   return render(
     <DashboardPage
       dashboardRepo={dashboardRepo ?? makeDashboardRepo(() => Promise.resolve([]))}
       managementRepo={managementRepo ?? makeManagementRepo()}
+      playlistRepo={playlistRepo ?? makePlaylistRepo()}
     />
   );
 }
@@ -143,7 +185,7 @@ describe("DashboardPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: /my videos/i })
+        screen.getByRole("heading", { name: /my studio/i })
       ).toBeInTheDocument();
     });
   });
@@ -605,6 +647,213 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       const callParams: UpdateVideoParams = updateVideoMock.mock.calls[0][1];
       expect(callParams.categoryId).toBe(3);
+    });
+  });
+
+  // ─── Playlists tab ─────────────────────────────────────────────────────────
+
+  it("renders My videos and My playlists tab buttons", async () => {
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /my videos/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument();
+    });
+  });
+
+  it("shows playlists tab content when My playlists is clicked", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/new playlist title/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows empty playlists state when user has no playlists", async () => {
+    const user = userEvent.setup();
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([]),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/you don.t have any playlists yet/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows playlist titles when playlists exist", async () => {
+    const user = userEvent.setup();
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([
+        makePlaylist({ id: "pl-1", title: "Favourites" }),
+        makePlaylist({ id: "pl-2", title: "Watch Later" }),
+      ]),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Favourites")).toBeInTheDocument();
+      expect(screen.getByText("Watch Later")).toBeInTheDocument();
+    });
+  });
+
+  it("creates a new playlist and shows it in the list", async () => {
+    const user = userEvent.setup();
+    const created = makePlaylist({ id: "pl-new", title: "New List" });
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue(created),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/new playlist title/i)).toBeInTheDocument()
+    );
+
+    await user.type(screen.getByPlaceholderText(/new playlist title/i), "New List");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /create playlist/i }));
+    });
+
+    await waitFor(() => {
+      expect(playlistRepo.create).toHaveBeenCalledWith("New List", "mock-token");
+      expect(screen.getByText("New List")).toBeInTheDocument();
+    });
+  });
+
+  it("shows rename input when Rename is clicked", async () => {
+    const user = userEvent.setup();
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([makePlaylist({ title: "Old Name" })]),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /rename old name/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /rename old name/i }));
+
+    expect(screen.getByDisplayValue("Old Name")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+  });
+
+  it("saves renamed playlist title", async () => {
+    const user = userEvent.setup();
+    const updated = makePlaylist({ title: "New Name" });
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([makePlaylist({ title: "Old Name" })]),
+      updateTitle: jest.fn().mockResolvedValue(updated),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /rename old name/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /rename old name/i }));
+
+    const input = screen.getByDisplayValue("Old Name");
+    await user.clear(input);
+    await user.type(input, "New Name");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^save$/i }));
+    });
+
+    await waitFor(() => {
+      expect(playlistRepo.updateTitle).toHaveBeenCalledWith(
+        "pl-1",
+        "New Name",
+        "mock-token"
+      );
+    });
+  });
+
+  it("shows delete confirm/cancel after clicking Delete on playlist", async () => {
+    const user = userEvent.setup();
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([makePlaylist({ title: "Favourites" })]),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /delete favourites/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /delete favourites/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /confirm/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+    });
+  });
+
+  it("removes playlist from list on successful delete", async () => {
+    const user = userEvent.setup();
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([makePlaylist({ title: "Favourites" })]),
+      deletePlaylist: jest.fn().mockResolvedValue(undefined),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /my playlists/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /my playlists/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /delete favourites/i })).toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("button", { name: /delete favourites/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /confirm/i })).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /confirm/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Favourites")).not.toBeInTheDocument();
     });
   });
 });

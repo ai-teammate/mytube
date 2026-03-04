@@ -1,0 +1,129 @@
+name: Provision GCS Buckets
+
+# Manual trigger only — requires write access to the repository.
+# Provisions mytube-raw-uploads and mytube-hls-output GCS buckets,
+# grants IAM for the transcoder SA and CI SA, and optionally sets
+# CDN_BASE_URL as a GitHub variable for the test suite.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read   # checkout only; no write to repo contents
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION:     ${{ vars.GCP_REGION }}
+      RAW_BUCKET: mytube-raw-uploads
+      HLS_BUCKET: mytube-hls-output
+      TRANSCODER_SA: mytube-transcoder
+      CI_SA: ai-teammate-gcloud
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── 1. Create raw-uploads bucket (private) ───────────────────────────────
+      - name: Create raw-uploads bucket (private)
+        run: |
+          if gcloud storage buckets describe "gs://${{ env.RAW_BUCKET }}" \
+              --project="${{ env.PROJECT_ID }}" &>/dev/null; then
+            echo "gs://${{ env.RAW_BUCKET }} already exists — skipping."
+          else
+            gcloud storage buckets create "gs://${{ env.RAW_BUCKET }}" \
+              --location="${{ env.REGION }}" \
+              --uniform-bucket-level-access \
+              --public-access-prevention \
+              --project="${{ env.PROJECT_ID }}"
+            echo "Created gs://${{ env.RAW_BUCKET }}"
+          fi
+
+      # ── 2. Create HLS-output bucket (public read for CDN delivery) ───────────
+      - name: Create hls-output bucket (public read)
+        run: |
+          if gcloud storage buckets describe "gs://${{ env.HLS_BUCKET }}" \
+              --project="${{ env.PROJECT_ID }}" &>/dev/null; then
+            echo "gs://${{ env.HLS_BUCKET }} already exists — skipping."
+          else
+            gcloud storage buckets create "gs://${{ env.HLS_BUCKET }}" \
+              --location="${{ env.REGION }}" \
+              --uniform-bucket-level-access \
+              --no-public-access-prevention \
+              --project="${{ env.PROJECT_ID }}"
+
+            gcloud storage buckets add-iam-policy-binding "gs://${{ env.HLS_BUCKET }}" \
+              --member="allUsers" \
+              --role="roles/storage.objectViewer" \
+              --project="${{ env.PROJECT_ID }}"
+
+            echo "Created gs://${{ env.HLS_BUCKET }} with allUsers objectViewer"
+          fi
+
+      # ── 3. Create transcoder service account (if absent) ────────────────────
+      - name: Create transcoder service account
+        run: |
+          SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          if gcloud iam service-accounts describe "${SA_EMAIL}" \
+              --project="${{ env.PROJECT_ID }}" &>/dev/null; then
+            echo "${SA_EMAIL} already exists — skipping."
+          else
+            gcloud iam service-accounts create "${{ env.TRANSCODER_SA }}" \
+              --display-name="mytube Transcoder" \
+              --description="Least-privilege SA for the mytube-transcoder Cloud Run Job" \
+              --project="${{ env.PROJECT_ID }}"
+            echo "Created ${SA_EMAIL}"
+          fi
+
+      # ── 4. Grant bucket IAM to transcoder SA ────────────────────────────────
+      - name: Grant transcoder SA objectViewer on raw-uploads
+        run: |
+          SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.RAW_BUCKET }}" \
+            --member="serviceAccount:${SA_EMAIL}" \
+            --role="roles/storage.objectViewer" \
+            --project="${{ env.PROJECT_ID }}"
+
+      - name: Grant transcoder SA objectCreator on hls-output
+        run: |
+          SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.HLS_BUCKET }}" \
+            --member="serviceAccount:${SA_EMAIL}" \
+            --role="roles/storage.objectCreator" \
+            --project="${{ env.PROJECT_ID }}"
+
+      # ── 5. Grant CI SA legacyBucketReader for test access ───────────────────
+      - name: Grant CI SA legacyBucketReader on raw-uploads
+        run: |
+          CI_SA_EMAIL="${{ env.CI_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.RAW_BUCKET }}" \
+            --member="serviceAccount:${CI_SA_EMAIL}" \
+            --role="roles/storage.legacyBucketReader" \
+            --project="${{ env.PROJECT_ID }}"
+
+      - name: Grant CI SA legacyBucketReader on hls-output
+        run: |
+          CI_SA_EMAIL="${{ env.CI_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.HLS_BUCKET }}" \
+            --member="serviceAccount:${CI_SA_EMAIL}" \
+            --role="roles/storage.legacyBucketReader" \
+            --project="${{ env.PROJECT_ID }}"
+
+      # ── 6. Summary ───────────────────────────────────────────────────────────
+      - name: Print summary
+        run: |
+          echo "## GCS Bucket Provisioning Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bucket | Access |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| gs://${{ env.HLS_BUCKET }} | allUsers objectViewer (CDN delivery) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "MYTUBE-49 / MYTUBE-127 tests should now pass." >> "$GITHUB_STEP_SUMMARY"

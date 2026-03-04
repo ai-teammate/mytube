@@ -18,7 +18,10 @@ class VideoApiService:
     Usage::
 
         svc = VideoApiService(api_config)
-        video_id, hls_url = svc.find_ready_video(override_id="...")
+        result = svc.find_ready_video(override_id="...")
+        if result is None:
+            pytest.skip("No ready video found.")
+        video_id, hls_url = result
     """
 
     _CANDIDATE_USERNAMES = ["tester", "testuser", "alice", "admin"]
@@ -40,24 +43,23 @@ class VideoApiService:
 
     def find_ready_video(
         self, override_id: str = ""
-    ) -> tuple[str, Optional[str]]:
-        """Return (video_id, hls_manifest_url) for the first ready video found.
+    ) -> tuple[str, Optional[str]] | None:
+        """Return (video_id, hls_manifest_url) for the first ready video found, or None.
 
         Strategy:
         1. If *override_id* is provided, fetch that video directly and return it
-           if its status is 'ready'.  Raises ``pytest.skip`` otherwise.
+           if its status is 'ready'.  Returns None otherwise.
         2. Otherwise, query a set of known CI usernames and return the first
-           video whose status is 'ready'.  Raises ``pytest.skip`` if none found.
-        """
-        import pytest  # imported here to keep the service pytest-agnostic at module level
+           video whose status is 'ready'.  Returns None if none found.
 
+        The caller (fixture layer) is responsible for calling pytest.skip()
+        when this returns None.
+        """
         if override_id:
             data = self.get_video(override_id)
             if data and data.get("status") == "ready":
                 return data["id"], data.get("hls_manifest_url")
-            pytest.skip(
-                f"Video ID {override_id!r} not found or not ready. Response: {data}"
-            )
+            return None
 
         for username in self._CANDIDATE_USERNAMES:
             user = self.get_user(username)
@@ -71,11 +73,43 @@ class VideoApiService:
                 if detail and detail.get("status") == "ready":
                     return detail["id"], detail.get("hls_manifest_url")
 
-        pytest.skip(
-            "No ready video found via API. "
-            "Set MYTUBE_146_VIDEO_ID to a valid video UUID with status='ready', "
-            "or ensure a ready video exists for a known test user."
-        )
+        return None
+
+    def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
+        """GET /api/videos/recent?limit=*limit* and return (status_code, videos).
+
+        Returns (0, []) when the host is unreachable.
+        Returns (status_code, None) when the response is not a JSON array.
+        """
+        url = f"{self._base_url}/api/videos/recent?limit={limit}"
+        return self._fetch_list(url)
+
+    def get_popular_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
+        """GET /api/videos/popular?limit=*limit* and return (status_code, videos).
+
+        Returns (0, []) when the host is unreachable.
+        Returns (status_code, None) when the response is not a JSON array.
+        """
+        url = f"{self._base_url}/api/videos/popular?limit={limit}"
+        return self._fetch_list(url)
+
+    def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
+        """GET /api/videos/recent?limit=*limit* and return (status_code, videos).
+
+        Returns (0, []) when the host is unreachable.
+        Returns (status_code, None) when the response is not a JSON array.
+        """
+        url = f"{self._base_url}/api/videos/recent?limit={limit}"
+        return self._fetch_list(url)
+
+    def get_popular_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
+        """GET /api/videos/popular?limit=*limit* and return (status_code, videos).
+
+        Returns (0, []) when the host is unreachable.
+        Returns (status_code, None) when the response is not a JSON array.
+        """
+        url = f"{self._base_url}/api/videos/popular?limit={limit}"
+        return self._fetch_list(url)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -88,3 +122,21 @@ class VideoApiService:
                 return json.loads(resp.read().decode())
         except Exception:
             return None
+
+    def _fetch_list(self, url: str) -> tuple[int, list[dict] | None]:
+        """GET *url* and return (status_code, parsed_json_list).
+
+        Returns (status_code, None) when the response is not a JSON array.
+        Returns (status_code, []) on HTTP error or JSON parse failure.
+        Returns (0, []) when the host is unreachable.
+        """
+        req = urllib.request.Request(url)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+                body = resp.read().decode()
+                data = json.loads(body)
+                return resp.status, data if isinstance(data, list) else None
+        except urllib.error.HTTPError as exc:
+            return exc.code, []
+        except Exception:
+            return 0, []

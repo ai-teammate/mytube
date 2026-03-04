@@ -57,12 +57,12 @@ func searchVideoDB(t *testing.T, videos []repository.SearchVideo) *sql.DB {
 			thumbVal = *v.ThumbnailURL
 		}
 		rows = append(rows, []driver.Value{
-			v.ID, v.Title, thumbVal, v.ViewCount, v.UploaderUsername, v.CreatedAt,
+			v.ID, v.Title, thumbVal, v.ViewCount, v.UploaderUsername, v.CreatedAt, v.Status,
 		})
 	}
 	dsn := registerResults(t, []fakeQueryResult{
 		{
-			columns: []string{"id", "title", "thumbnail_url", "view_count", "username", "created_at"},
+			columns: []string{"id", "title", "thumbnail_url", "view_count", "username", "created_at", "status"},
 			rows:    rows,
 		},
 	})
@@ -98,6 +98,7 @@ func makeSearchVideo(id, title, uploader string) repository.SearchVideo {
 		ViewCount:        10,
 		UploaderUsername: uploader,
 		CreatedAt:        time.Now().Truncate(time.Second),
+		Status:           "ready",
 	}
 }
 
@@ -196,8 +197,8 @@ func TestSearch_NilThumbnailURL(t *testing.T) {
 	// Build DB manually for nil thumbnail.
 	dsn := registerResults(t, []fakeQueryResult{
 		{
-			columns: []string{"id", "title", "thumbnail_url", "view_count", "username", "created_at"},
-			rows:    [][]driver.Value{{v.ID, v.Title, nil, v.ViewCount, v.UploaderUsername, v.CreatedAt}},
+			columns: []string{"id", "title", "thumbnail_url", "view_count", "username", "created_at", "status"},
+			rows:    [][]driver.Value{{v.ID, v.Title, nil, v.ViewCount, v.UploaderUsername, v.CreatedAt, "ready"}},
 		},
 	})
 	db, _ := sql.Open("fakedb", dsn)

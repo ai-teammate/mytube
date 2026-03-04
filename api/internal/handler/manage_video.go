@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -73,7 +74,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 
 	videoID := strings.TrimPrefix(r.URL.Path, "/api/videos/")
 	videoID = strings.TrimRight(videoID, "/")
-	if videoID == "" || !isValidVideoID(videoID) {
+	if videoID == "" || !isValidUUID(videoID) {
 		writeJSONError(w, "invalid video id", http.StatusBadRequest)
 		return
 	}
@@ -131,14 +132,16 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		Tags:        tags,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrForbidden) {
+			writeJSONError(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			writeJSONError(w, "video not found", http.StatusNotFound)
+			return
+		}
 		log.Printf("PUT /api/videos/%s: update: %v", videoID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	if updated == nil {
-		// Update returned nil: either the video doesn't exist or the caller is not
-		// the owner. Return 404 — do not reveal ownership information.
-		writeJSONError(w, "video not found", http.StatusNotFound)
 		return
 	}
 
@@ -148,6 +151,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		ID:           updated.ID,
 		Title:        updated.Title,
 		Description:  updated.Description,
+		CategoryID:   updated.CategoryID,
 		Status:       updated.Status,
 		ThumbnailURL: updated.ThumbnailURL,
 		ViewCount:    updated.ViewCount,
@@ -169,7 +173,7 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 
 	videoID := strings.TrimPrefix(r.URL.Path, "/api/videos/")
 	videoID = strings.TrimRight(videoID, "/")
-	if videoID == "" || !isValidVideoID(videoID) {
+	if videoID == "" || !isValidUUID(videoID) {
 		writeJSONError(w, "invalid video id", http.StatusBadRequest)
 		return
 	}
@@ -186,16 +190,17 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 		return
 	}
 
-	// Ownership is enforced atomically inside SoftDelete via the WHERE clause.
 	deleted, err := manager.SoftDelete(r.Context(), videoID, user.ID)
+	if errors.Is(err, repository.ErrForbidden) {
+		writeJSONError(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	if err != nil {
 		log.Printf("DELETE /api/videos/%s: soft delete: %v", videoID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if !deleted {
-		// SoftDelete returned false: either the video doesn't exist or the caller
-		// is not the owner. Return 404 — do not reveal ownership information.
 		writeJSONError(w, "video not found", http.StatusNotFound)
 		return
 	}

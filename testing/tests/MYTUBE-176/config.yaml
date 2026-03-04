@@ -1,0 +1,5 @@
+test_id: MYTUBE-176
+type: api+web
+framework: rest+playwright
+platform: chrome
+dependencies: []
