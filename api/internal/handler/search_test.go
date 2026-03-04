@@ -54,6 +54,7 @@ func makeTestSearchVideos() []repository.SearchVideo {
 			ViewCount:        42,
 			UploaderUsername: "alice",
 			CreatedAt:        time.Now().Truncate(time.Second),
+			Status:           "ready",
 		},
 		{
 			ID:               "00000000-0000-0000-0000-000000000002",
@@ -62,6 +63,7 @@ func makeTestSearchVideos() []repository.SearchVideo {
 			ViewCount:        100,
 			UploaderUsername: "bob",
 			CreatedAt:        time.Now().Truncate(time.Second),
+			Status:           "ready",
 		},
 	}
 }
@@ -571,5 +573,85 @@ func TestSearchHandler_AllowHeader_SetOn405(t *testing.T) {
 
 	if allow := rec.Header().Get("Allow"); allow != "GET" {
 		t.Errorf("Allow header: got %q, want GET", allow)
+	}
+}
+
+// ─── status field regression tests ────────────────────────────────────────────
+
+// TestRecentVideosHandler_GET_ResponseIncludesStatusReady verifies that each
+// VideoCard in the /api/videos/recent response contains a "status" field set
+// to "ready".  This is the reproduction test for MYTUBE-224.
+func TestRecentVideosHandler_GET_ResponseIncludesStatusReady(t *testing.T) {
+	p := &stubSearchProvider{videos: makeTestSearchVideos()}
+	h := handler.NewRecentVideosHandler(p)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/recent?limit=20", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var cards []map[string]json.RawMessage
+	if err := json.NewDecoder(rec.Body).Decode(&cards); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatal("expected at least one video card in the response")
+	}
+	for i, card := range cards {
+		statusRaw, ok := card["status"]
+		if !ok {
+			t.Errorf("cards[%d]: missing 'status' field in response", i)
+			continue
+		}
+		var status string
+		if err := json.Unmarshal(statusRaw, &status); err != nil {
+			t.Errorf("cards[%d]: cannot unmarshal status: %v", i, err)
+			continue
+		}
+		if status != "ready" {
+			t.Errorf("cards[%d]: expected status='ready', got %q", i, status)
+		}
+	}
+}
+
+// TestPopularVideosHandler_GET_ResponseIncludesStatusReady verifies that each
+// VideoCard in the /api/videos/popular response contains a "status" field set
+// to "ready".  This is the reproduction test for MYTUBE-224.
+func TestPopularVideosHandler_GET_ResponseIncludesStatusReady(t *testing.T) {
+	p := &stubSearchProvider{videos: makeTestSearchVideos()}
+	h := handler.NewPopularVideosHandler(p)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/popular?limit=20", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var cards []map[string]json.RawMessage
+	if err := json.NewDecoder(rec.Body).Decode(&cards); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatal("expected at least one video card in the response")
+	}
+	for i, card := range cards {
+		statusRaw, ok := card["status"]
+		if !ok {
+			t.Errorf("cards[%d]: missing 'status' field in response", i)
+			continue
+		}
+		var status string
+		if err := json.Unmarshal(statusRaw, &status); err != nil {
+			t.Errorf("cards[%d]: cannot unmarshal status: %v", i, err)
+			continue
+		}
+		if status != "ready" {
+			t.Errorf("cards[%d]: expected status='ready', got %q", i, status)
+		}
 	}
 }

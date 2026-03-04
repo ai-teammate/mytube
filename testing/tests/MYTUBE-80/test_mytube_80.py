@@ -83,7 +83,10 @@ _MIGRATION_SCHEMA = os.path.join(_MIGRATIONS_DIR, "0001_initial_schema.up.sql")
 # DB fixture
 # ---------------------------------------------------------------------------
 
-conn = make_conn_fixture([_MIGRATION_SCHEMA])
+conn = make_conn_fixture(
+    [_MIGRATION_SCHEMA],
+    test_usernames=["testuser_mytube80", "testuser_check_mytube80", "testuser_iso_mytube80"],
+)
 
 
 # ---------------------------------------------------------------------------
