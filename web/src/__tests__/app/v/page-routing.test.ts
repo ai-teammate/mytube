@@ -1,11 +1,13 @@
 /**
  * Unit test for the routing configuration of src/app/v/[id]/page.tsx.
  *
- * Reproduces bug MYTUBE-225: dynamicParams = false prevents the Next.js
- * client-side router from rendering the watch page for real video IDs
- * (anything other than the '_' placeholder in generateStaticParams).
- * When dynamicParams is false, navigating to /v/<uuid> via the SPA 404
- * fallback returns a 404 within the app instead of rendering the player.
+ * The app uses `output: 'export'` (Next.js static export for GitHub Pages).
+ * With static export, `dynamicParams = true` is INCOMPATIBLE and causes the
+ * build to fail. The correct configuration is:
+ *   - dynamicParams = false  (required for static export)
+ *   - generateStaticParams returns a placeholder `[{ id: '_' }]`
+ *   - SPA routing for real video UUIDs is handled via the 404.html fallback
+ *     (deploy-pages.yml copies out/index.html → out/404.html)
  */
 
 // Mock WatchPageClient to isolate the routing config under test.
@@ -17,12 +19,10 @@ jest.mock("@/app/v/[id]/WatchPageClient", () => ({
 import * as PageConfig from "@/app/v/[id]/page";
 
 describe("Watch page routing configuration", () => {
-  it("dynamicParams is not false — watch page must render for arbitrary video IDs via SPA fallback", () => {
-    // dynamicParams = false causes the Next.js router to 404 for any ID not
-    // returned by generateStaticParams(). Since only '_' is pre-generated,
-    // all real video UUIDs would return 404 and the player never initialises.
-    // The value must be true (or undefined/not exported, which defaults to true).
-    expect(PageConfig.dynamicParams).not.toBe(false);
+  it("dynamicParams is false — required for Next.js static export (output: export)", () => {
+    // dynamicParams = true is incompatible with `output: 'export'` and breaks the build.
+    // SPA routing for arbitrary video UUIDs works via the 404.html fallback instead.
+    expect(PageConfig.dynamicParams).toBe(false);
   });
 
   it("generateStaticParams returns a placeholder to create the route shell", () => {
