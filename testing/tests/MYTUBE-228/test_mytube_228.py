@@ -193,7 +193,7 @@ class TestAddVideoRepositoryGoUnit:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="module")
 def require_firebase_token():
     """Skip Layer B tests when FIREBASE_TEST_TOKEN is not set."""
     if not _FIREBASE_TOKEN:
@@ -209,7 +209,10 @@ def api_config() -> APIConfig:
 
 
 @pytest.fixture(scope="module")
-def playlist_service(api_config: APIConfig) -> PlaylistApiService:
+def playlist_service(
+    api_config: APIConfig,
+    require_firebase_token,
+) -> PlaylistApiService:
     """Return a PlaylistApiService configured for the deployed API."""
     return PlaylistApiService(base_url=api_config.base_url, token=_FIREBASE_TOKEN)
 

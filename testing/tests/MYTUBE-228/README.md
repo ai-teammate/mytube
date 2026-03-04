@@ -48,6 +48,7 @@ testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoHandlerGoUnit::test_add
 testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoHandlerGoUnit::test_add_video_forbidden_returns_403_unit PASSED
 testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoHandlerGoUnit::test_get_playlist_includes_video_position_unit PASSED
 testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoRepositoryGoUnit::test_repository_add_video_success_unit PASSED
+testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoRepositoryGoUnit::test_repository_add_video_forbidden_unit PASSED
 testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoToPlaylist::test_add_video_response_is_success PASSED
 testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoToPlaylist::test_get_playlist_returns_200 PASSED
 testing/tests/MYTUBE-228/test_mytube_228.py::TestAddVideoToPlaylist::test_added_video_appears_in_playlist PASSED
