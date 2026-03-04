@@ -355,11 +355,9 @@ def loaded_profile(
             )
 
         # Click the Playlists tab to trigger the mocked API call
-        playlists_tab = pg.locator(ProfilePage._PLAYLISTS_TAB_BTN)
-        if playlists_tab.count() > 0:
-            playlists_tab.click()
-            # Allow time for the component to receive the 500 and update state
-            pg.wait_for_timeout(3000)
+        if profile.is_playlists_tab_visible():
+            profile.click_playlists_tab()
+            profile.wait_for_playlists_loaded()
 
         yield profile, pg, js_errors
 
@@ -430,9 +428,8 @@ class TestProfilePagePlaylistsApiError:
 
         Expected: 'Videos' tab button is present in the navigation.
         """
-        _, pg, _ = loaded_profile
-        videos_tab = pg.locator("nav button:has-text('Videos')")
-        assert videos_tab.count() > 0, (
+        profile, _, _ = loaded_profile
+        assert profile.is_videos_tab_visible(), (
             "Videos tab button is not visible when playlists API returns 500."
         )
 
@@ -464,9 +461,8 @@ class TestProfilePagePlaylistsApiError:
         Expected: 'Loading playlists...' spinner is not visible after the API
         returned 500 and a few seconds elapsed.
         """
-        _, pg, _ = loaded_profile
-        still_loading = pg.locator(ProfilePage._PLAYLISTS_LOADING).count() > 0
-        assert not still_loading, (
+        profile, _, _ = loaded_profile
+        assert not profile.is_playlists_still_loading(), (
             "Playlists section is stuck in 'Loading playlists...' after the "
             "API returned 500. The component must exit the loading state."
         )
@@ -497,7 +493,7 @@ class TestProfilePagePlaylistsApiError:
         has_error_message = any(
             pg.locator(sel).count() > 0 for sel in _GRACEFUL_ERROR_SELECTORS
         )
-        tab_hidden = pg.locator(ProfilePage._PLAYLISTS_TAB_BTN).count() == 0
+        tab_hidden = not profile.is_playlists_tab_visible()
 
         graceful = has_empty_state or has_error_message or tab_hidden
 

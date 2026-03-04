@@ -168,3 +168,15 @@ class ProfilePage:
     def has_no_playlists_message(self) -> bool:
         """Return True when 'No playlists yet.' is visible on the playlists tab."""
         return self._page.locator("text=No playlists yet.").count() > 0
+
+    def is_playlists_tab_visible(self) -> bool:
+        """Return True if the 'Playlists' tab button is present in the navigation."""
+        return self._page.locator(self._PLAYLISTS_TAB_BTN).count() > 0
+
+    def is_videos_tab_visible(self) -> bool:
+        """Return True if the 'Videos' tab button is present in the navigation."""
+        return self._page.locator("nav button:has-text('Videos')").count() > 0
+
+    def is_playlists_still_loading(self) -> bool:
+        """Return True if the playlists loading spinner is still visible."""
+        return self._page.locator(self._PLAYLISTS_LOADING).count() > 0
