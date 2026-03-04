@@ -17,6 +17,7 @@ type VideoDetail struct {
 	Description     *string
 	HLSManifestPath *string // raw GCS path, e.g. gs://bucket/videos/{id}/index.m3u8
 	ThumbnailURL    *string
+	CategoryID      *int
 	ViewCount       int64
 	CreatedAt       time.Time
 	Status          string
@@ -213,6 +214,7 @@ SELECT v.id,
        v.description,
        v.hls_manifest_path,
        v.thumbnail_url,
+       v.category_id,
        v.view_count,
        v.created_at,
        v.status,
@@ -231,6 +233,7 @@ WHERE  v.id = $1`
 		&v.Description,
 		&v.HLSManifestPath,
 		&v.ThumbnailURL,
+		&v.CategoryID,
 		&v.ViewCount,
 		&v.CreatedAt,
 		&v.Status,
@@ -293,7 +296,8 @@ ORDER BY created_at DESC`
 // with the given ID, enforcing ownership atomically in the WHERE clause.
 // Tags are replaced: existing tags are deleted and the new set is inserted, all
 // within a single transaction to prevent partial updates.
-// Returns (nil, nil) when no row matches the given videoID or uploaderID.
+// Returns ErrNotFound when the video does not exist, and ErrForbidden when
+// the video exists but uploaderID does not match the uploader.
 func (r *VideoRepository) Update(ctx context.Context, videoID string, uploaderID string, p UpdateVideoParams) (*VideoDetail, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -319,7 +323,17 @@ WHERE  id          = $4
 		return nil, fmt.Errorf("update video rows affected: %w", err)
 	}
 	if rows == 0 {
-		return nil, nil
+		// Distinguish "video not found" from "video exists but caller is not owner".
+		const existsSQL = `SELECT 1 FROM videos WHERE id = $1 LIMIT 1`
+		var dummy int
+		if err := tx.QueryRowContext(ctx, existsSQL, videoID).Scan(&dummy); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			return nil, fmt.Errorf("check video exists: %w", err)
+		}
+		// Row exists but uploader_id did not match.
+		return nil, ErrForbidden
 	}
 
 	// Replace tags: delete existing then insert new set.
@@ -348,10 +362,27 @@ ON CONFLICT DO NOTHING`
 	return r.GetByIDForOwner(ctx, videoID)
 }
 
-// SoftDelete sets the status of the video with the given ID to 'deleted',
-// enforcing ownership atomically in the WHERE clause.
-// Returns (false, nil) when no matching row exists or the caller is not the owner.
+// SoftDelete sets the status of the video with the given ID to 'deleted'.
+// Ownership is checked explicitly before the update so callers can distinguish
+// between "video not found" and "caller is not the owner":
+//   - Returns (false, nil)          when the video does not exist or is already deleted.
+//   - Returns (false, ErrForbidden) when the video exists but uploaderID is not the owner.
+//   - Returns (true,  nil)          on successful soft-deletion.
 func (r *VideoRepository) SoftDelete(ctx context.Context, videoID string, uploaderID string) (bool, error) {
+	// Check existence and ownership before attempting the update.
+	const ownerSQL = `SELECT uploader_id FROM videos WHERE id = $1 AND status != 'deleted'`
+	row := r.db.QueryRowContext(ctx, ownerSQL, videoID)
+	var ownerID string
+	if err := row.Scan(&ownerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil // video not found or already deleted
+		}
+		return false, fmt.Errorf("check video owner: %w", err)
+	}
+	if ownerID != uploaderID {
+		return false, ErrForbidden
+	}
+
 	const updateSQL = `
 UPDATE videos
 SET    status = 'deleted'
