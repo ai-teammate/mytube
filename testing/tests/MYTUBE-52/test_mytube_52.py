@@ -3,11 +3,17 @@ MYTUBE-52: Validate Cloud Run Job environment variables — Job configuration
 contains required metadata.
 
 Verifies that the `mytube-transcoder` Cloud Run Job definition in
-`infra/cloudjobs.yaml` includes all mandatory environment variables required
+`infra/cloudjobs.yaml` declares all mandatory environment variables required
 for the transcoding process:
-  - RAW_OBJECT_PATH
-  - VIDEO_ID
-  - HLS_BUCKET
+  - RAW_OBJECT_PATH  — declared as a documented placeholder (empty value);
+                       injected at runtime via Cloud Run Jobs API "overrides"
+                       by the trigger service on each job execution.
+  - VIDEO_ID         — same: documented placeholder, runtime-injected.
+  - HLS_BUCKET       — static value; GCS bucket for HLS output.
+
+Both RAW_OBJECT_PATH and VIDEO_ID have empty default values in the YAML and
+are overridden per-execution.  Their presence in the YAML serves as the single
+source of truth for all env-var contracts required by the transcoder container.
 
 The test inspects the YAML file directly (no deployment needed).
 """
