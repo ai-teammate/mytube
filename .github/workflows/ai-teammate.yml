@@ -268,6 +268,7 @@ jobs:
 
           # GitHub Copilot CLI Authentication
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.PAT_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'gpt-5-mini' }}
 
           # AI Agent Provider
           AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}
