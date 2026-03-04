@@ -193,7 +193,7 @@ export default function UserProfilePage({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {profile.videos.map((video) => (
-                  <a
+                  <Link
                     key={video.id}
                     href={`/v/${video.id}`}
                     className="block rounded-lg overflow-hidden bg-white shadow hover:shadow-md transition-shadow"
@@ -221,7 +221,7 @@ export default function UserProfilePage({
                         {new Date(video.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                  </a>
+                  </Link>
                 ))}
               </div>
             )}
