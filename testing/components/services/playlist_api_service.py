@@ -47,6 +47,7 @@ class PlaylistApiService:
             base_url="https://mytube-api-80693608388.us-central1.run.app",
             token=os.getenv("FIREBASE_TEST_TOKEN"),
         )
+        status, body = svc.create_playlist("My Workout Mix")
         status, body = svc.remove_video(playlist_id, video_id)
         response = svc.get_playlist(playlist_id)
     """
@@ -60,6 +61,22 @@ class PlaylistApiService:
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         return headers
+
+    def create_playlist(self, title: str) -> tuple[int, str]:
+        """Send POST /api/playlists with {title} and Bearer auth.
+
+        Returns (status_code, response_body).
+        """
+        url = f"{self._base_url}/api/playlists"
+        payload = json.dumps({"title": title}).encode("utf-8")
+        headers: dict = {"Content-Type": "application/json"}
+        headers.update(self._auth_headers())
+        req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
 
     def get_playlist(self, playlist_id: str) -> PlaylistDetailResponse:
         """GET /api/playlists/:id — returns a PlaylistDetailResponse.
