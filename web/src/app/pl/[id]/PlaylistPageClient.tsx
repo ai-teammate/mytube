@@ -4,7 +4,9 @@ import { use, useState, useCallback } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { PlaylistDetail, PlaylistRepository, PlaylistVideoItem } from "@/domain/playlist";
+import type { VideoRepository } from "@/domain/video";
 import { ApiPlaylistRepository } from "@/data/playlistRepository";
+import { ApiVideoRepository } from "@/data/videoRepository";
 import { useEffect } from "react";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
@@ -18,15 +20,18 @@ const VideoPlayer = dynamic(() => import("@/components/VideoPlayer"), {
 });
 
 const defaultRepository: PlaylistRepository = new ApiPlaylistRepository();
+const defaultVideoRepository: VideoRepository = new ApiVideoRepository();
 
 interface PlaylistPageProps {
   params: Promise<{ id: string }>;
   repository?: PlaylistRepository;
+  videoRepository?: VideoRepository;
 }
 
 export default function PlaylistPageClient({
   params,
   repository = defaultRepository,
+  videoRepository = defaultVideoRepository,
 }: PlaylistPageProps) {
   const { id } = use(params);
 
@@ -163,6 +168,7 @@ export default function PlaylistPageClient({
                   videoID={currentVideo.id}
                   thumbnailUrl={currentVideo.thumbnailUrl}
                   onEnded={handleVideoEnded}
+                  videoRepository={videoRepository}
                 />
               ) : null}
             </div>
@@ -248,6 +254,7 @@ interface PlaylistVideoPlayerWrapperProps {
   videoID: string;
   thumbnailUrl: string | null;
   onEnded: () => void;
+  videoRepository: VideoRepository;
 }
 
 /**
@@ -259,11 +266,9 @@ function PlaylistVideoPlayerWrapper({
   videoID,
   thumbnailUrl,
   onEnded,
+  videoRepository,
 }: PlaylistVideoPlayerWrapperProps) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
   // The HLS manifest URL for this video.
-  // We construct it from the video detail endpoint lazily.
   const [hlsUrl, setHlsUrl] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
@@ -274,26 +279,28 @@ function PlaylistVideoPlayerWrapper({
     setVideoError(false);
     setHlsUrl(null);
 
-    fetch(`${API_URL}/api/videos/${encodeURIComponent(videoID)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("not found");
-        return res.json();
-      })
-      .then((data: { hls_manifest_path?: string }) => {
+    async function loadVideo() {
+      try {
+        const detail = await videoRepository.getByID(videoID);
         if (cancelled) return;
-        setHlsUrl(data.hls_manifest_path ?? null);
-      })
-      .catch(() => {
+        if (detail === null) {
+          setVideoError(true);
+        } else {
+          setHlsUrl(detail.hlsManifestUrl ?? null);
+        }
+      } catch {
         if (!cancelled) setVideoError(true);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setVideoLoading(false);
-      });
+      }
+    }
+
+    loadVideo();
 
     return () => {
       cancelled = true;
     };
-  }, [videoID, API_URL]);
+  }, [videoID, videoRepository]);
 
   if (videoLoading) {
     return (

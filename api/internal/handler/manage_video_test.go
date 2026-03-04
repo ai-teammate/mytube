@@ -44,11 +44,13 @@ func makeOwnerUser() *repository.User {
 
 func makeUpdatedVideoDetail() *repository.VideoDetail {
 	desc := "Updated description"
+	catID := 2
 	now := time.Now().Truncate(time.Second)
 	return &repository.VideoDetail{
 		ID:               testManageVideoID,
 		Title:            "Updated Title",
 		Description:      &desc,
+		CategoryID:       &catID,
 		Status:           "ready",
 		ViewCount:        5,
 		CreatedAt:        now,
@@ -177,12 +179,11 @@ func TestPutVideo_GetUserError_Returns500(t *testing.T) {
 	}
 }
 
-// TestPutVideo_VideoNotFoundOrNotOwner_Returns404 verifies that when Update()
-// returns nil (video not found or caller is not the owner), the handler returns
-// 404. Ownership is enforced atomically in the DB WHERE clause.
-func TestPutVideo_VideoNotFoundOrNotOwner_Returns404(t *testing.T) {
+// TestPutVideo_VideoNotFound_Returns404 verifies that when Update() returns
+// ErrNotFound (video does not exist), the handler returns 404.
+func TestPutVideo_VideoNotFound_Returns404(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{updateResult: nil}
+	manager := &stubVideoManager{updateErr: repository.ErrNotFound}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
 
@@ -196,6 +197,35 @@ func TestPutVideo_VideoNotFoundOrNotOwner_Returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+// TestPutVideo_NonOwner_Returns403 is the regression test for MYTUBE-213.
+// When Update() returns ErrForbidden (video exists but caller is not the owner),
+// the handler must return 403 Forbidden — not 404.
+func TestPutVideo_NonOwner_Returns403(t *testing.T) {
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{updateErr: repository.ErrForbidden}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
+			bytes.NewBufferString(`{"title":"Modified Title"}`)),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "forbidden" {
+		t.Errorf("error body: got %q, want \"forbidden\"", body["error"])
 	}
 }
 
@@ -305,27 +335,6 @@ func TestPutVideo_UpdateError_Returns500(t *testing.T) {
 	}
 }
 
-func TestPutVideo_UpdateReturnsNil_Returns404(t *testing.T) {
-	videoProvider := &stubVideoProvider{}
-	manager := &stubVideoManager{
-		updateResult: nil, // row not found or not owner
-	}
-	users := &stubUserIDProvider{user: makeOwnerUser()}
-	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
-
-	claims := &auth.TokenClaims{UID: "firebase-owner"}
-	req := withClaims(
-		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID,
-			bytes.NewBufferString(`{"title":"New Title"}`)),
-		claims,
-	)
-	rec := serveManageVideo(h, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", rec.Code)
-	}
-}
-
 func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
 	manager := &stubVideoManager{
@@ -366,6 +375,45 @@ func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	// Tags come directly from the validated request tags slice.
 	if len(resp.Tags) != 2 {
 		t.Errorf("Tags: expected 2, got %d", len(resp.Tags))
+	}
+}
+
+// TestPutVideo_Success_ReturnsCategoryID verifies that the updated category_id
+// is included in the 200 response body (regression for MYTUBE-217).
+func TestPutVideo_Success_ReturnsCategoryID(t *testing.T) {
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{
+		updateResult: makeUpdatedVideoDetail(), // CategoryID = 2
+	}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title":       "Updated Title",
+		"description": "Updated description",
+		"category_id": 2,
+		"tags":        []string{"tag1", "tag2"},
+	})
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID, bytes.NewBuffer(body)),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp handler.UpdateVideoResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.CategoryID == nil {
+		t.Fatal("CategoryID: got nil, want 2")
+	}
+	if *resp.CategoryID != 2 {
+		t.Errorf("CategoryID: got %d, want 2", *resp.CategoryID)
 	}
 }
 

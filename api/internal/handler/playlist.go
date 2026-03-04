@@ -160,6 +160,10 @@ func NewCreatePlaylistHandler(playlists PlaylistStore, users PlaylistUserProvide
 			writeJSONError(w, "title is required", http.StatusUnprocessableEntity)
 			return
 		}
+		if len(req.Title) > 255 {
+			writeJSONError(w, "title must be 255 characters or fewer", http.StatusUnprocessableEntity)
+			return
+		}
 
 		playlist, err := playlists.Create(r.Context(), user.ID, req.Title)
 		if err != nil {
@@ -328,9 +332,17 @@ func putPlaylistHandler(playlists PlaylistStore, users PlaylistUserProvider, w h
 		writeJSONError(w, "title is required", http.StatusUnprocessableEntity)
 		return
 	}
+	if len(req.Title) > 255 {
+		writeJSONError(w, "title must be 255 characters or fewer", http.StatusUnprocessableEntity)
+		return
+	}
 
 	updated, err := playlists.UpdateTitle(r.Context(), playlistID, user.ID, req.Title)
 	if err != nil {
+		if errors.Is(err, repository.ErrForbidden) {
+			writeJSONError(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		log.Printf("PUT /api/playlists/%s: %v", playlistID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return

@@ -745,3 +745,70 @@ func TestSoftDelete_Success_ReturnsTrueNoError(t *testing.T) {
 		t.Errorf("expected deleted=true when owner and row updated")
 	}
 }
+
+// ─── Update tests ─────────────────────────────────────────────────────────────
+
+// videoUpdateQuerier is a VideoQuerier stub for VideoRepository.Update tests.
+// It delegates BeginTx to a pre-configured fakedb so that the sequence of
+// ExecContext and QueryRowContext calls inside the transaction returns the
+// desired results (controlled via registered fakeQueryResult entries).
+type videoUpdateQuerier struct {
+	txDB *sql.DB
+}
+
+func (q *videoUpdateQuerier) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
+	return okResult{}, nil
+}
+
+func (q *videoUpdateQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
+}
+
+func (q *videoUpdateQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return emptyDB().QueryContext(context.Background(), "SELECT 1 WHERE 1=0")
+}
+
+func (q *videoUpdateQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return q.txDB.BeginTx(ctx, opts)
+}
+
+// TestVideoUpdate_VideoNotFound_ReturnsErrNotFound verifies that Update returns
+// ErrNotFound when the UPDATE affects 0 rows and the video ID does not exist.
+func TestVideoUpdate_VideoNotFound_ReturnsErrNotFound(t *testing.T) {
+	// Slot 0: UPDATE ExecContext → 0 rows affected.
+	// Slot 1: EXISTS QueryRowContext → no rows → sql.ErrNoRows → ErrNotFound.
+	dsn := registerResults(t, []fakeQueryResult{
+		{zeroRowsAff: true},
+		{},
+	})
+	txDB, _ := sql.Open("fakedb", dsn)
+	q := &videoUpdateQuerier{txDB: txDB}
+	repo := repository.NewVideoRepository(q)
+
+	_, err := repo.Update(context.Background(), "nonexistent-id", "uploader-1", repository.UpdateVideoParams{Title: "T"})
+
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+// TestVideoUpdate_NonOwner_ReturnsErrForbidden verifies that Update returns
+// ErrForbidden when the UPDATE affects 0 rows but the video ID does exist
+// (meaning the uploader_id did not match the authenticated caller).
+func TestVideoUpdate_NonOwner_ReturnsErrForbidden(t *testing.T) {
+	// Slot 0: UPDATE ExecContext → 0 rows affected.
+	// Slot 1: EXISTS QueryRowContext → row found (video exists) → ErrForbidden.
+	dsn := registerResults(t, []fakeQueryResult{
+		{zeroRowsAff: true},
+		{columns: []string{"exists"}, rows: [][]driver.Value{{int64(1)}}},
+	})
+	txDB, _ := sql.Open("fakedb", dsn)
+	q := &videoUpdateQuerier{txDB: txDB}
+	repo := repository.NewVideoRepository(q)
+
+	_, err := repo.Update(context.Background(), "video-id-1", "wrong-uploader", repository.UpdateVideoParams{Title: "T"})
+
+	if !errors.Is(err, repository.ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got: %v", err)
+	}
+}

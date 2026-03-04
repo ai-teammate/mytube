@@ -176,6 +176,22 @@ func TestCreatePlaylistHandler_POST_EmptyTitle_Returns422(t *testing.T) {
 	}
 }
 
+func TestCreatePlaylistHandler_POST_TitleTooLong_Returns422(t *testing.T) {
+	store := &stubPlaylistStore{}
+	users := &stubPlaylistUserProvider{user: defaultPlaylistUser()}
+	h := handler.NewCreatePlaylistHandler(store, users)
+
+	longTitle := strings.Repeat("a", 256)
+	body := bytes.NewBufferString(`{"title":"` + longTitle + `"}`)
+	req := authPlaylistRequest(httptest.NewRequest(http.MethodPost, "/api/playlists", body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422, got %d", rec.Code)
+	}
+}
+
 func TestCreatePlaylistHandler_POST_InvalidJSON_Returns400(t *testing.T) {
 	store := &stubPlaylistStore{}
 	users := &stubPlaylistUserProvider{user: defaultPlaylistUser()}
@@ -563,6 +579,22 @@ func TestPlaylistByIDHandler_PUT_EmptyTitle_Returns422(t *testing.T) {
 	}
 }
 
+func TestPlaylistByIDHandler_PUT_TitleTooLong_Returns422(t *testing.T) {
+	store := &stubPlaylistStore{}
+	users := &stubPlaylistUserProvider{user: defaultPlaylistUser()}
+	h := handler.NewPlaylistByIDHandler(store, users)
+
+	longTitle := strings.Repeat("a", 256)
+	body := bytes.NewBufferString(`{"title":"` + longTitle + `"}`)
+	req := authPlaylistRequest(httptest.NewRequest(http.MethodPut, "/api/playlists/"+testPlaylistID, body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422, got %d", rec.Code)
+	}
+}
+
 func TestPlaylistByIDHandler_PUT_NotFound_Returns404(t *testing.T) {
 	store := &stubPlaylistStore{updatedPlaylist: nil}
 	users := &stubPlaylistUserProvider{user: defaultPlaylistUser()}
@@ -575,6 +607,21 @@ func TestPlaylistByIDHandler_PUT_NotFound_Returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestPlaylistByIDHandler_PUT_Forbidden_Returns403(t *testing.T) {
+	store := &stubPlaylistStore{updateTitleErr: repository.ErrForbidden}
+	users := &stubPlaylistUserProvider{user: defaultPlaylistUser()}
+	h := handler.NewPlaylistByIDHandler(store, users)
+
+	body := bytes.NewBufferString(`{"title":"New Title"}`)
+	req := authPlaylistRequest(httptest.NewRequest(http.MethodPut, "/api/playlists/"+testPlaylistID, body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
 	}
 }
 

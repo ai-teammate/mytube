@@ -51,7 +51,7 @@ export default function WatchPage({
 }: WatchPageProps) {
   const { id } = use(params);
 
-  const { getIdToken, loading: authLoading } = useAuth();
+  const { user, getIdToken, loading: authLoading } = useAuth();
 
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -208,7 +208,7 @@ export default function WatchPage({
             videoID={id}
             repository={playlistRepository}
             getToken={getToken}
-            hidden={authLoading}
+            hidden={authLoading || !user}
           />
         </div>
 

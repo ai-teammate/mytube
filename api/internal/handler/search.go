@@ -33,6 +33,7 @@ type VideoCard struct {
 	ViewCount        int64     `json:"view_count"`
 	UploaderUsername string    `json:"uploader_username"`
 	CreatedAt        time.Time `json:"created_at"`
+	Status           string    `json:"status"`
 }
 
 // CategoryResponse is the JSON representation of a category.
@@ -50,6 +51,7 @@ func toVideoCard(v repository.SearchVideo) VideoCard {
 		ViewCount:        v.ViewCount,
 		UploaderUsername: v.UploaderUsername,
 		CreatedAt:        v.CreatedAt,
+		Status:           v.Status,
 	}
 }
 

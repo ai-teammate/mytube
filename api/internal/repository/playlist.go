@@ -193,25 +193,31 @@ ORDER BY p.created_at DESC`
 }
 
 // UpdateTitle updates the title of the playlist with the given ID, enforcing ownership.
-// Returns (nil, nil) when no row matches playlistID or ownerID.
+// Returns (nil, nil) when no row matches playlistID.
+// Returns (nil, ErrForbidden) when the playlist exists but ownerID does not match.
 func (r *PlaylistRepository) UpdateTitle(ctx context.Context, playlistID, ownerID, title string) (*PlaylistSummary, error) {
+	const ownerSQL = `SELECT owner_id FROM playlists WHERE id = $1`
+	row := r.db.QueryRowContext(ctx, ownerSQL, playlistID)
+	var actualOwnerID string
+	if err := row.Scan(&actualOwnerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // not found
+		}
+		return nil, fmt.Errorf("check playlist owner for update: %w", err)
+	}
+	if actualOwnerID != ownerID {
+		return nil, ErrForbidden
+	}
+
 	const updateSQL = `
 UPDATE playlists
 SET    title    = $1
 WHERE  id       = $2
   AND  owner_id = $3`
 
-	result, err := r.db.ExecContext(ctx, updateSQL, title, playlistID, ownerID)
+	_, err := r.db.ExecContext(ctx, updateSQL, title, playlistID, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("update playlist title: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return nil, fmt.Errorf("update playlist title rows affected: %w", err)
-	}
-	if rows == 0 {
-		return nil, nil
 	}
 
 	const selectSQL = `
@@ -220,9 +226,9 @@ FROM   playlists p
 JOIN   users     u ON u.id = p.owner_id
 WHERE  p.id = $1`
 
-	row := r.db.QueryRowContext(ctx, selectSQL, playlistID)
+	refetchRow := r.db.QueryRowContext(ctx, selectSQL, playlistID)
 	var p PlaylistSummary
-	if err := row.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.CreatedAt); err != nil {
+	if err := refetchRow.Scan(&p.ID, &p.Title, &p.OwnerUsername, &p.CreatedAt); err != nil {
 		return nil, fmt.Errorf("fetch updated playlist: %w", err)
 	}
 	return &p, nil

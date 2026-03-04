@@ -5,6 +5,7 @@ import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PlaylistDetail, PlaylistRepository } from "@/domain/playlist";
+import type { VideoDetail, VideoRepository } from "@/domain/video";
 
 // ─── Mock React.use to unwrap Promise synchronously in tests ──────────────────
 jest.mock("react", () => {
@@ -29,6 +30,13 @@ jest.mock("next/dynamic", () => ({
     }
     return MockVideoPlayer;
   },
+}));
+
+// ─── Mock data repositories to prevent real network calls ────────────────────
+jest.mock("@/data/videoRepository", () => ({
+  ApiVideoRepository: jest.fn().mockImplementation(() => ({
+    getByID: jest.fn().mockResolvedValue(null),
+  })),
 }));
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
@@ -78,18 +86,36 @@ function makeRepo(
   };
 }
 
+function makeVideoDetail(overrides: Partial<VideoDetail> = {}): VideoDetail {
+  return {
+    id: "v-1",
+    title: "Video One",
+    description: null,
+    hlsManifestUrl: "https://cdn.example.com/v.m3u8",
+    thumbnailUrl: null,
+    viewCount: 0,
+    createdAt: "2024-01-01T00:00:00Z",
+    status: "ready",
+    uploader: { username: "alice", avatarUrl: null },
+    tags: [],
+    ...overrides,
+  };
+}
+
+function makeVideoRepo(
+  overrides: Partial<VideoRepository> = {}
+): VideoRepository {
+  return {
+    getByID: jest.fn().mockResolvedValue(makeVideoDetail()),
+    ...overrides,
+  };
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("PlaylistPageClient", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Default: fetch resolves with a valid HLS URL
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        hls_manifest_path: "https://cdn.example.com/v.m3u8",
-      }),
-    } as Response);
   });
 
   it("shows loading state initially", () => {
@@ -226,8 +252,8 @@ describe("PlaylistPageClient", () => {
 
   it("shows end-of-playlist overlay when last video ends via Skip", async () => {
     const user = userEvent.setup();
-    // Mock fetch to fail → PlaylistVideoPlayerWrapper shows Skip button
-    global.fetch = jest.fn().mockResolvedValue({ ok: false } as Response);
+    // videoRepository returns null → PlaylistVideoPlayerWrapper shows Skip button
+    const videoRepo = makeVideoRepo({ getByID: jest.fn().mockResolvedValue(null) });
     const repo = makeRepo({
       getByID: jest.fn().mockResolvedValue(
         makePlaylistDetail({
@@ -242,7 +268,13 @@ describe("PlaylistPageClient", () => {
         })
       ),
     });
-    render(<PlaylistPageClient params={makeParams("pl-1")} repository={repo} />);
+    render(
+      <PlaylistPageClient
+        params={makeParams("pl-1")}
+        repository={repo}
+        videoRepository={videoRepo}
+      />
+    );
 
     await waitFor(() => {
       expect(
@@ -262,7 +294,8 @@ describe("PlaylistPageClient", () => {
 
   it("Play again button resets to first video", async () => {
     const user = userEvent.setup();
-    global.fetch = jest.fn().mockResolvedValue({ ok: false } as Response);
+    // videoRepository returns null → PlaylistVideoPlayerWrapper shows Skip button
+    const videoRepo = makeVideoRepo({ getByID: jest.fn().mockResolvedValue(null) });
     const repo = makeRepo({
       getByID: jest.fn().mockResolvedValue(
         makePlaylistDetail({
@@ -277,7 +310,13 @@ describe("PlaylistPageClient", () => {
         })
       ),
     });
-    render(<PlaylistPageClient params={makeParams("pl-1")} repository={repo} />);
+    render(
+      <PlaylistPageClient
+        params={makeParams("pl-1")}
+        repository={repo}
+        videoRepository={videoRepo}
+      />
+    );
 
     await waitFor(() => {
       expect(

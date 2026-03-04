@@ -285,6 +285,7 @@ export function DashboardContent({
   // ─── Playlist state ─────────────────────────────────────────────────────────
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [playlistsLoading, setPlaylistsLoading] = useState(false);
+  const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
   const [playlistsError, setPlaylistsError] = useState<string | null>(null);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
@@ -338,9 +339,15 @@ export function DashboardContent({
   useEffect(() => {
     if (user && !loading) {
       fetchVideos();
-      fetchPlaylists();
     }
-  }, [user, loading, fetchVideos, fetchPlaylists]);
+  }, [user, loading, fetchVideos]);
+
+  // Lazy-load playlists — only on first activation of the "My playlists" tab.
+  useEffect(() => {
+    if (activeTab !== "playlists" || playlistsLoaded || !user || loading) return;
+    setPlaylistsLoaded(true);
+    fetchPlaylists();
+  }, [activeTab, playlistsLoaded, user, loading, fetchPlaylists]);
 
   // Return null during auth loading to prevent flash.
   if (loading) {

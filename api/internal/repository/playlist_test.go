@@ -408,12 +408,17 @@ func TestPlaylistListByOwnerUsername_QueryError_ReturnsError(t *testing.T) {
 
 // ─── UpdateTitle tests ────────────────────────────────────────────────────────
 
-// updateTitleQuerier supports one ExecContext call then one QueryRowContext call.
+// updateTitleQuerier supports the two-step ownership pattern:
+//  1. QueryRowContext — ownership check (returns owner_id or no rows)
+//  2. ExecContext    — UPDATE
+//  3. QueryRowContext — re-fetch updated summary
 type updateTitleQuerier struct {
-	t           *testing.T
-	execErr     error
-	rowsAff     int64
-	summary     *repository.PlaylistSummary
+	t            *testing.T
+	ownerID      string // actual owner of the playlist; "" means no row found
+	noOwnerRow   bool   // if true, first QueryRowContext returns no rows (not found)
+	execErr      error
+	summary      *repository.PlaylistSummary // returned by the re-fetch QueryRowContext
+	rowCallCount int
 }
 
 func (q *updateTitleQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
@@ -421,6 +426,22 @@ func (q *updateTitleQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (
 }
 
 func (q *updateTitleQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	q.rowCallCount++
+	if q.rowCallCount == 1 {
+		// First call: ownership check — return owner_id row or empty
+		if q.noOwnerRow || q.ownerID == "" {
+			return emptyDB().QueryRowContext(context.Background(), "SELECT 1 WHERE 1=0")
+		}
+		dsn := registerResults(q.t, []fakeQueryResult{
+			{
+				columns: []string{"owner_id"},
+				rows:    [][]driver.Value{{q.ownerID}},
+			},
+		})
+		db, _ := sql.Open("fakedb", dsn)
+		return db.QueryRowContext(context.Background(), "SELECT 1")
+	}
+	// Second call: re-fetch updated summary
 	if q.summary == nil {
 		return emptyDB().QueryRowContext(context.Background(), "SELECT 1 WHERE 1=0")
 	}
@@ -440,7 +461,7 @@ func (q *updateTitleQuerier) ExecContext(_ context.Context, _ string, _ ...any) 
 	if q.execErr != nil {
 		return nil, q.execErr
 	}
-	return rowsAffectedResult{n: q.rowsAff}, nil
+	return rowsAffectedResult{n: 1}, nil
 }
 
 func (q *updateTitleQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
@@ -450,7 +471,7 @@ func (q *updateTitleQuerier) QueryContext(_ context.Context, _ string, _ ...any)
 func TestPlaylistUpdateTitle_Success(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	summary := &repository.PlaylistSummary{ID: "pl-1", Title: "Renamed", OwnerUsername: "alice", CreatedAt: now}
-	q := &updateTitleQuerier{t: t, rowsAff: 1, summary: summary}
+	q := &updateTitleQuerier{t: t, ownerID: "user-1", summary: summary}
 	repo := repository.NewPlaylistRepository(q)
 
 	got, err := repo.UpdateTitle(context.Background(), "pl-1", "user-1", "Renamed")
@@ -466,7 +487,7 @@ func TestPlaylistUpdateTitle_Success(t *testing.T) {
 }
 
 func TestPlaylistUpdateTitle_NotFound_ReturnsNil(t *testing.T) {
-	q := &updateTitleQuerier{t: t, rowsAff: 0}
+	q := &updateTitleQuerier{t: t, noOwnerRow: true}
 	repo := repository.NewPlaylistRepository(q)
 
 	got, err := repo.UpdateTitle(context.Background(), "pl-missing", "user-1", "New")
@@ -478,8 +499,21 @@ func TestPlaylistUpdateTitle_NotFound_ReturnsNil(t *testing.T) {
 	}
 }
 
+func TestPlaylistUpdateTitle_Forbidden_ReturnsErrForbidden(t *testing.T) {
+	q := &updateTitleQuerier{t: t, ownerID: "user-2"} // owned by user-2, caller is user-1
+	repo := repository.NewPlaylistRepository(q)
+
+	got, err := repo.UpdateTitle(context.Background(), "pl-1", "user-1", "New")
+	if got != nil {
+		t.Errorf("expected nil on forbidden")
+	}
+	if !errors.Is(err, repository.ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+}
+
 func TestPlaylistUpdateTitle_ExecError_ReturnsError(t *testing.T) {
-	q := &updateTitleQuerier{t: t, execErr: errors.New("db error")}
+	q := &updateTitleQuerier{t: t, ownerID: "user-1", execErr: errors.New("db error")}
 	repo := repository.NewPlaylistRepository(q)
 
 	got, err := repo.UpdateTitle(context.Background(), "pl-1", "user-1", "New")

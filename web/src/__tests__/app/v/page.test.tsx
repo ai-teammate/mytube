@@ -11,7 +11,7 @@ import type { PlaylistRepository } from "@/domain/playlist";
 // ─── Mock useAuth ─────────────────────────────────────────────────────────────
 jest.mock("@/context/AuthContext", () => ({
   useAuth: () => ({
-    user: null,
+    user: { email: "test@example.com" },
     loading: false,
     getIdToken: jest.fn().mockResolvedValue(null),
   }),
