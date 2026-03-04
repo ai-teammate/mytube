@@ -30,19 +30,36 @@ class GCSService:
     # ------------------------------------------------------------------
 
     def bucket_exists(self, bucket_name: str) -> bool:
-        """Return True if the bucket exists and is accessible."""
+        """Return True if the bucket exists and is accessible.
+
+        Uses list_blobs (requires only storage.objects.list) instead of
+        get_bucket (requires storage.buckets.get) so that CI service accounts
+        with object-level-only permissions can still verify existence.
+        Falls back to a public HTTP probe if list_blobs also fails.
+        """
         try:
-            self._client.get_bucket(bucket_name)
+            next(iter(self._client.list_blobs(bucket_name, max_results=1)), None)
             return True
         except NotFound:
             return False
+        except Exception:
+            # Fall back to a public HTTP probe — a 200 or 403 (bucket exists
+            # but requester-pays / access denied) both confirm existence.
+            url = self._config.public_object_url(bucket_name, "")
+            try:
+                resp = httpx.get(url.rstrip("/") + "/", timeout=10.0, follow_redirects=True)
+                return resp.status_code in (200, 403)
+            except Exception:
+                return False
 
     def has_public_read_iam(self, bucket_name: str) -> bool:
         """
         Return True if allUsers has roles/storage.objectViewer on the bucket.
 
-        This confirms that the HLS output bucket is publicly readable,
-        satisfying the CDN delivery requirement.
+        Requires storage.buckets.getIamPolicy on the CI service account.
+        Raises PermissionError if the SA lacks that permission so that callers
+        can skip or fail the assertion with a clear message rather than silently
+        passing via a proxy check that does not verify the IAM binding.
         """
         bucket = self._client.get_bucket(bucket_name)
         policy = bucket.get_iam_policy(requested_policy_version=1)

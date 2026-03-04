@@ -55,7 +55,10 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	videoRepo := repository.NewVideoRepository(db)
+	ratingRepo := repository.NewRatingRepository(db)
+	commentRepo := repository.NewCommentRepository(db)
 	searchRepo := repository.NewSearchRepository(db)
+	playlistRepo := repository.NewPlaylistRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
@@ -83,15 +86,42 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
+	mux.Handle("/api/me/videos", authMiddleware(handler.NewMeVideosHandler(videoRepo, userRepo)))
+	optionalAuthMiddleware := middleware.OptionalAuth(verifier)
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
+	// Rating and comment sub-resources are registered with wildcard patterns
+	// (Go 1.22+ ServeMux), so they take precedence over the /api/videos/ subtree.
+	// Per-IP rate limiting is applied only to the public GET paths inside each
+	// handler so that authenticated POST requests use a separate, unlimited bucket.
+	mux.Handle("/api/videos/{id}/rating", optionalAuthMiddleware(handler.NewRatingHandler(ratingRepo, userRepo, videoRepo)))
+	mux.Handle("/api/videos/{id}/comments", optionalAuthMiddleware(handler.NewVideoCommentsHandler(commentRepo, userRepo, videoRepo)))
+	// Delete comment: authenticated
+	mux.Handle("/api/comments/", authMiddleware(handler.NewDeleteCommentHandler(commentRepo, userRepo)))
 	// /api/videos/recent and /api/videos/popular must be registered before
 	// the generic /api/videos/ prefix handler so they are matched first.
 	mux.Handle("/api/videos/recent", handler.NewRecentVideosHandler(searchRepo))
 	mux.Handle("/api/videos/popular", handler.NewPopularVideosHandler(searchRepo))
-	mux.Handle("/api/videos/", handler.NewVideoHandler(videoRepo, cdnBaseURL))
+	mux.Handle("/api/videos/", optionalAuthMiddleware(handler.NewManageVideoHandler(videoRepo, videoRepo, userRepo, cdnBaseURL)))
 	mux.Handle("/api/videos", videosHandler)
 	mux.Handle("/api/search", handler.NewSearchHandler(searchRepo))
 	mux.Handle("/api/categories", handler.NewCategoriesHandler(searchRepo))
+
+	// Playlist routes.
+	// /api/me/playlists must be registered before /api/me to avoid swallowing
+	// sub-paths on the /api/me prefix handler.
+	mux.Handle("/api/me/playlists", authMiddleware(handler.NewMePlaylistsHandler(playlistRepo, userRepo)))
+	// /api/users/<username>/playlists (public) — must precede the /api/users/ prefix.
+	mux.Handle("/api/users/{username}/playlists", handler.NewUserPlaylistsHandler(playlistRepo))
+	// /api/playlists/<id>/videos/<video_id> — more specific, must precede /api/playlists/<id>/videos.
+	mux.Handle("/api/playlists/{id}/videos/{video_id}", authMiddleware(handler.NewRemoveVideoFromPlaylistHandler(playlistRepo, userRepo)))
+	// /api/playlists/<id>/videos
+	mux.Handle("/api/playlists/{id}/videos", authMiddleware(handler.NewAddVideoToPlaylistHandler(playlistRepo, userRepo)))
+	// /api/playlists/<id> — GET (public), PUT/DELETE (owner only, auth enforced in handler).
+	// Use optionalAuth so GET works without a token and PUT/DELETE can still read claims.
+	mux.Handle("/api/playlists/{id}", optionalAuthMiddleware(handler.NewPlaylistByIDHandler(playlistRepo, userRepo)))
+	// /api/playlists — POST (auth required).
+	mux.Handle("/api/playlists", authMiddleware(handler.NewCreatePlaylistHandler(playlistRepo, userRepo)))
+
 	// Catch-all: return 404 for any path not matched above.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -102,5 +132,5 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	log.Fatal(http.ListenAndServe(":"+port, middleware.CORS(mux)))
 }

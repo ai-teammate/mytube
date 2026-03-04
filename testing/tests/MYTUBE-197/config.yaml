@@ -1,0 +1,5 @@
+test_id: MYTUBE-197
+type: api
+framework: pytest+psycopg2+go-test
+platform: rest
+dependencies: []
