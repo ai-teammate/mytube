@@ -254,7 +254,12 @@ def seeded_data(db_conn):
     rater3_id = user_svc.create_user(f"rater3-uid-{suffix}", f"rater199c-{suffix}")
 
     # The CI test user's firebase_uid must match the token we send.
-    ci_user_id = user_svc.create_user(firebase_test_uid, f"ci-user-199-{suffix}")
+    # Use the existing user if already seeded by another test module sharing this DB.
+    existing = user_svc.find_by_firebase_uid(firebase_test_uid)
+    if existing:
+        ci_user_id = existing["id"]
+    else:
+        ci_user_id = user_svc.create_user(firebase_test_uid, f"ci-user-199-{suffix}")
 
     video_row = video_svc.insert_video(owner_id, "Test Rating Video MYTUBE-199", "ready")
     video_id = str(video_row[0])
