@@ -86,21 +86,6 @@ _FIXTURE_PORT = 19238
 # Intercept any request whose URL path ends with /api/users/<anything>/playlists
 _PLAYLISTS_API_PATTERN = "**/api/users/*/playlists"
 
-# Selectors for a React unhandled error boundary (must NOT appear)
-_REACT_ERROR_BOUNDARY_TEXTS = [
-    "text=Something went wrong",
-    "text=Unexpected Application Error",
-]
-
-# Selectors for acceptable graceful error messages in the playlists section
-_GRACEFUL_ERROR_SELECTORS = [
-    "text=Failed to load",
-    "text=Error loading",
-    "text=Unable to load",
-    "text=Could not load",
-    "[role='alert']",
-]
-
 
 # ---------------------------------------------------------------------------
 # Fixture HTML — mirrors UserProfilePageClient.tsx error-handling behaviour
@@ -443,14 +428,11 @@ class TestProfilePagePlaylistsApiError:
         The playlists 500 error must be caught within the component and must
         not crash the entire page.
         """
-        _, pg, _ = loaded_profile
-        for selector in _REACT_ERROR_BOUNDARY_TEXTS:
-            count = pg.locator(selector).count()
-            assert count == 0, (
-                f"Error boundary text found ({selector!r}) after playlists API "
-                f"returned 500. The page is crashing instead of handling the "
-                f"error gracefully."
-            )
+        profile, _, _ = loaded_profile
+        assert not profile.has_react_error_boundary(), (
+            "Error boundary rendered after playlists API returned 500. "
+            "The page is crashing instead of handling the error gracefully."
+        )
 
     def test_playlists_section_not_stuck_loading(
         self,
@@ -490,9 +472,7 @@ class TestProfilePagePlaylistsApiError:
         profile, pg, _ = loaded_profile
 
         has_empty_state = profile.has_no_playlists_message()
-        has_error_message = any(
-            pg.locator(sel).count() > 0 for sel in _GRACEFUL_ERROR_SELECTORS
-        )
+        has_error_message = profile.has_playlists_graceful_error_message()
         tab_hidden = not profile.is_playlists_tab_visible()
 
         graceful = has_empty_state or has_error_message or tab_hidden
