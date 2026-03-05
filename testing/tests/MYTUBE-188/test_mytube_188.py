@@ -38,7 +38,8 @@ Environment variables
 Architecture notes
 ------------------
 - All subprocess / HTTP I/O is encapsulated in ApiProcessService.
-- Direct psycopg2 SQL is used for idempotent test-user setup (ON CONFLICT).
+- UserService is used for idempotent test-user seeding (find_by_firebase_uid + create_user).
+- CategoryService is used to obtain or seed a valid category_id.
 - VideoService is used to seed the initial video row with tags.
 - No hardcoded waits; ApiProcessService.wait_for_ready() polls /health.
 """
@@ -54,6 +55,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.category_service import CategoryService
+from testing.components.services.user_service import UserService
 from testing.components.services.video_service import VideoService
 
 # ---------------------------------------------------------------------------
@@ -190,34 +193,13 @@ def db_conn(db_config: DBConfig):
 
 @pytest.fixture(scope="module")
 def seeded_user(api_server, db_conn):
-    """Insert a user row with a known firebase_uid; return a dict with the user data.
-
-    Uses ON CONFLICT to reset username so each run starts from a consistent
-    state (idempotent).
-    """
-    username = "testuser188"
-
-    with db_conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO users (firebase_uid, username)
-            VALUES (%s, %s)
-            ON CONFLICT (firebase_uid) DO UPDATE SET username = EXCLUDED.username
-            """,
-            (_FIREBASE_TEST_UID, username),
-        )
-        cur.execute(
-            "SELECT id, firebase_uid, username FROM users WHERE firebase_uid = %s",
-            (_FIREBASE_TEST_UID,),
-        )
-        row = cur.fetchone()
-
-    if row is None:
-        pytest.fail(
-            f"Could not insert or find user row for firebase_uid={_FIREBASE_TEST_UID!r}"
-        )
-
-    return {"id": str(row[0]), "firebase_uid": row[1], "username": row[2]}
+    """Insert a user row with a known firebase_uid; return a dict with the user data."""
+    user_svc = UserService(db_conn)
+    existing = user_svc.find_by_firebase_uid(_FIREBASE_TEST_UID)
+    if existing is not None:
+        return existing
+    user_id = user_svc.create_user(_FIREBASE_TEST_UID, "testuser188")
+    return {"id": user_id, "firebase_uid": _FIREBASE_TEST_UID, "username": "testuser188"}
 
 
 @pytest.fixture(scope="module")
@@ -227,20 +209,11 @@ def category_id(db_conn) -> int:
     Uses the first available category in the table.  If no categories exist,
     inserts a dedicated test category and returns its ID.
     """
-    with db_conn.cursor() as cur:
-        cur.execute("SELECT id FROM categories ORDER BY id LIMIT 1")
-        row = cur.fetchone()
-
-    if row is not None:
-        return row[0]
-
-    # No categories found — seed one.
-    with db_conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO categories (name) VALUES (%s) RETURNING id",
-            (_TEST_CATEGORY_NAME,),
-        )
-        return cur.fetchone()[0]
+    cat_svc = CategoryService(db_conn)
+    cid = cat_svc.get_first_id()
+    if cid is not None:
+        return cid
+    return cat_svc.insert_category(_TEST_CATEGORY_NAME)
 
 
 @pytest.fixture(scope="module")
