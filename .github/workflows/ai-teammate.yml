@@ -285,6 +285,7 @@ jobs:
           GEMINI_DEFAULT_MODEL: ${{ vars.GEMINI_DEFAULT_MODEL }}
           GEMINI_BASE_PATH: ${{ vars.GEMINI_BASE_PATH }}
           DEFAULT_LLM: "gemini"
+          DEFAULT_TRACKER: "jira"
 
           # Figma Configuration
           FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
