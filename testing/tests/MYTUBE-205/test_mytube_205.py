@@ -44,6 +44,7 @@ Architecture
 ------------
 - WatchPage (Page Object) from testing/components/pages/watch_page/.
 - LoginPage (Page Object) from testing/components/pages/login_page/.
+- SearchService (API Service Object) from testing/components/services/search_service.py.
 - WebConfig from testing/core/config/web_config.py.
 - Playwright sync API with Playwright route interception for API mocking.
 - No hardcoded URLs or credentials outside of env-var helpers.
@@ -53,8 +54,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.request
-from typing import Optional
 
 import pytest
 from playwright.sync_api import Browser, Page, Route, Request, sync_playwright
@@ -64,6 +63,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from testing.core.config.web_config import WebConfig
 from testing.components.pages.login_page.login_page import LoginPage
 from testing.components.pages.watch_page.watch_page import WatchPage
+from testing.components.services.search_service import SearchService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -91,25 +91,6 @@ _DEFAULT_API_BASE = "https://mytube-api-80693608388.us-central1.run.app"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _discover_video_id(api_base_url: str) -> Optional[str]:
-    """Return the ID of the first ready video found via the public search API.
-
-    Tries several search queries in order until a non-empty result is returned.
-    Returns None when no video is found or the API is unreachable.
-    """
-    base = api_base_url.rstrip("/")
-    for query in ("a", "video", "test", ""):
-        url = f"{base}/api/search?q={query}"
-        try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
-                if isinstance(data, list) and data:
-                    return data[0].get("id")
-        except Exception:
-            continue
-    return None
 
 
 def _make_rating_route_handler(get_body: dict, post_body: dict):
@@ -156,19 +137,20 @@ def require_firebase_credentials(web_config: WebConfig):
 
 @pytest.fixture(scope="module")
 def video_id() -> str:
-    """Discover a ready video ID from the public search API.
+    """Discover a ready video ID from the public search API via SearchService.
 
     Skips the module if no video is found (e.g. the API is unreachable).
     """
     api_base = os.getenv("API_BASE_URL", _DEFAULT_API_BASE)
-    vid = _discover_video_id(api_base)
-    if not vid:
-        pytest.skip(
-            f"No ready video found via {api_base}/api/search?q=a — "
-            "ensure the API is reachable and at least one video with 'ready' "
-            "status exists."
-        )
-    return vid
+    search_svc = SearchService(api_base)
+    for query in ("a", "video", "test", ""):
+        resp = search_svc.search(q=query)
+        if resp.items:
+            return resp.items[0].id
+    pytest.skip(
+        f"No ready video found via {api_base}/api/search — "
+        "ensure the API is reachable and at least one video exists."
+    )
 
 
 @pytest.fixture(scope="module")
