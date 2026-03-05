@@ -21,7 +21,7 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
   const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !src || !src.trim()) return;
 
     let isMounted = true;
 
@@ -31,7 +31,7 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
       import("video.js"),
       import("@videojs/http-streaming"),
     ]).then(([{ default: videoJs }]) => {
-      if (!isMounted || !videoRef.current) return;
+      if (!isMounted || !videoRef.current || !src || !src.trim()) return;
 
       playerRef.current = videoJs(videoRef.current, {
         controls: true,
