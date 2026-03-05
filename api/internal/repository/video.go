@@ -207,6 +207,7 @@ type UpdateVideoParams struct {
 
 // GetByIDForOwner fetches a video row by ID without filtering by status.
 // Returns (nil, nil) when no matching row exists.
+// Tags are fetched separately and populated in the returned VideoDetail.
 func (r *VideoRepository) GetByIDForOwner(ctx context.Context, videoID string) (*VideoDetail, error) {
 	const selectSQL = `
 SELECT v.id,
@@ -245,6 +246,13 @@ WHERE  v.id = $1`
 		}
 		return nil, fmt.Errorf("get video by id for owner: %w", err)
 	}
+
+	tags, err := r.GetTagsByVideoID(ctx, videoID)
+	if err != nil {
+		return nil, fmt.Errorf("get tags for video %s: %w", videoID, err)
+	}
+	v.Tags = tags
+
 	return &v, nil
 }
 
