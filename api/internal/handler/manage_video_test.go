@@ -55,6 +55,7 @@ func makeUpdatedVideoDetail() *repository.VideoDetail {
 		ViewCount:        5,
 		CreatedAt:        now,
 		UploaderUsername: "owner",
+		Tags:             []string{},
 	}
 }
 
@@ -337,8 +338,10 @@ func TestPutVideo_UpdateError_Returns500(t *testing.T) {
 
 func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
+	result := makeUpdatedVideoDetail()
+	result.Tags = []string{"go", "tutorial"}
 	manager := &stubVideoManager{
-		updateResult: makeUpdatedVideoDetail(),
+		updateResult: result,
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
@@ -372,7 +375,7 @@ func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 	if resp.Title != "Updated Title" {
 		t.Errorf("Title: got %q, want Updated Title", resp.Title)
 	}
-	// Tags come directly from the validated request tags slice.
+	// Tags come from the database via GetByIDForOwner.
 	if len(resp.Tags) != 2 {
 		t.Errorf("Tags: expected 2, got %d", len(resp.Tags))
 	}
@@ -382,8 +385,10 @@ func TestPutVideo_Success_ReturnsUpdatedVideo(t *testing.T) {
 // is included in the 200 response body (regression for MYTUBE-217).
 func TestPutVideo_Success_ReturnsCategoryID(t *testing.T) {
 	videoProvider := &stubVideoProvider{}
+	result := makeUpdatedVideoDetail() // CategoryID = 2
+	result.Tags = []string{"tag1", "tag2"}
 	manager := &stubVideoManager{
-		updateResult: makeUpdatedVideoDetail(), // CategoryID = 2
+		updateResult: result,
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
@@ -414,6 +419,57 @@ func TestPutVideo_Success_ReturnsCategoryID(t *testing.T) {
 	}
 	if *resp.CategoryID != 2 {
 		t.Errorf("CategoryID: got %d, want 2", *resp.CategoryID)
+	}
+}
+
+// TestPutVideo_Success_ReturnsTags verifies that the PUT response body contains
+// the tags that are now persisted in the database (regression for MYTUBE-188).
+// The response should reflect what was actually saved, not just what was in the request.
+func TestPutVideo_Success_ReturnsTags(t *testing.T) {
+	videoProvider := &stubVideoProvider{}
+	result := makeUpdatedVideoDetail()
+	result.Tags = []string{"backend", "database", "api"}
+	manager := &stubVideoManager{
+		updateResult: result,
+	}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"title": "Updated Title",
+		"tags":  []string{"backend", "database", "api"},
+	})
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodPut, "/api/videos/"+testManageVideoID, bytes.NewBuffer(body)),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp handler.UpdateVideoResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	expectedTags := []string{"backend", "database", "api"}
+	if len(resp.Tags) != len(expectedTags) {
+		t.Errorf("Tags count: expected %d, got %d", len(expectedTags), len(resp.Tags))
+	}
+	for _, expectedTag := range expectedTags {
+		found := false
+		for _, tag := range resp.Tags {
+			if tag == expectedTag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Tag %q not found in response tags: %v", expectedTag, resp.Tags)
+		}
 	}
 }
 
