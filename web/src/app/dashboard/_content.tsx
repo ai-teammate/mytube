@@ -674,9 +674,7 @@ export function DashboardContent({
                           {deletingId === video.id ? (
                             <span className="inline-flex gap-2">
                               <button
-                                onClick={async () => {
-                                  await handleDeleteConfirm();
-                                }}
+                                onClick={() => handleDeleteConfirm()}
                                 disabled={deleting}
                                 className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                               >
@@ -814,9 +812,7 @@ export function DashboardContent({
                           {deletingPlaylistId === pl.id ? (
                             <span className="inline-flex gap-2">
                               <button
-                                onClick={async () => {
-                                  await handleDeletePlaylistConfirm();
-                                }}
+                                onClick={() => handleDeletePlaylistConfirm()}
                                 disabled={deletingPlaylist}
                                 className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                               >
