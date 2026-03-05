@@ -365,11 +365,22 @@ describe("UserProfilePage", () => {
     };
   }
 
-  it("renders Videos and Playlists tab buttons", async () => {
+  it("renders Videos and Playlists tab buttons when user has playlists", async () => {
     const repo = makeRepo(() =>
       Promise.resolve({ username: "alice", avatarUrl: null, videos: [] })
     );
-    render(<UserProfilePage params={makeParams("alice")} repository={repo} />);
+    const playlistRepo = makePlaylistRepo({
+      listByUsername: jest.fn().mockResolvedValue([
+        makePlaylistSummary({ title: "Favourites" }),
+      ]),
+    });
+    render(
+      <UserProfilePage
+        params={makeParams("alice")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /^videos$/i })).toBeInTheDocument();
@@ -411,7 +422,7 @@ describe("UserProfilePage", () => {
     });
   });
 
-  it("shows 'No playlists yet.' when user has no playlists", async () => {
+  it("only shows Playlists tab when user has playlists", async () => {
     const user = userEvent.setup();
     const repo = makeRepo(() =>
       Promise.resolve({ username: "carol", avatarUrl: null, videos: [] })
@@ -428,17 +439,14 @@ describe("UserProfilePage", () => {
       />
     );
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /^playlists$/i })).toBeInTheDocument()
-    );
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: /^playlists$/i }));
-    });
-
+    // Wait for profile to load
     await waitFor(() => {
-      expect(screen.getByText(/no playlists yet/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "carol" })).toBeInTheDocument();
     });
+
+    // The playlists tab should NOT be visible if the user has no playlists
+    const playlistsTab = screen.queryByRole("button", { name: /^playlists$/i });
+    expect(playlistsTab).not.toBeInTheDocument();
   });
 
   it("each playlist card links to /pl/:id", async () => {
@@ -513,7 +521,9 @@ describe("UserProfilePage", () => {
     const repo = makeRepo(() =>
       Promise.resolve({ username: "eve", avatarUrl: null, videos: [] })
     );
-    const listByUsername = jest.fn().mockResolvedValue([]);
+    const listByUsername = jest
+      .fn()
+      .mockResolvedValue([makePlaylistSummary({ title: "Test" })]);
     const playlistRepo = makePlaylistRepo({ listByUsername });
 
     render(
@@ -535,5 +545,31 @@ describe("UserProfilePage", () => {
     await waitFor(() => {
       expect(listByUsername).toHaveBeenCalledWith("eve");
     });
+  });
+
+  it("should not show playlists tab when user has no playlists", async () => {
+    const repo = makeRepo(() =>
+      Promise.resolve({ username: "carol", avatarUrl: null, videos: [] })
+    );
+    const playlistRepo = makePlaylistRepo({
+      listByUsername: jest.fn().mockResolvedValue([]),
+    });
+
+    render(
+      <UserProfilePage
+        params={makeParams("carol")}
+        repository={repo}
+        playlistRepository={playlistRepo}
+      />
+    );
+
+    // Wait for profile to load
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "carol" })).toBeInTheDocument();
+    });
+
+    // The playlists tab should NOT be visible if the user has no playlists
+    const playlistsTab = screen.queryByRole("button", { name: /^playlists$/i });
+    expect(playlistsTab).not.toBeInTheDocument();
   });
 });
