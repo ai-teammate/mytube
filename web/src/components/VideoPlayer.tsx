@@ -112,12 +112,21 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         playsInline
       />
       {error && (
-        <div
-          role="alert"
-          className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg"
-        >
-          <div className="bg-red-600 text-white px-4 py-3 rounded text-center max-w-sm">
-            {error}
+        <div className="absolute inset-0 pointer-events-none rounded-lg">
+          <div className="absolute inset-0 bg-black/40"></div>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-auto">
+            <div
+              role="alert"
+              className="bg-red-600 text-white px-6 py-4 rounded text-center max-w-sm shadow-lg"
+            >
+              <p className="mb-4">{error}</p>
+              <button
+                onClick={() => setError(null)}
+                className="bg-red-800 hover:bg-red-900 text-white px-4 py-2 rounded font-semibold transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
         </div>
       )}
