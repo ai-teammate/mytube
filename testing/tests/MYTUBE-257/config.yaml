@@ -1,0 +1,128 @@
+# Test Configuration for MYTUBE-257: Tag Deduplication Test
+# This file describes the test configuration schema, environment requirements, and assertions.
+
+description: "Validates that the API correctly deduplicates tags in video metadata requests"
+
+test_type: "API Integration Test"
+framework: "pytest with custom REST API client"
+scope: "video metadata endpoints (PUT /api/videos/:id, GET /api/videos/:id)"
+
+# Environment variables required for test execution
+environment_variables:
+  required:
+    - name: "FIREBASE_TEST_TOKEN"
+      description: "Firebase ID token for test user authentication"
+      example: "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE..."
+      skip_test_if_absent: true
+    
+    - name: "FIREBASE_PROJECT_ID"
+      description: "Firebase project ID for API server's Firebase verifier"
+      example: "mytube-project-id"
+      skip_test_if_absent: true
+  
+  optional:
+    - name: "API_BINARY"
+      description: "Path to pre-built Go API binary"
+      default: "<repo_root>/api/mytube-api"
+    
+    - name: "FIREBASE_TEST_UID"
+      description: "Firebase UID associated with test token"
+      default: "test-uid-mytube-257"
+    
+    - name: "DB_HOST"
+      description: "Database host"
+      default: "localhost"
+    
+    - name: "DB_PORT"
+      description: "Database port"
+      default: "5432"
+    
+    - name: "DB_USER"
+      description: "Database user"
+      default: "mytube_user"
+    
+    - name: "DB_PASSWORD"
+      description: "Database password"
+      default: "mytube_pass"
+    
+    - name: "DB_NAME"
+      description: "Database name"
+      default: "mytube_test"
+    
+    - name: "SSL_MODE"
+      description: "PostgreSQL SSL mode"
+      default: "disable"
+
+# Test fixtures and scope
+fixtures:
+  scope: "module"
+  setup_order:
+    1. "db_config: Initialize database configuration"
+    2. "api_server: Build (if needed) and start API server"
+    3. "db_conn: Open database connection"
+    4. "seeded_user: Create test user with known firebase_uid"
+    5. "seeded_video: Create initial video owned by test user"
+    6. "put_video_response: Execute PUT request with duplicate tags"
+    7. "get_video_response: Execute GET request to verify persistence"
+
+# Test execution expectations
+execution:
+  total_tests: 6
+  expected_passed: 6
+  expected_failed: 0
+  timeout_seconds: 60
+  api_startup_timeout: 20
+  api_port: 18257
+
+# Test assertions and validation
+assertions:
+  step_1:
+    - "PUT request returns HTTP 200 OK"
+    - "Response body is valid JSON"
+  
+  step_2:
+    - "Response tags are deduplicated (set equality with expected unique tags)"
+    - "No duplicate values in response tags array"
+    - "All expected unique tags are present in response"
+  
+  step_3:
+    - "GET request returns HTTP 200 OK"
+    - "Response body is valid JSON"
+    - "Persisted tags are deduplicated (set equality with expected unique tags)"
+    - "No duplicate values in persisted tags array"
+    - "All expected unique tags are present in persisted data"
+
+# Test data
+test_data:
+  initial_video:
+    title: "Video for Tag Deduplication Test MYTUBE-257"
+    description: "Initial video for testing tag deduplication"
+    status: "ready"
+    tags: []
+  
+  duplicate_tags_in_request:
+    - "tutorial"
+    - "tutorial"
+    - "coding"
+    - "tutorial"
+    - "coding"
+  
+  expected_unique_tags:
+    - "tutorial"
+    - "coding"
+
+# Expected result
+expected_result:
+  status: "✅ PASSED"
+  description: "API successfully deduplicates duplicate tag values in both response body and database storage"
+  verification:
+    - "Tags returned in PUT response match expected unique set"
+    - "Tags persisted in database match expected unique set"
+    - "No duplicate values exist in either response or database"
+
+# Tags for categorization
+tags:
+  - "video-metadata"
+  - "tag-deduplication"
+  - "api-integration"
+  - "data-persistence"

@@ -284,23 +284,10 @@ class TestTagDeduplication:
         body = json.loads(put_video_response["body"])
         tags = body.get("tags", [])
 
-        # Check that all expected unique tags are present
-        for expected_tag in _EXPECTED_UNIQUE_TAGS:
-            assert expected_tag in tags, (
-                f"Expected tag '{expected_tag}' not found in response tags. "
-                f"Got: {tags}"
-            )
-
-        # Check that no duplicates exist in the response
-        assert len(tags) == len(set(tags)), (
-            f"Response tags contain duplicates! "
-            f"Got: {tags}"
-        )
-
-        # Check that the set of tags matches expected (no extra tags)
+        # Check that the set of tags matches expected (no extra tags, no duplicates, all unique values present)
         assert set(tags) == set(_EXPECTED_UNIQUE_TAGS), (
             f"Response tags do not match expected unique tags. "
-            f"Expected: {_EXPECTED_UNIQUE_TAGS}, Got: {tags}"
+            f"Expected: {set(_EXPECTED_UNIQUE_TAGS)}, Got: {set(tags)}"
         )
 
     # --- Step 3: GET response: persistence verification ---
@@ -326,21 +313,8 @@ class TestTagDeduplication:
         body = json.loads(get_video_response["body"])
         tags = body.get("tags", [])
 
-        # Check that all expected unique tags are present
-        for expected_tag in _EXPECTED_UNIQUE_TAGS:
-            assert expected_tag in tags, (
-                f"Expected tag '{expected_tag}' not found in persisted tags. "
-                f"Got: {tags}"
-            )
-
-        # Check that no duplicates exist in persisted data
-        assert len(tags) == len(set(tags)), (
-            f"Persisted tags contain duplicates! "
-            f"Got: {tags}"
-        )
-
-        # Check that the set of tags matches expected (no extra tags)
+        # Check that the set of tags matches expected (no extra tags, no duplicates, all unique values present)
         assert set(tags) == set(_EXPECTED_UNIQUE_TAGS), (
             f"Persisted tags do not match expected unique tags. "
-            f"Expected: {_EXPECTED_UNIQUE_TAGS}, Got: {tags}"
+            f"Expected: {set(_EXPECTED_UNIQUE_TAGS)}, Got: {set(tags)}"
         )
