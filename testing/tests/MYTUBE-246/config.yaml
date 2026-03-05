@@ -1,0 +1,4 @@
+test_id: MYTUBE-246
+test_type: web
+framework: playwright
+description: Verify Video.js displays error overlay when HLS manifest is unreachable
