@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Video.js is loaded dynamically to avoid SSR issues with the static export.
 // We import the types only here; the runtime import happens inside useEffect.
@@ -15,10 +15,12 @@ interface VideoPlayerProps {
 /**
  * VideoPlayer renders a Video.js 8.x player configured for HLS streaming.
  * It initialises the player on mount and disposes it on unmount.
+ * Displays error alert when media fails to load.
  */
 export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!videoRef.current || !src || !src.trim()) return;
@@ -46,9 +48,39 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         ],
         ...(poster ? { poster } : {}),
       });
+
+      // Register error event listener to handle media load failures
+      playerRef.current.on("error", () => {
+        if (isMounted && playerRef.current) {
+          const errorData = playerRef.current.error();
+          if (errorData) {
+            let message = "Failed to load video. ";
+            switch (errorData.code) {
+              case 1:
+                message += "Loading aborted.";
+                break;
+              case 2:
+                message += "Network error occurred.";
+                break;
+              case 3:
+                message += "Decoding failed.";
+                break;
+              case 4:
+                message += "Media format not supported.";
+                break;
+              default:
+                message += "An error occurred while loading the media.";
+            }
+            setError(message);
+          } else {
+            setError("Failed to load video. Please try again later.");
+          }
+        }
+      });
     }).catch((err) => {
       if (isMounted) {
         console.error("Failed to load video player:", err);
+        setError("Failed to initialize video player. Please try again later.");
       }
     });
 
@@ -69,6 +101,16 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         className="video-js vjs-big-play-centered"
         playsInline
       />
+      {error && (
+        <div
+          role="alert"
+          className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg"
+        >
+          <div className="bg-red-600 text-white px-4 py-3 rounded text-center max-w-sm">
+            {error}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
