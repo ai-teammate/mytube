@@ -25,6 +25,9 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
   useEffect(() => {
     if (!videoRef.current || !src || !src.trim()) return;
 
+    // Clear any previous error state when src prop changes
+    setError(null);
+
     let isMounted = true;
 
     // Dynamically import video.js and the HLS plugin to ensure they run client-side only.
@@ -75,6 +78,13 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
           } else {
             setError("Failed to load video. Please try again later.");
           }
+        }
+      });
+
+      // Register loadstart event listener to clear error when playback begins
+      playerRef.current.on("loadstart", () => {
+        if (isMounted) {
+          setError(null);
         }
       });
     }).catch((err) => {
