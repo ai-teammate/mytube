@@ -175,6 +175,7 @@ def api_server(api_config: APIConfig, db_config: DBConfig, firebase_credentials:
             "DB_NAME": db_config.dbname,
             "SSL_MODE": db_config.sslmode,
             "FIREBASE_PROJECT_ID": firebase_credentials["project_id"],
+            "RAW_UPLOADS_BUCKET": "test-bucket",
         },
     )
     svc.start()
