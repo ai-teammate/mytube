@@ -39,6 +39,8 @@ export default function UserProfilePage({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [playlistsLoading, setPlaylistsLoading] = useState(false);
   const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
+  const [hasPlaylists, setHasPlaylists] = useState(false);
+  const [playlistsCheckLoading, setPlaylistsCheckLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +68,40 @@ export default function UserProfilePage({
       cancelled = true;
     };
   }, [username, repository]);
+
+  // Check if user has playlists on component mount (before tab click).
+  useEffect(() => {
+    if (playlistsCheckLoading || playlistsLoaded) return;
+    let cancelled = false;
+
+    async function checkPlaylists() {
+      setPlaylistsCheckLoading(true);
+      try {
+        const data = await playlistRepository.listByUsername(username);
+        if (!cancelled) {
+          setHasPlaylists(data.length > 0);
+          // If we already have the data, we can set the playlists now
+          // to avoid re-fetching when the tab is clicked
+          if (data.length > 0) {
+            setPlaylists(data);
+            setPlaylistsLoaded(true);
+          }
+        }
+      } catch {
+        // Silently fail - if we can't check, assume no playlists
+        if (!cancelled) {
+          setHasPlaylists(false);
+        }
+      } finally {
+        if (!cancelled) setPlaylistsCheckLoading(false);
+      }
+    }
+
+    checkPlaylists();
+    return () => {
+      cancelled = true;
+    };
+  }, [username, playlistRepository]);
 
   // Load playlists when the playlists tab is first activated.
   useEffect(() => {
@@ -160,16 +196,18 @@ export default function UserProfilePage({
             >
               Videos
             </button>
-            <button
-              onClick={() => setActiveTab("playlists")}
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "playlists"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Playlists
-            </button>
+            {hasPlaylists && (
+              <button
+                onClick={() => setActiveTab("playlists")}
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "playlists"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Playlists
+              </button>
+            )}
           </nav>
         </div>
 
