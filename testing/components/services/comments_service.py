@@ -33,9 +33,10 @@ class CommentResponse:
 
 
 class CommentsService:
-    """Provides HTTP operations for the comments endpoint.
+    """Provides HTTP operations for the comments endpoints.
 
-    Encapsulates POST /api/videos/:video_id/comments with Bearer token auth.
+    Encapsulates POST /api/videos/:video_id/comments, GET comment list,
+    and DELETE /api/comments/:comment_id with Bearer token auth.
 
     Usage::
 
@@ -68,6 +69,50 @@ class CommentsService:
             "Content-Type": "application/json",
         }
         req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return CommentResponse(
+                    status_code=resp.status,
+                    raw_body=resp.read().decode(),
+                )
+        except urllib.error.HTTPError as exc:
+            return CommentResponse(
+                status_code=exc.code,
+                raw_body=exc.read().decode(),
+            )
+
+    def list_comments(self, video_id: str) -> CommentResponse:
+        """GET /api/videos/:video_id/comments (public, no auth required).
+
+        Returns:
+            CommentResponse with status_code and raw_body.
+        """
+        url = f"{self._base_url}/api/videos/{video_id}/comments"
+        req = urllib.request.Request(url)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return CommentResponse(
+                    status_code=resp.status,
+                    raw_body=resp.read().decode(),
+                )
+        except urllib.error.HTTPError as exc:
+            return CommentResponse(
+                status_code=exc.code,
+                raw_body=exc.read().decode(),
+            )
+
+    def delete_comment(self, comment_id: str) -> CommentResponse:
+        """DELETE /api/comments/:comment_id (authenticated, owner only).
+
+        Returns:
+            CommentResponse with status_code and raw_body.
+            A successful deletion returns HTTP 204 with an empty body.
+        """
+        url = f"{self._base_url}/api/comments/{comment_id}"
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+        }
+        req = urllib.request.Request(url, method="DELETE", headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 return CommentResponse(
