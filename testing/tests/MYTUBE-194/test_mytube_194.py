@@ -56,6 +56,7 @@ from testing.core.config.db_config import DBConfig
 from testing.components.pages.login_page.login_page import LoginPage
 from testing.components.pages.dashboard_page.dashboard_page import DashboardPage
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.web_static_server_service import WebStaticServerService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -68,6 +69,7 @@ _DEFAULT_BINARY = os.path.join(_REPO_ROOT, "api", "mytube-api")
 API_BINARY = os.getenv("API_BINARY", _DEFAULT_BINARY)
 
 _PORT = 8081  # Default port that WebConfig expects for API
+_WEB_PORT = 3000  # Default port for Next.js dev server
 _STARTUP_TIMEOUT = 20.0
 
 _DEFAULT_MOCK_CREDS = os.path.join(
@@ -125,7 +127,10 @@ def _db_is_reachable(cfg: DBConfig) -> bool:
 
 @pytest.fixture(scope="module")
 def web_config() -> WebConfig:
-    return WebConfig()
+    config = WebConfig()
+    # Override to use local dev server for this test
+    config.base_url = f"http://localhost:{_WEB_PORT}"
+    return config
 
 
 @pytest.fixture(scope="module")
@@ -168,6 +173,33 @@ def api_server(db_config: DBConfig) -> ApiProcessService:
         svc.stop()
         pytest.fail(
             f"API server did not become ready within {_STARTUP_TIMEOUT}s.\n"
+            f"Logs:\n{logs}"
+        )
+
+    yield svc
+    svc.stop()
+
+
+@pytest.fixture(scope="module")
+def web_server(api_server: ApiProcessService) -> WebStaticServerService:
+    """Start serving the pre-built frontend with correct API URL configuration.
+
+    Depends on api_server to ensure the API is running first.
+    The frontend was built with NEXT_PUBLIC_API_URL=http://localhost:8081.
+    """
+    svc = WebStaticServerService(
+        repo_root=_REPO_ROOT,
+        port=_WEB_PORT,
+        startup_timeout=10.0,
+    )
+    svc.start()
+
+    ready = svc.wait_for_ready(path="/")
+    if not ready:
+        logs = svc.get_log_output()
+        svc.stop()
+        pytest.fail(
+            f"Web server did not become ready within 10s.\n"
             f"Logs:\n{logs}"
         )
 
@@ -346,6 +378,7 @@ def authenticated_dashboard_page(
     page: Page,
     test_video_data: dict,  # ensures the video is seeded before navigation
     api_server: ApiProcessService,  # ensure API is running before navigation
+    web_server: WebStaticServerService,  # ensure web server is running
 ) -> Page:
     """Log in as the CI test user and navigate to /dashboard.
 
@@ -354,6 +387,9 @@ def authenticated_dashboard_page(
 
     The ``api_server`` parameter ensures the API is running and ready before
     the browser loads the dashboard so API calls will succeed.
+
+    The ``web_server`` parameter ensures the static frontend is being served
+    locally with correct NEXT_PUBLIC_API_URL configuration.
 
     Returns the authenticated Playwright page already showing the dashboard.
     """
