@@ -35,10 +35,9 @@ Environment variables
 
 Architecture notes
 ------------------
-- CommentService encapsulates all /api/comments and /api/videos/:id/comments
+- CommentsService encapsulates all /api/comments and /api/videos/:id/comments
   HTTP interaction; no raw urllib calls appear in test code.
 - SearchService discovers a ready video via /api/search to use as target.
-- APIConfig reads API_BASE_URL from the environment.
 - No local API server or database is required — tests run against the
   deployed API using a valid Firebase ID token.
 """
@@ -52,9 +51,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.api_config import APIConfig
 from testing.components.services.search_service import SearchService
-from testing.components.services.comment_service import CommentService
+from testing.components.services.comments_service import CommentsService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -108,9 +106,9 @@ def base_url() -> str:
 
 
 @pytest.fixture(scope="module")
-def comment_service(base_url: str) -> CommentService:
-    """Return a CommentService configured with the Firebase test token."""
-    return CommentService(base_url=base_url, token=_FIREBASE_TOKEN)
+def comment_service(base_url: str) -> CommentsService:
+    """Return a CommentsService configured with the Firebase test token."""
+    return CommentsService(base_url=base_url, token=_FIREBASE_TOKEN)
 
 
 @pytest.fixture(scope="module")
@@ -131,14 +129,14 @@ def video_id(base_url: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def created_comment(video_id: str, comment_service: CommentService):
+def created_comment(video_id: str, comment_service: CommentsService):
     """POST a comment to the test video; return status_code, body, video_id."""
-    status_code, body = comment_service.post_comment(video_id, _COMMENT_BODY)
-    return {"status_code": status_code, "body": body, "video_id": video_id}
+    resp = comment_service.post_comment(video_id, _COMMENT_BODY)
+    return {"status_code": resp.status_code, "body": resp.raw_body, "video_id": video_id}
 
 
 @pytest.fixture(scope="module")
-def delete_response(created_comment, comment_service: CommentService):
+def delete_response(created_comment, comment_service: CommentsService):
     """
     Extract the comment id from the POST response and issue DELETE.
 
@@ -160,12 +158,12 @@ def delete_response(created_comment, comment_service: CommentService):
             "POST response body did not contain a comment 'id'; cannot test DELETE."
         )
 
-    status_code, body = comment_service.delete_comment(comment_id)
-    return {"status_code": status_code, "body": body, "comment_id": comment_id}
+    resp = comment_service.delete_comment(comment_id)
+    return {"status_code": resp.status_code, "body": resp.raw_body, "comment_id": comment_id}
 
 
 @pytest.fixture(scope="module")
-def comments_after_delete(delete_response, video_id: str, comment_service: CommentService):
+def comments_after_delete(delete_response, video_id: str, comment_service: CommentsService):
     """
     GET the comment list after deletion; return (status_code, parsed_list).
 
@@ -177,14 +175,14 @@ def comments_after_delete(delete_response, video_id: str, comment_service: Comme
             f"{delete_response['status_code']} instead of 204."
         )
 
-    status_code, body = comment_service.list_comments(video_id)
+    resp = comment_service.list_comments(video_id)
     try:
-        comments = json.loads(body)
+        comments = json.loads(resp.raw_body)
         if not isinstance(comments, list):
             comments = []
     except json.JSONDecodeError:
         comments = []
-    return {"status_code": status_code, "comments": comments}
+    return {"status_code": resp.status_code, "comments": comments}
 
 
 # ---------------------------------------------------------------------------
