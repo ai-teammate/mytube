@@ -75,7 +75,6 @@ import os
 import re
 import sys
 import threading
-import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional
 
@@ -85,8 +84,10 @@ from playwright.sync_api import sync_playwright, Browser, Page
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.core.config.api_config import APIConfig
 from testing.components.pages.profile_page.profile_page import ProfilePage
 from testing.components.services.auth_service import AuthService
+from testing.components.services.user_api_service import UserApiService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -114,17 +115,6 @@ def _sanitise_username(username: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", username)
 
 
-def _fetch_user_playlists(api_base_url: str, username: str) -> list:
-    """Return public playlists for username via an unauthenticated GET, or []."""
-    url = api_base_url.rstrip("/") + "/api/users/" + username + "/playlists"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
 def _profile_page_renders_profile(page: Page, base_url: str, username: str) -> bool:
     """Return True if the profile page renders the user profile (not the home page).
 
@@ -135,8 +125,11 @@ def _profile_page_renders_profile(page: Page, base_url: str, username: str) -> b
     url = base_url.rstrip("/") + "/u/" + username
     try:
         page.goto(url)
-        # Wait briefly for JS to hydrate
-        page.wait_for_timeout(5000)
+        # Wait for the h1 to appear instead of a fixed delay
+        try:
+            page.wait_for_selector("h1", timeout=10_000)
+        except Exception:
+            return False
         # The profile page shows an <h1> with the username or "User not found."
         # The home page shows "Recently Uploaded" instead.
         h1 = page.locator("h1")
@@ -270,7 +263,7 @@ def test_context(web_config: WebConfig):
     api = web_config.api_base_url
 
     # Strategy 1: preferred 'tester' user
-    playlists = _fetch_user_playlists(api, _PREFERRED_USERNAME)
+    playlists = UserApiService(APIConfig()).get_user_playlists(_PREFERRED_USERNAME)
     if playlists:
         yield {
             "username": _PREFERRED_USERNAME,
