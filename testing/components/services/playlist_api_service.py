@@ -197,6 +197,26 @@ class PlaylistApiService:
                 raw_body=exc.read().decode(),
             )
 
+    def get_user_playlists(self, username: str) -> tuple[bool, list]:
+        """GET /api/users/<username>/playlists — fetch public playlists for a user.
+
+        No authentication token is required for this endpoint.
+
+        Returns (True, playlists) on HTTP 200 where playlists is a list (possibly
+        empty for a user with no public playlists). Returns (False, []) on any
+        HTTP error or network failure.
+        """
+        url = f"{self._base_url}/api/users/{username}/playlists"
+        req = urllib.request.Request(url, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+                return True, (data if isinstance(data, list) else [])
+        except urllib.error.HTTPError:
+            return False, []
+        except Exception:
+            return False, []
+
     # -------------------------------------------------------------------------
     # Private helpers
     # -------------------------------------------------------------------------
