@@ -169,6 +169,37 @@ class ProfilePage:
         """Return True when 'No playlists yet.' is visible on the playlists tab."""
         return self._page.locator("text=No playlists yet.").count() > 0
 
+    def is_playlists_tab_visible(self) -> bool:
+        """Return True if the 'Playlists' tab button is present in the navigation."""
+        return self._page.locator(self._PLAYLISTS_TAB_BTN).count() > 0
+
+    def is_videos_tab_visible(self) -> bool:
+        """Return True if the 'Videos' tab button is present in the navigation."""
+        return self._page.locator("nav button:has-text('Videos')").count() > 0
+
+    def is_playlists_still_loading(self) -> bool:
+        """Return True if the playlists loading spinner is still visible."""
+        return self._page.locator(self._PLAYLISTS_LOADING).count() > 0
+
+    def has_react_error_boundary(self) -> bool:
+        """Return True if an unhandled React error boundary is rendered."""
+        boundary_selectors = [
+            "text=Something went wrong",
+            "text=Unexpected Application Error",
+        ]
+        return any(self._page.locator(s).count() > 0 for s in boundary_selectors)
+
+    def has_playlists_graceful_error_message(self) -> bool:
+        """Return True if a graceful error or fallback message is visible in the playlists section."""
+        graceful_selectors = [
+            "text=Failed to load",
+            "text=Error loading",
+            "text=Unable to load",
+            "text=Could not load",
+            "[role='alert']",
+        ]
+        return any(self._page.locator(s).count() > 0 for s in graceful_selectors)
+
     # -----------------------------------------------------------------
     # Routing check
     # -----------------------------------------------------------------
