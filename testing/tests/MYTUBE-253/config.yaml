@@ -1,0 +1,5 @@
+test_id: MYTUBE-253
+type: api
+framework: rest+pytest
+platform: linux
+dependencies: []
