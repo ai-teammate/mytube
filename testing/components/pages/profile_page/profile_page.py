@@ -199,3 +199,26 @@ class ProfilePage:
             "[role='alert']",
         ]
         return any(self._page.locator(s).count() > 0 for s in graceful_selectors)
+
+    # -----------------------------------------------------------------
+    # Routing check
+    # -----------------------------------------------------------------
+
+    def renders_profile(self, base_url: str, username: str) -> bool:
+        """Navigate to /u/<username> and return True if the profile component renders.
+
+        Uses an explicit selector wait for <h1> rather than a fixed sleep.
+        Returns True if the <h1> contains the username or 'User not found.';
+        returns False on timeout or any navigation error.
+        """
+        url = f"{base_url.rstrip('/')}/u/{username}"
+        try:
+            self._page.goto(url)
+            self._page.wait_for_selector(self._USERNAME_HEADING, timeout=15_000)
+            h1 = self._page.locator(self._USERNAME_HEADING)
+            if h1.count() == 0:
+                return False
+            h1_text = h1.first.text_content() or ""
+            return username in h1_text or "not found" in h1_text.lower()
+        except Exception:
+            return False
