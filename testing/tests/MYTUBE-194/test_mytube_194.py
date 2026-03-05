@@ -16,15 +16,21 @@ Preconditions
 - The database is reachable (DB_HOST / DB_USER / DB_PASSWORD / DB_NAME).
 - The CI test user (firebase_uid = FIREBASE_TEST_UID) exists in the DB, or can be
   created during test setup.
+- The Go API binary is available at api/mytube-api or API_BINARY env var.
+- APP_URL / WEB_BASE_URL are set to point to a web frontend with NEXT_PUBLIC_API_URL
+  configured to match API_BASE_URL (default: http://localhost:8081).
 
 Skip conditions
 ---------------
 - FIREBASE_TEST_EMAIL or FIREBASE_TEST_PASSWORD not set.
 - Database not reachable (DB connectivity required to seed the test video).
 - CI test user not found in DB and cannot be created.
+- API binary not found and cannot be built.
+- Web frontend not accessible at APP_URL / WEB_BASE_URL.
 
 Architecture
 ------------
+- ApiProcessService — starts the Go API binary on demand.
 - LoginPage    — testing/components/pages/login_page/
 - DashboardPage — testing/components/pages/dashboard_page/
 - WebConfig    — testing/core/config/web_config.py
@@ -43,14 +49,33 @@ from playwright.sync_api import sync_playwright, Browser, Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+import subprocess
+
 from testing.core.config.web_config import WebConfig
 from testing.core.config.db_config import DBConfig
 from testing.components.pages.login_page.login_page import LoginPage
 from testing.components.pages.dashboard_page.dashboard_page import DashboardPage
+from testing.components.services.api_process_service import ApiProcessService
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+_REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
+_DEFAULT_BINARY = os.path.join(_REPO_ROOT, "api", "mytube-api")
+API_BINARY = os.getenv("API_BINARY", _DEFAULT_BINARY)
+
+_PORT = 8081  # Default port that WebConfig expects for API
+_STARTUP_TIMEOUT = 20.0
+
+_DEFAULT_MOCK_CREDS = os.path.join(
+    _REPO_ROOT, "testing", "fixtures", "mock_service_account.json"
+)
+_MOCK_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", _DEFAULT_MOCK_CREDS)
+_RAW_UPLOADS_BUCKET = os.getenv("RAW_UPLOADS_BUCKET", "mytube-raw-uploads")
+_FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 
 _TEST_FIREBASE_UID: str = os.getenv("FIREBASE_TEST_UID", "ci-test-user-001")
 _TEST_VIDEO_TITLE: str = "MYTUBE-194 Deletion Test Video"
@@ -64,6 +89,23 @@ _DISAPPEAR_TIMEOUT: int = 10_000    # ms — max time for video row to vanish
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _build_binary() -> None:
+    """Build the Go API binary if it is not already present."""
+    if os.path.isfile(API_BINARY):
+        return
+    api_dir = os.path.join(_REPO_ROOT, "api")
+    result = subprocess.run(
+        ["go", "build", "-o", API_BINARY, "."],
+        cwd=api_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            f"Failed to build API binary:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
 
 
 def _db_is_reachable(cfg: DBConfig) -> bool:
@@ -91,6 +133,48 @@ def db_config() -> DBConfig:
     return DBConfig()
 
 
+@pytest.fixture(scope="module")
+def api_server(db_config: DBConfig) -> ApiProcessService:
+    """Build (if needed) and start the Go API server in a subprocess.
+
+    Yields the ApiProcessService once /health is reachable, then stops the
+    process on teardown.
+    """
+    _build_binary()
+
+    env = {
+        "DB_HOST": db_config.host,
+        "DB_PORT": str(db_config.port),
+        "DB_USER": db_config.user,
+        "DB_PASSWORD": db_config.password,
+        "DB_NAME": db_config.dbname,
+        "SSL_MODE": db_config.sslmode,
+        "FIREBASE_PROJECT_ID": _FIREBASE_PROJECT_ID,
+        "GOOGLE_APPLICATION_CREDENTIALS": _MOCK_CREDS,
+        "RAW_UPLOADS_BUCKET": _RAW_UPLOADS_BUCKET,
+    }
+
+    svc = ApiProcessService(
+        binary_path=API_BINARY,
+        port=_PORT,
+        env=env,
+        startup_timeout=_STARTUP_TIMEOUT,
+    )
+    svc.start()
+
+    ready = svc.wait_for_ready(path="/health")
+    if not ready:
+        logs = svc.get_log_output()
+        svc.stop()
+        pytest.fail(
+            f"API server did not become ready within {_STARTUP_TIMEOUT}s.\n"
+            f"Logs:\n{logs}"
+        )
+
+    yield svc
+    svc.stop()
+
+
 @pytest.fixture(scope="module", autouse=True)
 def require_credentials(web_config: WebConfig) -> None:
     """Skip the entire module when Firebase test credentials are absent."""
@@ -113,6 +197,29 @@ def require_db(db_config: DBConfig) -> None:
             f"Database not reachable at {db_config.host}:{db_config.port} — "
             "cannot seed the test video. "
             "Set DB_HOST / DB_USER / DB_PASSWORD / DB_NAME and ensure the DB is accessible."
+        )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_api_binary() -> None:
+    """Skip the entire module when the API binary cannot be built."""
+    if not os.path.isfile(API_BINARY):
+        try:
+            _build_binary()
+        except Exception as e:
+            pytest.skip(
+                f"API binary not found at {API_BINARY} and failed to build: {e}. "
+                "Ensure Go is installed and api/main.go exists."
+            )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_firebase_project_id() -> None:
+    """Skip the entire module when FIREBASE_PROJECT_ID is not set."""
+    if not _FIREBASE_PROJECT_ID:
+        pytest.skip(
+            "FIREBASE_PROJECT_ID not set — the API server cannot initialise Firebase auth. "
+            "Set FIREBASE_PROJECT_ID to enable this test."
         )
 
 
@@ -238,11 +345,15 @@ def authenticated_dashboard_page(
     web_config: WebConfig,
     page: Page,
     test_video_data: dict,  # ensures the video is seeded before navigation
+    api_server: ApiProcessService,  # ensure API is running before navigation
 ) -> Page:
     """Log in as the CI test user and navigate to /dashboard.
 
     The ``test_video_data`` parameter guarantees the test video is seeded in
     the DB before the browser loads the dashboard so it appears in the listing.
+
+    The ``api_server`` parameter ensures the API is running and ready before
+    the browser loads the dashboard so API calls will succeed.
 
     Returns the authenticated Playwright page already showing the dashboard.
     """
