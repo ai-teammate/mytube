@@ -121,11 +121,6 @@ def page(browser: Browser) -> Page:
     context.close()
 
 
-@pytest.fixture(scope="module")
-def watch_page(page: Page) -> WatchPage:
-    """Create a WatchPage page object."""
-    return WatchPage(page)
-
 
 @pytest.fixture(scope="module")
 def mocked_watch_page(page: Page, web_config: WebConfig):
@@ -168,11 +163,6 @@ def mocked_watch_page(page: Page, web_config: WebConfig):
 class TestUnreachableHLSManifest:
     """Test suite for verifying player error handling with unreachable HLS manifest."""
 
-    @pytest.mark.xfail(
-        reason="Feature not yet implemented: VideoPlayer does not initialize or display error alert "
-               "when HLS manifest URL is unreachable. Expected behavior per MYTUBE-246 spec: "
-               "player should initialize even when manifest fails, and display error alert to user."
-    )
     def test_video_player_displays_error_on_unreachable_manifest(
         self, web_config: WebConfig, mocked_watch_page: WatchPage
     ):

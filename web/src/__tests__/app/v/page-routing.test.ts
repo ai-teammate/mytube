@@ -6,8 +6,10 @@
  * build to fail. The correct configuration is:
  *   - dynamicParams = false  (required for static export)
  *   - generateStaticParams returns a placeholder `[{ id: '_' }]`
- *   - SPA routing for real video UUIDs is handled via the 404.html fallback
- *     (deploy-pages.yml copies out/index.html → out/404.html)
+ *   - SPA routing for real video UUIDs is handled via public/404.html:
+ *     the redirect page stores the UUID in sessionStorage and redirects to
+ *     the pre-built shell at /v/_/.  WatchPageClient then reads the real UUID
+ *     from sessionStorage (see WatchPageClient-spa.test.tsx for coverage).
  */
 
 // Mock WatchPageClient to isolate the routing config under test.

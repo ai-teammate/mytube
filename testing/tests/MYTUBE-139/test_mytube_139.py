@@ -173,8 +173,7 @@ def after_upload(
     login_page.wait_for_navigation_to(web_config.home_url(), timeout=_LOGIN_TIMEOUT)
 
     # Step 2: Navigate to upload page
-    upload_url = f"{web_config.base_url}/upload"
-    upload_page.navigate(upload_url)
+    upload_page.navigate(web_config.base_url)
 
     # Step 3: Fill the form and select the test video file
     upload_page.fill_form_and_upload(

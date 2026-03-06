@@ -79,7 +79,7 @@ func defaultVideoRecord() *repository.VideoRecord {
 		ID:         "00000000-0000-0000-0000-000000000099",
 		UploaderID: "00000000-0000-0000-0000-000000000001",
 		Title:      "My Video",
-		Status:     "pending",
+		Status:     "processing",
 		CreatedAt:  time.Now(),
 	}
 }
@@ -562,7 +562,7 @@ func TestNewVideosHandler_POST_WithCategoryAndTags(t *testing.T) {
 				ID:         "vid-capture",
 				UploaderID: p.UploaderID,
 				Title:      p.Title,
-				Status:     "pending",
+				Status:     "processing",
 				GCSRawPath: &rawPath,
 				CreatedAt:  time.Now(),
 			}, nil
@@ -614,7 +614,7 @@ func TestNewVideosHandler_POST_DeduplicatesTags(t *testing.T) {
 				ID:         "vid-dedup",
 				UploaderID: p.UploaderID,
 				Title:      p.Title,
-				Status:     "pending",
+				Status:     "processing",
 				GCSRawPath: &rawPath,
 				CreatedAt:  time.Now(),
 			}, nil
@@ -656,7 +656,7 @@ func TestNewVideosHandler_POST_EmptyDescriptionNotStored(t *testing.T) {
 				ID:         "vid-nodesc",
 				UploaderID: p.UploaderID,
 				Title:      p.Title,
-				Status:     "pending",
+				Status:     "processing",
 				GCSRawPath: &rawPath,
 				CreatedAt:  time.Now(),
 			}, nil
@@ -696,7 +696,7 @@ func (r *recordingVideoCreator) Create(_ context.Context, p repository.CreateVid
 		ID:         p.ID,
 		UploaderID: p.UploaderID,
 		Title:      p.Title,
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now(),
 	}, nil
