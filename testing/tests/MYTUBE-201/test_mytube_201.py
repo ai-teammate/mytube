@@ -32,8 +32,7 @@ Environment variables
 
 Architecture
 ------------
-- CommentsService wraps POST /api/videos/:id/comments with Bearer token auth.
-- AuthService is used to resolve the current user's profile via /api/me.
+- AuthService wraps all authenticated HTTP calls (GET, POST) with Bearer token auth.
 - VideoApiService is used to look up the user's video list via /api/users/{username}.
 - APIConfig loads API_BASE_URL from the environment.
 - No hardcoded URLs or credentials.
@@ -51,7 +50,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from testing.core.config.api_config import APIConfig
 from testing.components.services.auth_service import AuthService
 from testing.components.services.video_api_service import VideoApiService
-from testing.components.services.comments_service import CommentsService, CommentResponse
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -139,10 +137,10 @@ def video_id(api_config: APIConfig) -> str:
 
 
 @pytest.fixture(scope="module")
-def oversized_comment_response(api_config: APIConfig, video_id: str) -> CommentResponse:
+def oversized_comment_response(api_config: APIConfig, video_id: str) -> tuple[int, str]:
     """POST a 2001-character comment to /api/videos/{video_id}/comments."""
-    svc = CommentsService(base_url=api_config.base_url, token=_FIREBASE_TOKEN)
-    return svc.post_comment(video_id=video_id, body=_OVERSIZED_COMMENT)
+    auth = AuthService(base_url=api_config.base_url, token=_FIREBASE_TOKEN)
+    return auth.post(f"/api/videos/{video_id}/comments", {"body": _OVERSIZED_COMMENT})
 
 
 # ---------------------------------------------------------------------------
@@ -159,40 +157,46 @@ class TestCommentCharacterLimitEnforced:
             f"Expected test body of 2001 chars, got {len(_OVERSIZED_COMMENT)}."
         )
 
-    def test_response_status_is_400(self, oversized_comment_response: CommentResponse):
+    def test_response_status_is_400(self, oversized_comment_response: tuple[int, str]):
         """The API must return HTTP 400 Bad Request for a 2001-char comment."""
-        assert oversized_comment_response.status_code == 400, (
+        status_code, body = oversized_comment_response
+        assert status_code == 400, (
             f"Expected HTTP 400 for an oversized comment, "
-            f"got {oversized_comment_response.status_code}. "
-            f"Response body: {oversized_comment_response.raw_body!r}"
+            f"got {status_code}. "
+            f"Response body: {body!r}"
         )
 
-    def test_response_body_contains_error_message(self, oversized_comment_response: CommentResponse):
+    def test_response_body_contains_error_message(self, oversized_comment_response: tuple[int, str]):
         """The response body must be non-empty and indicate the failure reason."""
-        assert oversized_comment_response.raw_body.strip(), (
+        _, body = oversized_comment_response
+        assert body.strip(), (
             "Expected a non-empty error response body, but got an empty string."
         )
 
-    def test_response_body_is_json(self, oversized_comment_response: CommentResponse):
+    def test_response_body_is_json(self, oversized_comment_response: tuple[int, str]):
         """The response body must be valid JSON."""
-        parsed = oversized_comment_response.json
+        _, body = oversized_comment_response
+        try:
+            parsed = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            parsed = None
         assert parsed is not None, (
-            f"Expected a JSON response body, but could not parse: "
-            f"{oversized_comment_response.raw_body!r}"
+            f"Expected a JSON response body, but could not parse: {body!r}"
         )
 
-    def test_error_message_mentions_comment_length(self, oversized_comment_response: CommentResponse):
+    def test_error_message_mentions_comment_length(self, oversized_comment_response: tuple[int, str]):
         """The error message must reference the character limit or 'too long'."""
-        error = oversized_comment_response.error_message
-        if error is None:
-            # Fall back: search the raw body for relevant keywords
-            raw = oversized_comment_response.raw_body.lower()
-        else:
-            raw = error.lower()
+        _, body = oversized_comment_response
+        try:
+            data = json.loads(body)
+            error = data.get("error") or data.get("message") or ""
+            raw = error.lower() if error else body.lower()
+        except (json.JSONDecodeError, ValueError):
+            raw = body.lower()
 
         length_keywords = ["long", "limit", "exceed", "character", "2000", "max", "length"]
         matched = any(kw in raw for kw in length_keywords)
         assert matched, (
             f"Expected the error message to mention the character limit "
-            f"(one of {length_keywords}), but got: {oversized_comment_response.raw_body!r}"
+            f"(one of {length_keywords}), but got: {body!r}"
         )
