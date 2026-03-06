@@ -62,7 +62,7 @@ func (q *videoDetailQuerier) QueryRowContext(_ context.Context, _ string, _ ...a
 		{
 			columns: []string{
 				"id", "title", "description", "hls_manifest_path",
-				"thumbnail_url", "view_count", "created_at", "status",
+				"thumbnail_url", "category_id", "view_count", "created_at", "status",
 				"username", "avatar_url",
 			},
 			rows: [][]driver.Value{{
@@ -71,6 +71,7 @@ func (q *videoDetailQuerier) QueryRowContext(_ context.Context, _ string, _ ...a
 				descVal,
 				hlsVal,
 				thumbVal,
+				q.video.CategoryID,
 				q.video.ViewCount,
 				q.video.CreatedAt,
 				q.video.Status,
@@ -128,6 +129,7 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 	hls := "gs://bucket/videos/v1/index.m3u8"
 	thumb := "https://cdn.example.com/thumb.jpg"
 	avatarURL := "https://example.com/avatar.png"
+	catID := 3
 
 	expected := &repository.VideoDetail{
 		ID:                "video-id-1",
@@ -135,6 +137,7 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 		Description:       &desc,
 		HLSManifestPath:   &hls,
 		ThumbnailURL:      &thumb,
+		CategoryID:        &catID,
 		ViewCount:         123,
 		CreatedAt:         now,
 		Status:            "ready",
@@ -168,6 +171,9 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 	if got.ThumbnailURL == nil || *got.ThumbnailURL != thumb {
 		t.Errorf("ThumbnailURL: got %v, want %q", got.ThumbnailURL, thumb)
 	}
+	if got.CategoryID == nil || *got.CategoryID != catID {
+		t.Errorf("CategoryID: got %v, want %d", got.CategoryID, catID)
+	}
 	if got.ViewCount != 123 {
 		t.Errorf("ViewCount: got %d, want 123", got.ViewCount)
 	}
@@ -190,6 +196,7 @@ func TestGetByID_NilOptionalFields(t *testing.T) {
 		Description:       nil,
 		HLSManifestPath:   nil,
 		ThumbnailURL:      nil,
+		CategoryID:        nil,
 		ViewCount:         0,
 		CreatedAt:         now,
 		Status:            "ready",
@@ -216,6 +223,9 @@ func TestGetByID_NilOptionalFields(t *testing.T) {
 	}
 	if got.ThumbnailURL != nil {
 		t.Errorf("expected nil ThumbnailURL, got %v", got.ThumbnailURL)
+	}
+	if got.CategoryID != nil {
+		t.Errorf("expected nil CategoryID, got %d", *got.CategoryID)
 	}
 	if got.UploaderAvatarURL != nil {
 		t.Errorf("expected nil UploaderAvatarURL, got %v", got.UploaderAvatarURL)
