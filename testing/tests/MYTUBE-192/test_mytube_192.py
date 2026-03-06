@@ -354,7 +354,7 @@ class TestDashboardVideoList:
     def test_ready_video_status_badge_shows_ready(
         self, loaded_dashboard: DashboardPage, seeded_videos: dict
     ):
-        """The status badge for the 'ready' video must display the text 'ready'."""
+        """The status badge for the 'ready' video must display the text 'Ready'."""
         badge_text = loaded_dashboard.get_status_badge_for_title(
             seeded_videos["ready_title"]
          )
