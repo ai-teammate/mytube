@@ -90,19 +90,9 @@ python -m pytest tests/MYTUBE-246/test_mytube_246.py -v
 
 ## Expected Output
 
-### Current Status (XFAIL - Expected Failure)
+### Current Status (PASS)
 
-The test is marked with `@pytest.mark.xfail` because the feature is not yet implemented:
-
-```
-testing/tests/MYTUBE-246/test_mytube_246.py::TestUnreachableHLSManifest::test_video_player_displays_error_on_unreachable_manifest XFAIL [100%]
-```
-
-**Reason**: The frontend VideoPlayer component does not yet initialize the Video.js player when the HLS manifest URL is unreachable, nor does it display an error alert.
-
-### After Feature Implementation (PASS)
-
-Once the feature is implemented, remove the `@pytest.mark.xfail` decorator and the test should pass:
+The feature is fully implemented and the test passes:
 
 ```
 testing/tests/MYTUBE-246/test_mytube_246.py::TestUnreachableHLSManifest::test_video_player_displays_error_on_unreachable_manifest PASSED [100%]
@@ -116,15 +106,6 @@ The test verifies:
 3. ✅ Error alert is displayed (`[role='alert']` element)
 4. ✅ Error message contains meaningful context (mentions error, failed, or network)
 
-## Notes on TDD-Style Development
-
-This test is intentionally written before the feature is fully implemented, following TDD (Test-Driven Development) principles:
-
-- ✅ Test documents **expected behavior** per specification
-- 🔄 Feature implementation is **pending** (VideoPlayer.tsx updates needed)
-- 📋 Test drives feature work by clarifying requirements
-- 🎯 Once feature is complete, remove `@pytest.mark.xfail` and test will pass
-
 ## Components Used
 
 - **`WatchPage`** (`testing/components/pages/watch_page/watch_page.py`): Page object encapsulating watch page UI interactions and assertions
@@ -135,33 +116,9 @@ This test is intentionally written before the feature is fully implemented, foll
   - `is_error_displayed()`: Check if error alert is visible
   - `get_error_message()`: Retrieve error alert text
 
-## Feature Implementation Task
-
-To implement the feature and make this test pass:
-
-1. Update `web/src/components/VideoPlayer.tsx` to:
-   - Initialize Video.js player even when manifest URL is unreachable
-   - Catch manifest load errors and display error alert
-   - Style error alert with `role="alert"` attribute
-   - Ensure error message is user-friendly and mentions network/load failure
-
-2. Ensure error handling:
-   - Player initialization should not fail completely
-   - Display visible feedback to user
-   - Include error details in alert message
-
-Once feature implementation is complete:
-```bash
-# Remove @pytest.mark.xfail decorator from test_mytube_246.py
-# Verify test passes
-cd testing && python -m pytest tests/MYTUBE-246/ -v
-# Expected: test should PASS
-```
-
 ## Troubleshooting
 
 ### Test times out waiting for player initialization
-- This is expected when feature is not implemented
 - Verify you're running against the correct URL
 - Check browser console for JavaScript errors
 
