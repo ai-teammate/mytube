@@ -29,7 +29,7 @@ PLAYWRIGHT_SLOW_MO  : Slow-motion delay in ms (default: 0).
 
 Architecture
 ------------
-- Uses ProfilePage (Page Object) from testing/components/pages/profile_page/.
+- Uses UserProfilePage (Page Object) from testing/components/pages/user_profile_page/.
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest fixtures (module-scoped browser, fresh page).
 - No hardcoded URLs or credentials.
@@ -45,7 +45,7 @@ from playwright.sync_api import sync_playwright, Browser, Page
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
-from testing.components.pages.profile_page.profile_page import ProfilePage
+from testing.components.pages.user_profile_page.user_profile_page import UserProfilePage
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -88,12 +88,12 @@ def page(browser: Browser) -> Page:
 
 
 @pytest.fixture(scope="module")
-def profile_page(page: Page) -> ProfilePage:
-    return ProfilePage(page)
+def profile_page(page: Page) -> UserProfilePage:
+    return UserProfilePage(page)
 
 
 @pytest.fixture(scope="module")
-def loaded_profile(web_config: WebConfig, profile_page: ProfilePage):
+def loaded_profile(web_config: WebConfig, profile_page: UserProfilePage):
     """
     Navigate to the user profile page once; all tests in this module reuse
     the resulting page state.
@@ -110,14 +110,14 @@ def loaded_profile(web_config: WebConfig, profile_page: ProfilePage):
 class TestPublicUserProfile:
     """MYTUBE-115: View public user profile — page displays user info and ready videos."""
 
-    def test_avatar_is_visible(self, loaded_profile: ProfilePage):
+    def test_avatar_is_visible(self, loaded_profile: UserProfilePage):
         """The user's avatar (image or initials fallback) must be visible."""
         assert loaded_profile.is_avatar_visible(), (
             "Expected the user's avatar to be visible on the profile page, "
             "but no avatar element was found or visible."
         )
 
-    def test_username_heading_displays_tester(self, loaded_profile: ProfilePage):
+    def test_username_heading_displays_tester(self, loaded_profile: UserProfilePage):
         """The <h1> heading must display the username 'tester'."""
         heading = loaded_profile.get_username_heading()
         assert heading == _TEST_USERNAME, (
@@ -125,7 +125,7 @@ class TestPublicUserProfile:
             f"but got '{heading}'."
         )
 
-    def test_video_grid_has_at_least_one_card(self, loaded_profile: ProfilePage):
+    def test_video_grid_has_at_least_one_card(self, loaded_profile: UserProfilePage):
         """At least one video card must be visible in the grid."""
         count = loaded_profile.get_video_card_count()
         assert count >= 1, (
@@ -133,7 +133,7 @@ class TestPublicUserProfile:
             f"but found {count}."
         )
 
-    def test_video_cards_link_to_video_pages(self, loaded_profile: ProfilePage):
+    def test_video_cards_link_to_video_pages(self, loaded_profile: UserProfilePage):
         """Every video card href must match the /v/<id> pattern."""
         assert loaded_profile.all_video_hrefs_match_pattern(), (
             "Expected all video card links to match the /v/<id> pattern, "
