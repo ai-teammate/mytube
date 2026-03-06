@@ -71,7 +71,6 @@ from testing.components.services.auth_service import AuthService
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
-_FIXTURE_PORT = 19261
 _VIDEO_TITLE = "Test Video for MYTUBE-261"
 
 
@@ -313,12 +312,13 @@ class _FixtureHandler(BaseHTTPRequestHandler):
         pass
 
 
-def _start_fixture_server() -> tuple[HTTPServer, threading.Thread]:
-    """Start the fixture HTTP server and return (server, thread)."""
-    server = HTTPServer(("127.0.0.1", _FIXTURE_PORT), _FixtureHandler)
+def _start_fixture_server() -> tuple[HTTPServer, threading.Thread, int]:
+    """Start the fixture HTTP server and return (server, thread, actual_port)."""
+    server = HTTPServer(("127.0.0.1", 0), _FixtureHandler)
+    actual_port = server.server_port
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    return server, thread
+    return server, thread, actual_port
 
 
 # ---------------------------------------------------------------------------
@@ -378,13 +378,17 @@ class TestCancelVideoDeletion:
         else:
             # Fall back to fixture mode
             uses_fixture = True
-            server, thread = _start_fixture_server()
+            server, thread, actual_port = _start_fixture_server()
             try:
-                fixture_url = f"http://127.0.0.1:{_FIXTURE_PORT}/"
+                fixture_url = f"http://127.0.0.1:{actual_port}/"
                 page.goto(fixture_url, wait_until="domcontentloaded")
                 page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
             finally:
-                server.shutdown()
+                try:
+                    server.shutdown()
+                    thread.join(timeout=2.0)
+                except Exception:
+                    pass
 
         # Get initial state
         initial_row_count = dashboard.get_row_count()
