@@ -50,7 +50,35 @@ export default function WatchPage({
   commentRepository = defaultCommentRepository,
   playlistRepository = defaultPlaylistRepository,
 }: WatchPageProps) {
-  const { id } = use(params);
+  const { id: paramId } = use(params);
+
+  // GitHub Pages SPA fallback: public/404.html stores the real video UUID in
+  // sessionStorage under '__spa_video_id' and redirects to the pre-built shell
+  // at /v/_/. Resolve the actual ID once at mount via a lazy state initialiser
+  // so the loadVideo effect always sees the correct UUID on its first run.
+  const [id] = useState<string>(() => {
+    if (paramId !== "_" || typeof window === "undefined") return paramId;
+    const storedId = sessionStorage.getItem("__spa_video_id");
+    if (storedId) {
+      sessionStorage.removeItem("__spa_video_id");
+      return storedId;
+    }
+    return paramId;
+  });
+
+  // Correct the browser URL so the address bar shows /v/<real-uuid>/ instead
+  // of the placeholder /v/_/. Runs once after mount.
+  useEffect(() => {
+    if (id !== paramId && paramId === "_" && typeof window !== "undefined") {
+      const corrected = window.location.pathname.replace(
+        "/v/_/",
+        `/v/${id}/`
+      );
+      window.history.replaceState(null, "", corrected);
+    }
+    // Only run once at mount — id and paramId are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { user, getIdToken, loading: authLoading } = useAuth();
 
