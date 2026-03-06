@@ -201,3 +201,30 @@ func TestStatusConstants(t *testing.T) {
 		t.Errorf("StatusFailed = %q, want %q", video.StatusFailed, "failed")
 	}
 }
+
+// ── UpdateVideo with updated_at ────────────────────────────────────────────────
+
+func TestUpdateVideo_ExplicitlyUpdatesUpdatedAt(t *testing.T) {
+	q := &stubQuerier{rowsAffected: 1}
+	repo := video.NewRepository(q)
+
+	_ = repo.UpdateVideo(context.Background(), "vid", video.Update{
+		HLSManifestPath: "gs://b/i.m3u8",
+		ThumbnailURL:    "https://cdn/t.jpg",
+		Status:          video.StatusReady,
+	})
+
+	// Verify that the query explicitly updates the updated_at timestamp
+	if !containsSubstring(q.lastQuery, "updated_at") {
+		t.Errorf("Query does not explicitly set updated_at; query = %s", q.lastQuery)
+	}
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i < len(s)-len(substr)+1; i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
