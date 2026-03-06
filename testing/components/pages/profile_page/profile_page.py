@@ -1,7 +1,7 @@
 """ProfilePage — extends UserProfilePage with playlist-tab interactions."""
 from __future__ import annotations
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from testing.components.pages.user_profile_page.user_profile_page import UserProfilePage
 
@@ -25,7 +25,7 @@ class ProfilePage(UserProfilePage):
         """Wait until at least one playlist card is visible, or timeout passes."""
         try:
             self._page.wait_for_selector(self._PLAYLIST_CARD, timeout=timeout)
-        except Exception:
+        except PlaywrightTimeoutError:
             pass
 
     def get_playlist_card_count(self) -> int:
