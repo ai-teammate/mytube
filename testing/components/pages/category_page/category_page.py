@@ -30,7 +30,9 @@ class CategoryPage:
     """
 
     _HEADING_SELECTOR = "h1"
-    _VIDEO_CARD_SELECTOR = "[data-testid='video-card'], .video-card, article"
+    # Match actual rendered markup (div.rounded-lg) as well as semantic
+    # fallback selectors for future markup changes.
+    _VIDEO_CARD_SELECTOR = "div.rounded-lg, [data-testid='video-card'], .video-card, article"
     _VIDEO_TITLE_SELECTOR = "[data-testid='video-title'], .video-title, h2, h3"
     _ERROR_SELECTOR = "[role='alert']"
     _LOADING_TEXT = "Loading"
@@ -96,10 +98,18 @@ class CategoryPage:
         return titles
 
     def has_error(self) -> bool:
-        """Return True if an error message is visible on the page."""
+        """Return True if a non-empty error message is visible on the page.
+
+        An empty ``[role='alert']`` element (e.g. the Next.js route
+        announcer) is not counted as an error.
+        """
         try:
             el = self._page.query_selector(self._ERROR_SELECTOR)
-            return el is not None and el.is_visible()
+            return (
+                el is not None
+                and el.is_visible()
+                and bool(el.inner_text().strip())
+            )
         except Exception:
             return False
 
