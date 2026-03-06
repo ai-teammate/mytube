@@ -47,4 +47,15 @@ describe("deploy-pages.yml workflow configuration", () => {
     // uploaded artifact is empty and GitHub Pages returns 404.
     expect(workflowContent).toMatch(/path:\s+['"]?\.\/web\/out['"]?/);
   });
+
+  it("does NOT overwrite public/404.html with the homepage HTML (MYTUBE-280)", () => {
+    // Root cause of MYTUBE-280: the workflow used to copy out/index.html over
+    // out/404.html.  This caused GitHub Pages to serve pre-rendered *homepage*
+    // HTML for every unknown URL (e.g. /v/<uuid>/).  The Next.js App Router
+    // then hydrated the DOM as the homepage instead of routing to the watch page.
+    //
+    // The fix: public/404.html is now a proper SPA redirect page included in
+    // the build output by Next.js itself.  The cp step must not be present.
+    expect(workflowContent).not.toContain("cp out/index.html out/404.html");
+  });
 });

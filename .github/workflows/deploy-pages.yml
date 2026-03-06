@@ -51,10 +51,6 @@ jobs:
           NEXT_PUBLIC_FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
 
-      - name: Copy index.html to 404.html for SPA routing
-        working-directory: web
-        run: cp out/index.html out/404.html
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
