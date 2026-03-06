@@ -303,6 +303,9 @@ func TestRequireAuth_Options_PassesThrough(t *testing.T) {
 	if rec.Code == http.StatusUnauthorized {
 		t.Error("RequireAuth must not return 401 for OPTIONS preflight — OPTIONS must bypass auth")
 	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("RequireAuth OPTIONS preflight: expected 200 from next handler, got %d", rec.Code)
+	}
 	if !called {
 		t.Error("RequireAuth must call the next handler for OPTIONS preflight")
 	}
@@ -360,15 +363,21 @@ func (c *callTrackingVerifier) VerifyIDToken(_ context.Context, _ string) (*auth
 	return c.claims, c.err
 }
 
-// TestCORSWithRequireAuth_OptionsPreflightOnMeVideos exercises the full
-// middleware stack (CORS → mux → RequireAuth → handler) for /api/me/videos.
-// An OPTIONS preflight must return 204 with CORS headers and must NOT reach
-// the RequireAuth middleware.
+// TestCORSWithRequireAuth_OptionsPreflightOnMeVideos validates CORS-layer
+// behavior for the full middleware stack (CORS → mux → RequireAuth → handler)
+// for /api/me/videos.  Because the CORS middleware intercepts OPTIONS and
+// returns 204 before calling next, RequireAuth is never reached in this test.
+// This test verifies the end-to-end stack response (status, headers) and that
+// the final API handler (innerHandler) is not invoked — it does NOT serve as a
+// regression test for the auth.go OPTIONS bypass itself.  The unit tests
+// TestRequireAuth_Options_PassesThrough and TestRequireAuth_Options_DoesNotCheckToken
+// directly exercise RequireAuth without a CORS wrapper and would fail if the
+// bypass were reverted.
 func TestCORSWithRequireAuth_OptionsPreflightOnMeVideos(t *testing.T) {
 	v := &stubVerifier{}
-	authCalled := false
+	innerHandlerCalled := false
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		authCalled = true
+		innerHandlerCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -392,7 +401,7 @@ func TestCORSWithRequireAuth_OptionsPreflightOnMeVideos(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://ai-teammate.github.io" {
 		t.Errorf("Access-Control-Allow-Origin: got %q, want %q", got, "https://ai-teammate.github.io")
 	}
-	if authCalled {
+	if innerHandlerCalled {
 		t.Error("inner handler must NOT be called for OPTIONS preflight (CORS intercepts it)")
 	}
 }
