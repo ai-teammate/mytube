@@ -2,9 +2,9 @@
 MYTUBE-199: Retrieve video rating metadata — average, count, and personal rating returned.
 
 Verifies that GET /api/videos/:id/rating returns:
-  1. For an authenticated user: the correct decimal average_rating, the total
-     rating_count, and my_rating matching the user's previously submitted rating.
-  2. For an unauthenticated guest: the correct average_rating and rating_count,
+  1. For an authenticated user: the correct decimal average, the total
+     count, and my_rating matching the user's previously submitted rating.
+  2. For an unauthenticated guest: the correct average and count,
      with my_rating = null.
 
 Preconditions
@@ -22,7 +22,7 @@ Test steps
      - 3 extra rater users (u1 stars=3, u2 stars=5, u3 stars=4)
      - 1 CI test user (firebase_uid = FIREBASE_TEST_UID, stars=4)
      - 1 video (status=ready)
-   Expected aggregate: average_rating=4.0, rating_count=4.
+   Expected aggregate: average=4.0, count=4.
 3. GET /api/videos/:id/rating without Authorization → guest path.
 4. GET /api/videos/:id/rating with Authorization: Bearer <FIREBASE_TEST_TOKEN>
    → authenticated path (requires FIREBASE_TEST_TOKEN in env; skipped if absent).
@@ -254,7 +254,12 @@ def seeded_data(db_conn):
     rater3_id = user_svc.create_user(f"rater3-uid-{suffix}", f"rater199c-{suffix}")
 
     # The CI test user's firebase_uid must match the token we send.
-    ci_user_id = user_svc.create_user(firebase_test_uid, f"ci-user-199-{suffix}")
+    # Use the existing user if already seeded by another test module sharing this DB.
+    existing = user_svc.find_by_firebase_uid(firebase_test_uid)
+    if existing:
+        ci_user_id = existing["id"]
+    else:
+        ci_user_id = user_svc.create_user(firebase_test_uid, f"ci-user-199-{suffix}")
 
     video_row = video_svc.insert_video(owner_id, "Test Rating Video MYTUBE-199", "ready")
     video_id = str(video_row[0])
@@ -323,26 +328,26 @@ class TestGuestRatingResponse:
             )
 
     def test_response_has_required_fields(self, guest_response):
-        """Response must include average_rating, rating_count, and my_rating."""
+        """Response must include average, count, and my_rating."""
         data = json.loads(guest_response["body"])
-        for field in ("average_rating", "rating_count", "my_rating"):
+        for field in ("average", "count", "my_rating"):
             assert field in data, (
                 f"Expected field '{field}' in response, got: {list(data.keys())}"
             )
 
     def test_rating_count_is_correct(self, guest_response):
-        """rating_count must equal the number of seeded ratings."""
+        """count must equal the number of seeded ratings."""
         data = json.loads(guest_response["body"])
-        assert data["rating_count"] == _EXPECTED_COUNT, (
-            f"Expected rating_count={_EXPECTED_COUNT}, got {data['rating_count']}. "
+        assert data["count"] == _EXPECTED_COUNT, (
+            f"Expected count={_EXPECTED_COUNT}, got {data['count']}. "
             f"Body: {guest_response['body']}"
         )
 
     def test_average_rating_is_correct(self, guest_response):
-        """average_rating must equal the arithmetic mean of all seeded ratings."""
+        """average must equal the arithmetic mean of all seeded ratings."""
         data = json.loads(guest_response["body"])
-        assert math.isclose(data["average_rating"], _EXPECTED_AVERAGE, abs_tol=0.01), (
-            f"Expected average_rating≈{_EXPECTED_AVERAGE}, got {data['average_rating']}. "
+        assert math.isclose(data["average"], _EXPECTED_AVERAGE, abs_tol=0.01), (
+            f"Expected average≈{_EXPECTED_AVERAGE}, got {data['average']}. "
             f"Body: {guest_response['body']}"
         )
 
@@ -380,18 +385,18 @@ class TestAuthenticatedRatingResponse:
             )
 
     def test_rating_count_is_correct(self, authed_response):
-        """rating_count must equal the total number of seeded ratings."""
+        """count must equal the total number of seeded ratings."""
         data = json.loads(authed_response["body"])
-        assert data["rating_count"] == _EXPECTED_COUNT, (
-            f"Expected rating_count={_EXPECTED_COUNT}, got {data['rating_count']}. "
+        assert data["count"] == _EXPECTED_COUNT, (
+            f"Expected count={_EXPECTED_COUNT}, got {data['count']}. "
             f"Body: {authed_response['body']}"
         )
 
     def test_average_rating_is_correct(self, authed_response):
-        """average_rating must equal the arithmetic mean of all seeded ratings."""
+        """average must equal the arithmetic mean of all seeded ratings."""
         data = json.loads(authed_response["body"])
-        assert math.isclose(data["average_rating"], _EXPECTED_AVERAGE, abs_tol=0.01), (
-            f"Expected average_rating≈{_EXPECTED_AVERAGE}, got {data['average_rating']}. "
+        assert math.isclose(data["average"], _EXPECTED_AVERAGE, abs_tol=0.01), (
+            f"Expected average≈{_EXPECTED_AVERAGE}, got {data['average']}. "
             f"Body: {authed_response['body']}"
         )
 
