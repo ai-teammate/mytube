@@ -341,12 +341,22 @@ class UploadPage:
         return not self._page.locator(self._UPLOAD_BUTTON).is_enabled()
 
     def get_error_message(self) -> Optional[str]:
-        """Return the visible error alert text, or None if absent."""
+        """Return the visible error alert text, or None if absent.
+        
+        Skips the Next.js route announcer and returns the first actual error alert.
+        """
         locator = self._page.locator(self._ERROR_ALERT)
         if locator.count() == 0:
             return None
-        text = locator.text_content()
-        return text.strip() if text else None
+        # Skip the route announcer (has id __next-route-announcer__)
+        for i in range(locator.count()):
+            elem = locator.nth(i)
+            if elem.get_attribute("id") == "__next-route-announcer__":
+                continue
+            text = elem.text_content()
+            if text:
+                return text.strip()
+        return None
 
     def get_mime_error_message(self) -> str | None:
         """Return the visible MIME type error alert text, or None if not shown."""

@@ -89,24 +89,35 @@ def _should_use_live_mode() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _get_full_html_fixture() -> str:
+def _get_zero_state_html_fixture() -> str:
     """
-    Generate complete HTML page with DOMContentLoaded initialization.
+    Generate unified HTML fixture for all StarRating component tests.
     
-    This fixture includes:
-    - Full HTML5 structure with DOCTYPE and head
-    - Tailwind CSS script for styling
-    - JavaScript that initializes the rating widget on DOMContentLoaded
-    - All required star buttons with accessibility attributes
-    - Rating summary span with "0 / 5 (0)" text
+    This single fixture is used across all three test cases to ensure a
+    consistent HTML structure and serve as the single source of truth for
+    the component's expected markup.
+    
+    Structure:
+    - Full HTML5 page with Tailwind CSS for styling
+    - Complete star rating group with 5 star buttons and labels
+    - Rating summary span displaying "0 / 5 (0)"
     - Login prompt message
+    - Initialization via DOMContentLoaded event listener
     
-    This is used for testing that verifies component initialization logic
-    (test_rating_widget_structure_zero_state) because it simulates a
-    complete page load with DOM ready events.
+    **Why One Fixture for All Tests**:
+    Using a single fixture ensures consistency: if the actual component HTML
+    changes, there's one clear place to update the test fixture. Different
+    tests assert different aspects of this same fixture:
+    
+    - test_rating_widget_structure_zero_state: Verifies all 5 stars are
+      present with correct attributes and the complete DOM structure exists
+    - test_rating_widget_displays_zero_slash_five: Verifies the summary span
+      text is correct ("0 / 5" and "(0)")
+    - test_all_stars_unselected_in_zero_state: Verifies each star button has
+      aria-pressed="false" for accessibility
     
     Returns:
-        str: HTML content with component initialization via DOMContentLoaded
+        str: HTML content with complete StarRating component in zero state
     """
     return """
     <!DOCTYPE html>
@@ -119,11 +130,9 @@ def _get_full_html_fixture() -> str:
     <body>
         <div id="root"></div>
         <script type="module">
-            // Mock StarRating component behavior for zero ratings
             function renderStarRating() {
                 const root = document.getElementById('root');
                 
-                // Render star buttons
                 const starsHtml = Array.from({length: 5}, (_, i) => i + 1).map(star => 
                     `<button 
                         type="button"
@@ -153,7 +162,6 @@ def _get_full_html_fixture() -> str:
                 root.innerHTML = html;
             }
             
-            // Render when page loads
             document.addEventListener('DOMContentLoaded', renderStarRating);
             renderStarRating();
         </script>
@@ -162,85 +170,34 @@ def _get_full_html_fixture() -> str:
     """
 
 
+def _get_full_html_fixture() -> str:
+    """
+    Deprecated: Use _get_zero_state_html_fixture() instead.
+    
+    This function is maintained for backward compatibility but will be removed.
+    It returns the same fixture as _get_zero_state_html_fixture().
+    """
+    return _get_zero_state_html_fixture()
+
+
 def _get_summary_html_fixture() -> str:
     """
-    Generate minimal HTML for testing rating summary text.
+    Deprecated: Use _get_zero_state_html_fixture() instead.
     
-    This fixture includes:
-    - Full HTML5 structure (but minimal body content)
-    - Tailwind CSS for styling the summary span
-    - All 5 star buttons with accessibility attributes
-    - Rating summary span with "0 / 5 (0)" text
-    - No scripts, no login message
-    
-    This is used for testing that verifies text content rendering
-    (test_rating_widget_displays_zero_slash_five) because it isolates
-    the summary text from complex initialization logic and focuses on
-    the CSS-styled span content.
-    
-    Returns:
-        str: Minimal HTML with star buttons and summary span
+    This function is maintained for backward compatibility but will be removed.
+    It returns the same fixture as _get_zero_state_html_fixture().
     """
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Watch Video - MYTUBE-265</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-    </head>
-    <body>
-        <div id="root">
-            <div class="flex flex-col gap-1">
-                <div class="flex items-center gap-2">
-                    <div class="flex items-center gap-0.5" role="group" aria-label="Star rating">
-                        <button aria-label="Rate 1 star" aria-pressed="false" class="text-2xl text-gray-300">★</button>
-                        <button aria-label="Rate 2 stars" aria-pressed="false" class="text-2xl text-gray-300">★</button>
-                        <button aria-label="Rate 3 stars" aria-pressed="false" class="text-2xl text-gray-300">★</button>
-                        <button aria-label="Rate 4 stars" aria-pressed="false" class="text-2xl text-gray-300">★</button>
-                        <button aria-label="Rate 5 stars" aria-pressed="false" class="text-2xl text-gray-300">★</button>
-                    </div>
-                    <span class="text-sm text-gray-600">0 / 5 (0)</span>
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    return _get_zero_state_html_fixture()
 
 
 def _get_stars_only_html_fixture() -> str:
     """
-    Generate minimal HTML with only star buttons for accessibility testing.
+    Deprecated: Use _get_zero_state_html_fixture() instead.
     
-    This fixture includes:
-    - Minimal HTML5 structure
-    - role="group" container for semantic structure
-    - 5 star buttons with aria-label and aria-pressed attributes
-    - No styling, no scripts, no other UI elements
-    
-    This is used for testing that verifies accessibility attributes
-    (test_all_stars_unselected_in_zero_state) because it isolates the
-    button attributes from HTML boilerplate and CSS concerns. The minimal
-    structure ensures we're testing semantic HTML, not visual presentation.
-    
-    Returns:
-        str: Minimal HTML with only star rating group and buttons
+    This function is maintained for backward compatibility but will be removed.
+    It returns the same fixture as _get_zero_state_html_fixture().
     """
-    return """
-    <!DOCTYPE html>
-    <html>
-    <body>
-        <div role="group" aria-label="Star rating">
-            <button aria-label="Rate 1 star" aria-pressed="false">★</button>
-            <button aria-label="Rate 2 stars" aria-pressed="false">★</button>
-            <button aria-label="Rate 3 stars" aria-pressed="false">★</button>
-            <button aria-label="Rate 4 stars" aria-pressed="false">★</button>
-            <button aria-label="Rate 5 stars" aria-pressed="false">★</button>
-        </div>
-    </body>
-    </html>
-    """
+    return _get_zero_state_html_fixture()
 
 
 
@@ -257,17 +214,10 @@ class TestRatingWidgetZeroState:
         Test that the StarRating component renders the correct structure
         for the zero-rating state.
 
-        **Testing Strategy**:
-        - In live mode: Navigates to deployed app at /v/[video-id] and locates
-          the rating widget in its production context
-        - In fixture mode: Uses full HTML with DOMContentLoaded handler to
-          simulate proper initialization
-
-        **Why Full HTML Fixture**:
-        This test uses complete HTML with a DOMContentLoaded event listener
-        to verify that the component properly initializes when the DOM is ready.
-        Some frameworks delay rendering or event attachment until the DOM is
-        fully loaded, so this fixture ensures those initialization steps work.
+        **Why This Test Matters**:
+        Verifies all 5 star buttons are present and accessible with
+        aria-pressed="false", and the complete DOM structure exists as expected.
+        This ensures the component initializes properly when the DOM is ready.
 
         **Assertions**:
         1. All 5 star buttons are present and visible
@@ -276,14 +226,15 @@ class TestRatingWidgetZeroState:
         4. The "Log in to rate" message is present
         """
         web_url = os.getenv("WEB_BASE_URL")
+        video_id = os.getenv("TEST_VIDEO_ID", "test-video-id")
         
         if web_url and _should_use_live_mode():
             # Test against deployed app
-            page.goto(f"{web_url}/v/test-video-id")
+            page.goto(f"{web_url}/v/{video_id}")
             page.wait_for_load_state("networkidle")
         else:
-            # Fall back to fixture mode
-            page.set_content(_get_full_html_fixture())
+            # Fall back to fixture mode using unified HTML fixture
+            page.set_content(_get_zero_state_html_fixture())
             page.wait_for_load_state("domcontentloaded")
         
         # Test 1: Verify all 5 stars are present and unselected
@@ -298,15 +249,10 @@ class TestRatingWidgetZeroState:
         """
         Test that the rating summary displays '0 / 5 (0)' for zero ratings.
 
-        **Testing Strategy**:
-        - In live mode: Navigates to deployed app and verifies summary text
-        - In fixture mode: Uses minimal HTML focused on the summary span
-
-        **Why Minimal Fixture**:
-        This test uses a simpler HTML structure (no scripts, no complex
-        initialization) to focus purely on text content rendering. This
-        isolates the assertion from styling concerns and verifies that the
-        span element contains the correct text regardless of CSS or JS setup.
+        **Why This Test Matters**:
+        Verifies the rating summary text is rendered correctly. This assertion
+        focuses on the text content in the span element, ensuring the component
+        displays the zero-state rating information to users.
 
         **Assertions**:
         1. The summary span is visible
@@ -314,14 +260,15 @@ class TestRatingWidgetZeroState:
         3. Contains the text "(0)"
         """
         web_url = os.getenv("WEB_BASE_URL")
+        video_id = os.getenv("TEST_VIDEO_ID", "test-video-id")
         
         if web_url and _should_use_live_mode():
             # Test against deployed app
-            page.goto(f"{web_url}/v/test-video-id")
+            page.goto(f"{web_url}/v/{video_id}")
             page.wait_for_load_state("networkidle")
         else:
-            # Fall back to fixture mode
-            page.set_content(_get_summary_html_fixture())
+            # Fall back to fixture mode using unified HTML fixture
+            page.set_content(_get_zero_state_html_fixture())
             page.wait_for_load_state("domcontentloaded")
         
         # Verify the summary text contains both "0 / 5" and "(0)"
@@ -333,29 +280,26 @@ class TestRatingWidgetZeroState:
         """
         Test that all stars have aria-pressed='false' in the zero state.
 
-        **Testing Strategy**:
-        - In live mode: Navigates to deployed app and finds star buttons
-        - In fixture mode: Uses stripped-down HTML with only buttons
-
-        **Why Minimal HTML**:
-        This test uses the most minimal HTML structure (only role group and
-        buttons, no CSS, no scripts) to isolate accessibility attribute testing
-        from other concerns. This ensures assertions focus purely on the
-        aria-pressed attribute set at the HTML level, not by JavaScript or CSS.
+        **Why This Test Matters**:
+        Verifies accessibility attributes are set correctly on all star buttons.
+        The aria-pressed="false" attribute communicates to assistive technologies
+        that the stars are in an unselected state, improving usability for
+        users with accessibility needs.
 
         **Assertions**:
         1. Each of the 5 star buttons is present
         2. Each star button has aria-pressed="false"
         """
         web_url = os.getenv("WEB_BASE_URL")
+        video_id = os.getenv("TEST_VIDEO_ID", "test-video-id")
         
         if web_url and _should_use_live_mode():
             # Test against deployed app
-            page.goto(f"{web_url}/v/test-video-id")
+            page.goto(f"{web_url}/v/{video_id}")
             page.wait_for_load_state("networkidle")
         else:
-            # Fall back to fixture mode
-            page.set_content(_get_stars_only_html_fixture())
+            # Fall back to fixture mode using unified HTML fixture
+            page.set_content(_get_zero_state_html_fixture())
             page.wait_for_load_state("domcontentloaded")
         
         # Verify each star has aria-pressed="false"

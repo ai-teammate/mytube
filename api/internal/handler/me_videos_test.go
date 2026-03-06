@@ -233,7 +233,7 @@ func TestNewMeVideosHandler_Success_ResponseFields(t *testing.T) {
 
 func TestNewMeVideosHandler_NilThumbnail_SerializedAsNull(t *testing.T) {
 	vids := []repository.DashboardVideo{
-		{ID: "vid-1", Title: "No Thumb", Status: "pending", ThumbnailURL: nil},
+		{ID: "vid-1", Title: "No Thumb", Status: "processing", ThumbnailURL: nil},
 	}
 	videos := &stubDashboardVideoProvider{videos: vids}
 	users := &stubUserIDProvider{user: &repository.User{ID: "u1", Username: "alice"}}
