@@ -33,6 +33,7 @@ type VideoResponse struct {
 	Description    *string      `json:"description"`
 	HLSManifestURL *string      `json:"hls_manifest_url"`
 	ThumbnailURL   *string      `json:"thumbnail_url"`
+	CategoryID     *int         `json:"category_id"`
 	ViewCount      int64        `json:"view_count"`
 	CreatedAt      time.Time    `json:"created_at"`
 	Status         string       `json:"status"`
@@ -136,6 +137,7 @@ func NewVideoHandler(videos VideoProvider, cdnBaseURL string) http.Handler {
 			Description:    video.Description,
 			HLSManifestURL: hlsURL,
 			ThumbnailURL:   video.ThumbnailURL,
+			CategoryID:     video.CategoryID,
 			ViewCount:      viewCountInResponse,
 			CreatedAt:      video.CreatedAt,
 			Status:         video.Status,
