@@ -108,6 +108,14 @@ jobs:
             --role="roles/storage.legacyBucketReader" \
             --project="${{ env.PROJECT_ID }}"
 
+      - name: Grant CI SA objectCreator on raw-uploads (test fixture uploads)
+        run: |
+          CI_SA_EMAIL="${{ env.CI_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.RAW_BUCKET }}" \
+            --member="serviceAccount:${CI_SA_EMAIL}" \
+            --role="roles/storage.objectCreator" \
+            --project="${{ env.PROJECT_ID }}"
+
       - name: Grant CI SA legacyBucketReader on hls-output
         run: |
           CI_SA_EMAIL="${{ env.CI_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
@@ -123,7 +131,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Bucket | Access |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read; CI SA read+create) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| gs://${{ env.HLS_BUCKET }} | allUsers objectViewer (CDN delivery) |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "MYTUBE-49 / MYTUBE-127 tests should now pass." >> "$GITHUB_STEP_SUMMARY"
