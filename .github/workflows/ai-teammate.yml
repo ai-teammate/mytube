@@ -199,12 +199,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.143
+          key: dmtools-v1.7.145
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.143/install.sh | bash -s v1.7.143
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.145/install.sh | bash -s v1.7.145
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH

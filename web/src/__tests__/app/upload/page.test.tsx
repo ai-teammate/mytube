@@ -473,4 +473,51 @@ describe("UploadPage", () => {
     expect(optionValues).toContain("Gaming");
     expect(optionValues).toContain("Music");
   });
+
+  // ─── Session expiration ────────────────────────────────────────────────────
+
+  it("redirects to login when session expires after GCS upload completes", async () => {
+    // Setup: First getIdToken call (during upload) returns valid token,
+    // but subsequent call (after GCS upload) returns null (session expired).
+    let getIdTokenCallCount = 0;
+    mockGetIdToken.mockImplementation(async () => {
+      getIdTokenCallCount++;
+      // First call during form submission returns token
+      // Second call after upload completion returns null
+      return getIdTokenCallCount === 1 ? "mock-token" : null;
+    });
+
+    const user = userEvent.setup();
+    render(<UploadPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/video file/i)).toBeInTheDocument()
+    );
+
+    const videoFile = makeVideoFile();
+    await user.upload(screen.getByLabelText(/video file/i), videoFile);
+    await user.type(screen.getByLabelText(/title/i), "My Video");
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /upload video/i }));
+    });
+
+    // Wait for XHR request to be made
+    await waitFor(() => expect(mockXHRInstances.length).toBeGreaterThan(0));
+
+    // Simulate successful GCS upload
+    await act(async () => {
+      mockXHRInstances[0].simulateLoad(200);
+    });
+
+    // After upload completes successfully, the component should redirect to login
+    // (not to dashboard) because the session expired
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/login");
+    });
+
+    // Should NOT redirect to dashboard
+    expect(mockRouterReplace).not.toHaveBeenCalledWith(
+      expect.stringContaining("/dashboard")
+    );
+  });
 });

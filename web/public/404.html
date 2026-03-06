@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>mytube</title>
+  <script>
+    /**
+     * GitHub Pages SPA fallback for mytube.
+     *
+     * GitHub Pages serves this file for every path that has no matching static
+     * file (e.g. /v/<uuid>/, /u/<username>/, /pl/<id>/, /category/<id>/).
+     *
+     * Strategy for dynamic route shells:
+     *   1. Store the real route param (UUID / username) in sessionStorage.
+     *   2. Redirect the browser to the pre-built static shell for that route
+     *      (e.g. /v/_/).  The shell HTML loads cleanly — no hydration mismatch.
+     *   3. The page's client component reads the value from sessionStorage and
+     *      fetches the real resource, then corrects the URL via history.replaceState.
+     *
+     * For any other unrecognised path: redirect to the app root.
+     */
+    (function () {
+      var l = window.location;
+      var pathParts = l.pathname.split("/");
+      // For GitHub Pages project pages the URL is /repo-name/rest...
+      // pathParts[0] === ''  pathParts[1] === 'mytube'
+      var basePath = "/" + (pathParts[1] || "");
+
+      // Ordered list of dynamic route patterns → sessionStorage key → shell path.
+      var routes = [
+        { re: /\/v\/([^/]+)/, key: "__spa_video_id",    shell: "/v/_/" },
+        { re: /\/u\/([^/]+)/, key: "__spa_username",    shell: "/u/_/" },
+        { re: /\/pl\/([^/]+)/, key: "__spa_playlist_id", shell: "/pl/_/" },
+        { re: /\/category\/([^/]+)/, key: "__spa_category_id", shell: "/category/_/" },
+      ];
+
+      for (var i = 0; i < routes.length; i++) {
+        var m = l.pathname.match(routes[i].re);
+        if (m && m[1]) {
+          sessionStorage.setItem(routes[i].key, m[1]);
+          l.replace(basePath + routes[i].shell);
+          return;
+        }
+      }
+
+      // Unknown path — redirect to the app root.
+      l.replace(basePath + "/");
+    })();
+  </script>
+</head>
+<body></body>
+</html>
