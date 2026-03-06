@@ -655,3 +655,69 @@ func TestPopularVideosHandler_GET_ResponseIncludesStatusReady(t *testing.T) {
 		}
 	}
 }
+
+// TestBrowseVideosHandler_GET_WithCategoryID_ValidatesCategoryFiltering verifies that
+// the search provider's GetByCategory method receives the correct categoryID, limit, and offset
+// parameters. This ensures category filtering is properly wired through the handler.
+func TestBrowseVideosHandler_GET_WithCategoryID_ValidatesCategoryFiltering(t *testing.T) {
+// Create a spy stub that tracks which parameters it was called with
+spy := &spySearchProvider{
+videos: makeTestSearchVideos(),
+}
+
+h := handler.NewBrowseVideosHandler(spy)
+
+// Request category 5 with specific limit and offset
+req := httptest.NewRequest(http.MethodGet, "/api/videos?category_id=5&limit=10&offset=2", nil)
+rec := httptest.NewRecorder()
+h.ServeHTTP(rec, req)
+
+if rec.Code != http.StatusOK {
+t.Errorf("expected 200, got %d", rec.Code)
+}
+
+// Verify the stub was called with the correct parameters
+if spy.lastCategoryID != 5 {
+t.Errorf("expected categoryID=5, got %d", spy.lastCategoryID)
+}
+if spy.lastLimit != 10 {
+t.Errorf("expected limit=10, got %d", spy.lastLimit)
+}
+if spy.lastOffset != 2 {
+t.Errorf("expected offset=2, got %d", spy.lastOffset)
+}
+}
+
+// spySearchProvider tracks the arguments passed to GetByCategory
+type spySearchProvider struct {
+videos         []repository.SearchVideo
+searchErr      error
+cats           []repository.Category
+catsErr        error
+lastCategoryID int
+lastLimit      int
+lastOffset     int
+}
+
+func (s *spySearchProvider) Search(_ context.Context, _ repository.SearchParams) ([]repository.SearchVideo, error) {
+return s.videos, s.searchErr
+}
+
+func (s *spySearchProvider) GetRecent(_ context.Context, _ int) ([]repository.SearchVideo, error) {
+return s.videos, s.searchErr
+}
+
+func (s *spySearchProvider) GetPopular(_ context.Context, _ int) ([]repository.SearchVideo, error) {
+return s.videos, s.searchErr
+}
+
+func (s *spySearchProvider) GetAllCategories(_ context.Context) ([]repository.Category, error) {
+return s.cats, s.catsErr
+}
+
+func (s *spySearchProvider) GetByCategory(_ context.Context, categoryID, limit, offset int) ([]repository.SearchVideo, error) {
+s.lastCategoryID = categoryID
+s.lastLimit = limit
+s.lastOffset = offset
+return s.videos, s.searchErr
+}
