@@ -81,6 +81,7 @@ SELECT v.id,
        v.description,
        v.hls_manifest_path,
        v.thumbnail_url,
+       v.category_id,
        v.view_count,
        v.created_at,
        v.status,
@@ -100,6 +101,7 @@ WHERE  v.id = $1
 		&v.Description,
 		&v.HLSManifestPath,
 		&v.ThumbnailURL,
+		&v.CategoryID,
 		&v.ViewCount,
 		&v.CreatedAt,
 		&v.Status,
@@ -207,6 +209,7 @@ type UpdateVideoParams struct {
 
 // GetByIDForOwner fetches a video row by ID without filtering by status.
 // Returns (nil, nil) when no matching row exists.
+// Tags are fetched separately and populated in the returned VideoDetail.
 func (r *VideoRepository) GetByIDForOwner(ctx context.Context, videoID string) (*VideoDetail, error) {
 	const selectSQL = `
 SELECT v.id,
@@ -245,6 +248,13 @@ WHERE  v.id = $1`
 		}
 		return nil, fmt.Errorf("get video by id for owner: %w", err)
 	}
+
+	tags, err := r.GetTagsByVideoID(ctx, videoID)
+	if err != nil {
+		return nil, fmt.Errorf("get tags for video %s: %w", videoID, err)
+	}
+	v.Tags = tags
+
 	return &v, nil
 }
 
@@ -402,13 +412,13 @@ WHERE  id          = $1
 	return rows > 0, nil
 }
 
-// Create inserts a new video row with status=pending and the given GCS raw path,
+// Create inserts a new video row with status=processing and the given GCS raw path,
 // then inserts any provided tags into the video_tags table.
 // Returns the created VideoRecord.
 func (r *VideoRepository) Create(ctx context.Context, p CreateVideoParams) (*VideoRecord, error) {
 	const insertSQL = `
 INSERT INTO videos (id, uploader_id, title, description, category_id, status, gcs_raw_path)
-VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+VALUES ($1, $2, $3, $4, $5, 'processing', $6)
 RETURNING id, uploader_id, title, description, category_id, status, gcs_raw_path, created_at`
 
 	row := r.db.QueryRowContext(ctx, insertSQL,

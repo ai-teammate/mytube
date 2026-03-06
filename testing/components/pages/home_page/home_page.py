@@ -39,9 +39,9 @@ class HomePage:
       - <section aria-labelledby="most-viewed-heading">
 
     Each VideoCard contains:
-      - Thumbnail anchor: a[href^='/v/'] with aria-label=<title>
-      - Title anchor:     a[href^='/v/'] (text link)
-      - Uploader anchor:  a[href^='/u/']
+      - Thumbnail anchor: a[href*='/v/'] with aria-label=<title>
+      - Title anchor:     a[href*='/v/'] (text link)
+      - Uploader anchor:  a[href*='/u/']
       - View count:       <p> with "{N} views"
     """
 
@@ -55,8 +55,10 @@ class HomePage:
     # Card selectors (inside each section)
     # Each VideoCard has a thumbnail anchor and a title anchor both pointing to /v/<id>
     _VIDEO_CARD = "div.rounded-lg"
-    _CARD_TITLE_LINK = "a[href^='/v/']"
-    _CARD_UPLOADER_LINK = "a[href^='/u/']"
+    _CARD_TITLE_LINK = "a[href*='/v/']"
+    _CARD_UPLOADER_LINK = "a[href*='/u/']"
+    # Thumbnail anchor — link wrapping the image, identified by aria-label
+    _CARD_THUMBNAIL_LINK = "a[href*='/v/'][aria-label]"
     # View count paragraph
     _CARD_VIEW_COUNT = "p.text-xs"
 
@@ -152,7 +154,7 @@ class HomePage:
         for i in range(count):
             card = cards.nth(i)
 
-            # Title link (second a[href^='/v/'] — the text link, not the thumbnail)
+            # Title link (second a[href*='/v/'] — the text link, not the thumbnail)
             title_links = card.locator(self._CARD_TITLE_LINK)
             if title_links.count() > 0:
                 # The text title link is the one with font-medium class
@@ -191,14 +193,26 @@ class HomePage:
             card_view_counts=view_counts,
         )
 
+    def get_section_thumbnail_missing_indexes(self, section_selector: str) -> list:
+        """Return indexes of cards in *section_selector* that have no thumbnail anchor."""
+        section = self._page.locator(section_selector)
+        cards = section.locator(self._VIDEO_CARD)
+        missing = []
+        for i in range(cards.count()):
+            if cards.nth(i).locator(self._CARD_THUMBNAIL_LINK).count() == 0:
+                missing.append(i)
+        return missing
+
     def all_card_hrefs_match_video_pattern(self, section_selector: str) -> bool:
         """Return True if every video card link in the section matches /v/<id>."""
         section = self._page.locator(section_selector)
         links = section.locator(self._CARD_TITLE_LINK)
-        pattern = re.compile(r"^/v/.+")
-        for i in range(links.count()):
+        count = links.count()
+        if count == 0:
+            return False  # guard: no links found is a failure, not a pass
+        for i in range(count):
             href = links.nth(i).get_attribute("href") or ""
-            if not pattern.match(href):
+            if not re.search(r"/v/.+", href):  # use search to tolerate basePath prefix
                 return False
         return True
 

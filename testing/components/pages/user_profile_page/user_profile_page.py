@@ -10,6 +10,11 @@ Architecture notes
 - No hardcoded URLs — the caller provides the base URL.
 - All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
 """
+from __future__ import annotations
+
+import re
+from typing import Optional
+
 from playwright.sync_api import Page
 
 
@@ -18,6 +23,13 @@ class UserProfilePage:
 
     _NOT_FOUND_TEXT = "User not found."
     _LOADING_TEXT = "Loading"
+
+    # Selectors for profile content
+    _USERNAME_HEADING = "h1"
+    _AVATAR_IMAGE = "img[alt*=\"avatar\"]"
+    _AVATAR_INITIALS = "[aria-label*=\"avatar\"]"
+    _VIDEO_CARD = "a[href^='/v/']"
+    _LOADING_SPINNER = "text=Loading\u2026"  # "Loading…"
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -30,6 +42,15 @@ class UserProfilePage:
         """Navigate to the profile page for *username* and wait for load."""
         url = f"{base_url.rstrip('/')}/u/{username}"
         self._page.goto(url, wait_until="domcontentloaded")
+
+    def navigate(self, base_url: str, username: str) -> None:
+        """Navigate to /u/<username> and wait for the loading spinner to disappear."""
+        url = f"{base_url.rstrip('/')}/u/{username}"
+        self._page.goto(url)
+        try:
+            self._page.wait_for_selector(self._LOADING_SPINNER, state="hidden", timeout=15_000)
+        except Exception:
+            pass  # spinner already gone or never appeared
 
     # ------------------------------------------------------------------
     # State queries
@@ -58,6 +79,47 @@ class UserProfilePage:
     def current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    # ------------------------------------------------------------------
+    # Profile content queries
+    # ------------------------------------------------------------------
+
+    def get_username_heading(self) -> Optional[str]:
+        """Return the text content of the <h1> username heading, or None."""
+        el = self._page.query_selector(self._USERNAME_HEADING)
+        if el is None:
+            return None
+        return (el.text_content() or "").strip()
+
+    def is_avatar_visible(self) -> bool:
+        """Return True if the avatar element (image or initials div) is visible."""
+        img = self._page.query_selector(self._AVATAR_IMAGE)
+        if img and img.is_visible():
+            return True
+        div = self._page.query_selector(self._AVATAR_INITIALS)
+        return bool(div and div.is_visible())
+
+    def get_video_card_count(self) -> int:
+        """Return the number of video cards visible in the grid."""
+        return len(self._page.query_selector_all(self._VIDEO_CARD))
+
+    def get_video_hrefs(self) -> list[str]:
+        """Return the href values for all video cards on the page."""
+        cards = self._page.query_selector_all(self._VIDEO_CARD)
+        hrefs: list[str] = []
+        for card in cards:
+            href = card.get_attribute("href") or ""
+            if href:
+                hrefs.append(href)
+        return hrefs
+
+    def all_video_hrefs_match_pattern(self) -> bool:
+        """Return True if every video card href matches the /v/<id> pattern."""
+        pattern = re.compile(r"^/v/.+")
+        hrefs = self.get_video_hrefs()
+        if not hrefs:
+            return False
+        return all(pattern.match(href) for href in hrefs)
 
     # ------------------------------------------------------------------
     # Event monitoring

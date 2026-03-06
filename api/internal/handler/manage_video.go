@@ -145,7 +145,6 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		return
 	}
 
-	// Use the validated tags slice directly — no extra DB round-trip needed.
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(UpdateVideoResponse{
 		ID:           updated.ID,
@@ -155,7 +154,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 		Status:       updated.Status,
 		ThumbnailURL: updated.ThumbnailURL,
 		ViewCount:    updated.ViewCount,
-		Tags:         tags,
+		Tags:         updated.Tags,
 		Uploader: UploaderInfo{
 			Username:  updated.UploaderUsername,
 			AvatarURL: updated.UploaderAvatarURL,
