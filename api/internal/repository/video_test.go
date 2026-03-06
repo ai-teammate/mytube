@@ -428,7 +428,7 @@ func TestVideoCreate_ReturnsVideoRecord(t *testing.T) {
 		Title:       "My First Video",
 		Description: &desc,
 		CategoryID:  &catID,
-		Status:      "pending",
+		Status:      "processing",
 		GCSRawPath:  &rawPath,
 		CreatedAt:   time.Now().Truncate(time.Second),
 	}
@@ -457,8 +457,8 @@ func TestVideoCreate_ReturnsVideoRecord(t *testing.T) {
 	if got.Title != expected.Title {
 		t.Errorf("Title: got %q, want %q", got.Title, expected.Title)
 	}
-	if got.Status != "pending" {
-		t.Errorf("Status: got %q, want %q", got.Status, "pending")
+	if got.Status != "processing" {
+		t.Errorf("Status: got %q, want %q", got.Status, "processing")
 	}
 	if got.Description == nil || *got.Description != desc {
 		t.Errorf("Description: got %v, want %q", got.Description, desc)
@@ -476,7 +476,7 @@ func TestVideoCreate_NilDescriptionAndCategory(t *testing.T) {
 		Title:       "No Description",
 		Description: nil,
 		CategoryID:  nil,
-		Status:      "pending",
+		Status:      "processing",
 		GCSRawPath:  &rawPath,
 		CreatedAt:   time.Now().Truncate(time.Second),
 	}
@@ -528,7 +528,7 @@ func TestVideoCreate_InsertsTagsViaExec(t *testing.T) {
 		ID:         "vid-tags",
 		UploaderID: "uploader-tags",
 		Title:      "Tagged Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
@@ -557,7 +557,7 @@ func TestVideoCreate_SkipsEmptyTags(t *testing.T) {
 		ID:         "vid-empty-tags",
 		UploaderID: "uploader-3",
 		Title:      "Some Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
@@ -588,7 +588,7 @@ func TestVideoCreate_TagExecError_ReturnsError(t *testing.T) {
 		ID:         "vid-tag-err",
 		UploaderID: "uploader-4",
 		Title:      "Error Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
@@ -616,7 +616,7 @@ func TestVideoCreate_NoTags_NoExecCalls(t *testing.T) {
 		ID:         "vid-no-tags",
 		UploaderID: "uploader-5",
 		Title:      "No Tags Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
