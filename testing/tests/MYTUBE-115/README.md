@@ -61,8 +61,8 @@ testing/tests/MYTUBE-115/
 ├── config.yaml                 ← Test metadata
 └── README.md                   ← This file
 
-testing/components/pages/profile_page/
-└── profile_page.py             ← ProfilePage Page Object (reusable)
+testing/components/pages/user_profile_page/
+└── user_profile_page.py        ← UserProfilePage Page Object (reusable)
 
 testing/core/config/
 └── web_config.py               ← WebConfig (env var reader)
