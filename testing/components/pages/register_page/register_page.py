@@ -69,6 +69,18 @@ class RegisterPage:
         """Return True if the register form heading is visible."""
         return self._page.locator("h1").filter(has_text="Create an account").is_visible()
 
+    def has_file_not_found_error(self) -> bool:
+        """Return True if the page body contains a GitHub Pages 404 error text."""
+        return "file not found" in self._page.inner_text("body").lower()
+
+    def hard_refresh(self, settle_timeout: int = 20_000) -> None:
+        """Simulate a hard browser refresh (Ctrl+R) and wait for the page to settle."""
+        self._page.reload(wait_until="networkidle")
+        try:
+            self._page.wait_for_selector("h1", timeout=settle_timeout)
+        except Exception:
+            pass  # Assertion in the test will produce a clear failure message
+
     def get_error_message(self) -> Optional[str]:
         """Return the text of the error alert, or None if absent or empty."""
         alert = self._page.get_by_role("alert")

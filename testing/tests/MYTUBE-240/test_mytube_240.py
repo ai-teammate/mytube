@@ -102,10 +102,16 @@ class TestNavigateToRegistrationPage:
         """The registration page must load without a 404 error."""
         url = loaded_register_page.current_url()
         assert "/register" in url, f"Expected /register in URL, but got {url}"
+        # Verify the page actually loaded the registration form
+        # (RegisterPage.navigate() waits for h1, so we reach here only if it found it)
+        assert loaded_register_page.is_on_register_page(), (
+            "Expected to see 'Create an account' heading on registration page"
+        )
 
     def test_create_account_heading_is_visible(self, loaded_register_page: RegisterPage) -> None:
         """An h1 heading with text 'Create an account' must be visible on the page."""
-        assert loaded_register_page.is_on_register_page(), (
-            "Expected to see 'Create an account' heading, but it is not visible. "
-            "The registration form may not have loaded correctly."
+        heading_visible = loaded_register_page.is_on_register_page()
+        assert heading_visible, (
+            "Expected 'Create an account' heading to be visible. "
+            "The registration page may not have loaded correctly."
         )
