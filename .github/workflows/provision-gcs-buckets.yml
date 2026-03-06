@@ -134,4 +134,4 @@ jobs:
           echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read; CI SA read+create) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| gs://${{ env.HLS_BUCKET }} | allUsers objectViewer (CDN delivery) |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "MYTUBE-49 / MYTUBE-127 tests should now pass." >> "$GITHUB_STEP_SUMMARY"
+          echo "MYTUBE-79 / MYTUBE-49 / MYTUBE-127 tests should now pass." >> "$GITHUB_STEP_SUMMARY"
