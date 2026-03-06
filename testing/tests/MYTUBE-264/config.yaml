@@ -1,0 +1,3 @@
+test_name: "MYTUBE-264: Rating API Error Handling"
+test_type: "web"
+framework: "playwright"
