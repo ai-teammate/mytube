@@ -42,6 +42,13 @@ interface EditFormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const STATUS_DISPLAY_NAMES: Record<DashboardVideo["status"], string> = {
+  ready: "Ready",
+  processing: "Processing",
+  pending: "Pending",
+  failed: "Failed",
+};
+
 /** Returns Tailwind classes for a status badge pill. */
 function statusBadgeClasses(status: DashboardVideo["status"]): string {
   switch (status) {
@@ -77,7 +84,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadgeClasses(status)}`}
     >
-      {status}
+      {STATUS_DISPLAY_NAMES[status]}
     </span>
   );
 }

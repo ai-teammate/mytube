@@ -250,10 +250,10 @@ describe("DashboardPage", () => {
     renderDashboard(repo);
 
     await waitFor(() => {
-      expect(screen.getByText("ready")).toBeInTheDocument();
-      expect(screen.getByText("processing")).toBeInTheDocument();
-      expect(screen.getByText("pending")).toBeInTheDocument();
-      expect(screen.getByText("failed")).toBeInTheDocument();
+      expect(screen.getByText("Ready")).toBeInTheDocument();
+      expect(screen.getByText("Processing")).toBeInTheDocument();
+      expect(screen.getByText("Pending")).toBeInTheDocument();
+      expect(screen.getByText("Failed")).toBeInTheDocument();
     });
   });
 
