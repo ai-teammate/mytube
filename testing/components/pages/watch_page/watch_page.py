@@ -38,7 +38,7 @@ class WatchPage:
     _TITLE_HEADING = "h1"
     _LOADING_TEXT = "text=Loading…"
     _NOT_FOUND_TEXT = "text=Video not found."
-    _ERROR_ALERT = "[role='alert']"
+    _ERROR_ALERT = "[data-vjs-player] [role='alert']"
 
     _DEFAULT_LOAD_TIMEOUT = 15_000  # ms
     _PLAYER_INIT_TIMEOUT = 20_000   # ms — wait for Video.js to fully init
@@ -127,13 +127,14 @@ class WatchPage:
     def is_player_initialised(self) -> bool:
         """Return True when Video.js has attached its classes to the video element.
 
-        Video.js adds the `vjs-paused` (or `vjs-playing`) class to the video
-        element once the player is fully initialised.
+        Video.js adds the `vjs-paused` (or `vjs-playing`) class to the wrapping
+        div element once the player is fully initialised. The selector is
+        tag-agnostic to handle Video.js DOM restructuring at runtime.
         """
         try:
             # Wait up to _PLAYER_INIT_TIMEOUT for any vjs-* state class to appear
             self._page.wait_for_selector(
-                "video.video-js.vjs-paused, video.video-js.vjs-playing",
+                ".video-js.vjs-paused, .video-js.vjs-playing",
                 timeout=self._PLAYER_INIT_TIMEOUT,
             )
             return True
@@ -158,7 +159,7 @@ class WatchPage:
         """Return True when Video.js is in the playing state."""
         try:
             self._page.wait_for_selector(
-                "video.video-js.vjs-playing",
+                ".video-js.vjs-playing",
                 timeout=self._PLAYER_INIT_TIMEOUT,
             )
             return True
