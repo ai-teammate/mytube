@@ -353,25 +353,25 @@ class TestStatusBadgeVisualDistinction:
     """MYTUBE-193: Dashboard status badges are visually distinct for processing vs failed."""
 
     def test_processing_badge_is_present(self, loaded_dashboard: DashboardPage):
-        """A badge with text 'processing' must be visible on the dashboard.
+        """A badge with text 'Processing' must be visible on the dashboard.
 
         Verifies the precondition: the dashboard has at least one video in the
         'processing' state whose badge is rendered and visible.
         """
-        assert loaded_dashboard.has_status_badge("processing"), (
-            "Expected a 'processing' status badge to be visible on the dashboard, "
+        assert loaded_dashboard.has_status_badge("Processing"), (
+            "Expected a 'Processing' status badge to be visible on the dashboard, "
             "but none was found. "
             "The dashboard must render a status badge for videos in 'processing' state."
         )
 
     def test_failed_badge_is_present(self, loaded_dashboard: DashboardPage):
-        """A badge with text 'failed' must be visible on the dashboard.
+        """A badge with text 'Failed' must be visible on the dashboard.
 
         Verifies the precondition: the dashboard has at least one video in the
         'failed' state whose badge is rendered and visible.
         """
-        assert loaded_dashboard.has_status_badge("failed"), (
-            "Expected a 'failed' status badge to be visible on the dashboard, "
+        assert loaded_dashboard.has_status_badge("Failed"), (
+            "Expected a 'Failed' status badge to be visible on the dashboard, "
             "but none was found. "
             "The dashboard must render a status badge for videos in 'failed' state."
         )
