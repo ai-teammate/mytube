@@ -40,6 +40,18 @@ class VideoService:
                 )
         return video_id
 
+    def get_video_by_id(self, video_id: str) -> dict | None:
+        """Return status, hls_manifest_path, and thumbnail_url for a video row."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT status, hls_manifest_path, thumbnail_url FROM videos WHERE id = %s",
+                (video_id,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return {"status": row[0], "hls_manifest_path": row[1], "thumbnail_url": row[2]}
+
     def count_ready_videos(self, uploader_id: str) -> int:
         """Return the number of videos with status 'ready' for the given uploader."""
         with self._conn.cursor() as cur:
