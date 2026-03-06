@@ -44,10 +44,8 @@ testing/tests/MYTUBE-201/test_mytube_201.py::TestCommentCharacterLimitEnforced::
 
 ## Architecture
 
-- **CommentsService** (`testing/components/services/comments_service.py`) — wraps
-  `POST /api/videos/:id/comments` with Bearer token authentication.
-- **AuthService** (`testing/components/services/auth_service.py`) — issues an
-  authenticated `GET /api/me` to resolve the current user's username.
+- **AuthService** (`testing/components/services/auth_service.py`) — issues all
+  authenticated HTTP calls (GET `/api/me`, POST `/api/videos/:id/comments`).
 - **VideoApiService** (`testing/components/services/video_api_service.py`) — calls
   `get_user(username)` to fetch the user's video list when no override is specified.
 - **APIConfig** (`testing/core/config/api_config.py`) — loads `API_BASE_URL` from
