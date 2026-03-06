@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import urllib.request
-import urllib.error
 
 from testing.core.config.api_config import APIConfig
 
