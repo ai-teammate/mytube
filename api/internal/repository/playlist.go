@@ -173,6 +173,7 @@ FROM   playlists p
 JOIN   users          u  ON u.id = p.owner_id
 LEFT JOIN playlist_videos pv ON pv.playlist_id = p.id
 WHERE  u.username = $1
+  AND  p.is_private = FALSE
 GROUP BY p.id, p.title, u.username, p.created_at
 ORDER BY p.created_at DESC`
 
