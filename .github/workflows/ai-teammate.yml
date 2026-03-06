@@ -80,10 +80,41 @@ jobs:
           cache-key-suffix: '-cursor'
 
       - name: Set up Node.js
-        if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Cache web node_modules
+        id: cache-web-deps
+        uses: actions/cache@v4
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node20-web-node-modules-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install web dependencies
+        if: steps.cache-web-deps.outputs.cache-hit != 'true'
+        run: cd web && npm ci --no-audit --progress=false
+
+      - name: Cache Python packages
+        id: cache-python-deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('testing/requirements.txt') }}
+
+      - name: Install Python test dependencies
+        run: pip install -q -r testing/requirements.txt
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('testing/requirements.txt') }}
+
+      - name: Install Playwright Chromium browser
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: playwright install chromium --with-deps
 
       - name: Configure npm global prefix
         if: vars.AI_AGENT_PROVIDER == 'codemie' || vars.AI_AGENT_PROVIDER == 'copilot'
@@ -168,12 +199,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.139
+          key: dmtools-v1.7.145
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.139/install.sh | bash -s v1.7.139
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.145/install.sh | bash -s v1.7.145
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
@@ -254,6 +285,7 @@ jobs:
           GEMINI_DEFAULT_MODEL: ${{ vars.GEMINI_DEFAULT_MODEL }}
           GEMINI_BASE_PATH: ${{ vars.GEMINI_BASE_PATH }}
           DEFAULT_LLM: "gemini"
+          DEFAULT_TRACKER: "jira"
 
           # Figma Configuration
           FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
@@ -268,6 +300,7 @@ jobs:
 
           # GitHub Copilot CLI Authentication
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.PAT_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'gpt-5-mini' }}
 
           # AI Agent Provider
           AI_AGENT_PROVIDER: ${{ vars.AI_AGENT_PROVIDER }}

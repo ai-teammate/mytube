@@ -4,7 +4,7 @@ Automated test for: **Retrieve video rating metadata — average, count, and per
 
 ## What is tested
 
-- `GET /api/videos/:id/rating` returns `average_rating`, `rating_count`, and `my_rating`.
+- `GET /api/videos/:id/rating` returns `average`, `count`, and `my_rating`.
 - For an **authenticated user** (valid Firebase Bearer token): `my_rating` reflects the user's previously submitted rating.
 - For an **unauthenticated guest** (no token): `my_rating` is `null`.
 

@@ -42,6 +42,13 @@ interface EditFormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const STATUS_DISPLAY_NAMES: Record<DashboardVideo["status"], string> = {
+  ready: "Ready",
+  processing: "Processing",
+  pending: "Pending",
+  failed: "Failed",
+};
+
 /** Returns Tailwind classes for a status badge pill. */
 function statusBadgeClasses(status: DashboardVideo["status"]): string {
   switch (status) {
@@ -77,7 +84,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadgeClasses(status)}`}
     >
-      {status}
+      {STATUS_DISPLAY_NAMES[status]}
     </span>
   );
 }
@@ -278,6 +285,7 @@ export function DashboardContent({
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Returning from upload — show a "processing" banner for the new video.
   const uploadedId = searchParams.get("uploaded");
@@ -294,6 +302,7 @@ export function DashboardContent({
   const [renamingLoading, setRenamingLoading] = useState(false);
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null);
   const [playlistDeleteError, setPlaylistDeleteError] = useState<string | null>(null);
+  const [deletingPlaylist, setDeletingPlaylist] = useState(false);
 
   // Auth guard: return null during loading to prevent flash.
   useEffect(() => {
@@ -421,19 +430,25 @@ export function DashboardContent({
 
   async function handleDeleteConfirm() {
     if (!deletingId) return;
+    const videoIdToDelete = deletingId;
     const token = await getIdToken();
     if (!token) {
       setDeleteError("You are not authenticated. Please sign in again.");
       return;
     }
+    setDeleting(true);
+    setDeleteError(null);
     try {
-      await managementRepo.deleteVideo(deletingId, token);
-      setVideos((prev) => prev.filter((v) => v.id !== deletingId));
-      setDeletingId(null);
+      await managementRepo.deleteVideo(videoIdToDelete, token);
+      // After successful deletion, filter out the video and reset state
+      setVideos((prev) => prev.filter((v) => v.id !== videoIdToDelete));
     } catch (err: unknown) {
       setDeleteError(
         err instanceof Error ? err.message : "Failed to delete video."
       );
+    } finally {
+      setDeletingId(null);
+      setDeleting(false);
     }
   }
 
@@ -485,15 +500,19 @@ export function DashboardContent({
 
   async function handleDeletePlaylistConfirm() {
     if (!deletingPlaylistId) return;
+    const playlistIdToDelete = deletingPlaylistId;
     const token = await getIdToken();
     if (!token) return;
+    setDeletingPlaylist(true);
     setPlaylistDeleteError(null);
     try {
-      await playlistRepo.deletePlaylist(deletingPlaylistId, token);
-      setPlaylists((prev) => prev.filter((p) => p.id !== deletingPlaylistId));
-      setDeletingPlaylistId(null);
+      await playlistRepo.deletePlaylist(playlistIdToDelete, token);
+      setPlaylists((prev) => prev.filter((p) => p.id !== playlistIdToDelete));
     } catch (err: unknown) {
       setPlaylistDeleteError(err instanceof Error ? err.message : "Failed to delete playlist.");
+    } finally {
+      setDeletingPlaylistId(null);
+      setDeletingPlaylist(false);
     }
   }
 
@@ -662,14 +681,16 @@ export function DashboardContent({
                           {deletingId === video.id ? (
                             <span className="inline-flex gap-2">
                               <button
-                                onClick={handleDeleteConfirm}
-                                className="text-red-600 hover:text-red-800 font-medium"
+                                onClick={() => handleDeleteConfirm()}
+                                disabled={deleting}
+                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Confirm
+                                {deleting ? "Deleting..." : "Confirm"}
                               </button>
                               <button
                                 onClick={handleDeleteCancel}
-                                className="text-gray-500 hover:text-gray-700 font-medium"
+                                disabled={deleting}
+                                className="text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 Cancel
                               </button>
@@ -798,14 +819,16 @@ export function DashboardContent({
                           {deletingPlaylistId === pl.id ? (
                             <span className="inline-flex gap-2">
                               <button
-                                onClick={handleDeletePlaylistConfirm}
-                                className="text-red-600 hover:text-red-800 font-medium"
+                                onClick={() => handleDeletePlaylistConfirm()}
+                                disabled={deletingPlaylist}
+                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Confirm
+                                {deletingPlaylist ? "Deleting..." : "Confirm"}
                               </button>
                               <button
                                 onClick={() => setDeletingPlaylistId(null)}
-                                className="text-gray-500 hover:text-gray-700 font-medium"
+                                disabled={deletingPlaylist}
+                                className="text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 Cancel
                               </button>
