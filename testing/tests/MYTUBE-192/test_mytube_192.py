@@ -354,32 +354,32 @@ class TestDashboardVideoList:
     def test_ready_video_status_badge_shows_ready(
         self, loaded_dashboard: DashboardPage, seeded_videos: dict
     ):
-        """The status badge for the 'ready' video must display the text 'ready'."""
+        """The status badge for the 'ready' video must display the text 'Ready'."""
         badge_text = loaded_dashboard.get_status_badge_for_title(
             seeded_videos["ready_title"]
-        )
-        assert badge_text is not None, (
-            f"Expected a status badge <span> in the row for "
-            f"'{seeded_videos['ready_title']}', but none was found."
-        )
-        assert badge_text == "ready", (
-            f"Expected status badge to show 'ready', but got '{badge_text}'."
-        )
-
-    def test_processing_video_status_badge_shows_processing(
-        self, loaded_dashboard: DashboardPage, seeded_videos: dict
-    ):
-        """The status badge for the 'processing' video must display 'processing'."""
-        badge_text = loaded_dashboard.get_status_badge_for_title(
-            seeded_videos["processing_title"]
-        )
-        assert badge_text is not None, (
-            f"Expected a status badge <span> in the row for "
-            f"'{seeded_videos['processing_title']}', but none was found."
-        )
-        assert badge_text == "processing", (
-            f"Expected status badge to show 'processing', but got '{badge_text}'."
-        )
+         )
+         assert badge_text is not None, (
+             f"Expected a status badge <span> in the row for "
+             f"'{seeded_videos['ready_title']}', but none was found."
+         )
+         assert badge_text == "Ready", (
+             f"Expected status badge to show 'Ready', but got '{badge_text}'."
+         )
+ 
+     def test_processing_video_status_badge_shows_processing(
+         self, loaded_dashboard: DashboardPage, seeded_videos: dict
+     ):
+         """The status badge for the 'processing' video must display 'Processing'."""
+         badge_text = loaded_dashboard.get_status_badge_for_title(
+             seeded_videos["processing_title"]
+         )
+         assert badge_text is not None, (
+             f"Expected a status badge <span> in the row for "
+             f"'{seeded_videos['processing_title']}', but none was found."
+         )
+         assert badge_text == "Processing", (
+             f"Expected status badge to show 'Processing', but got '{badge_text}'."
+         )
 
     def test_ready_video_has_thumbnail_element(
         self, loaded_dashboard: DashboardPage, seeded_videos: dict
