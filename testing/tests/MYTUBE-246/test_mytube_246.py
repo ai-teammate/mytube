@@ -121,11 +121,6 @@ def page(browser: Browser) -> Page:
     context.close()
 
 
-@pytest.fixture(scope="module")
-def watch_page(page: Page) -> WatchPage:
-    """Create a WatchPage page object."""
-    return WatchPage(page)
-
 
 @pytest.fixture(scope="module")
 def mocked_watch_page(page: Page, web_config: WebConfig):
