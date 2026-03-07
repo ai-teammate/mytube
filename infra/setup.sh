@@ -52,6 +52,9 @@ else
   gcloud storage buckets update "gs://${RAW_BUCKET}" \
     --public-access-prevention \
     --project="${PROJECT}"
+  PAP=$(gcloud storage buckets describe "gs://${RAW_BUCKET}" \
+    --project="${PROJECT}" --format="value(iamConfiguration.publicAccessPrevention)")
+  echo "    publicAccessPrevention = ${PAP}"
 fi
 
 echo ""

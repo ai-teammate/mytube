@@ -141,19 +141,26 @@ class CategoryPage:
         )
 
     def has_empty_state_message(self) -> bool:
-        """Return True if the page contains a user-friendly empty-state message."""
+        """Return True if an empty-state message is visibly rendered in the DOM.
+
+        Uses get_by_text() so only text actually rendered in the viewport is
+        matched — not hidden elements, <script> bundles, or <noscript> blocks.
+        """
         try:
-            content = self._page.content()
-            return any(msg in content for msg in self._EMPTY_STATE_MESSAGES)
+            for msg in self._EMPTY_STATE_MESSAGES:
+                locator = self._page.get_by_text(msg, exact=False)
+                if locator.count() > 0 and locator.first.is_visible():
+                    return True
+            return False
         except Exception:
             return False
 
     def get_empty_state_message(self) -> Optional[str]:
-        """Return the first matching empty-state message found in the page, or None."""
+        """Return the first empty-state message visibly rendered in the DOM, or None."""
         try:
-            content = self._page.content()
             for msg in self._EMPTY_STATE_MESSAGES:
-                if msg in content:
+                locator = self._page.get_by_text(msg, exact=False)
+                if locator.count() > 0 and locator.first.is_visible():
                     return msg
         except Exception:
             pass
