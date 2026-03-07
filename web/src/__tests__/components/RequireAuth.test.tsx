@@ -8,10 +8,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 
 const mockRouterReplace = jest.fn();
 let mockPathname = "/protected";
+let mockSearchParams: URLSearchParams | null = null;
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
   usePathname: () => mockPathname,
+  useSearchParams: () => mockSearchParams,
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
@@ -29,8 +31,9 @@ import RequireAuth from "@/components/RequireAuth";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function renderWithChild(pathname = "/protected") {
+function renderWithChild(pathname = "/protected", searchParams: URLSearchParams | null = null) {
   mockPathname = pathname;
+  mockSearchParams = searchParams;
   return render(
     <RequireAuth>
       <div data-testid="protected-content">Protected content</div>
@@ -46,6 +49,7 @@ describe("RequireAuth", () => {
     mockUser = null;
     mockLoading = false;
     mockPathname = "/protected";
+    mockSearchParams = null;
   });
 
   // ─── Loading state ──────────────────────────────────────────────────────────
@@ -177,5 +181,37 @@ describe("RequireAuth", () => {
     );
 
     expect(screen.getByTestId("protected-content")).toBeInTheDocument();
+  });
+
+  // ─── Query parameter preservation ──────────────────────────────────────────
+
+  it("preserves query parameters in the next redirect when unauthenticated", async () => {
+    mockLoading = false;
+    mockUser = null;
+    const searchParams = new URLSearchParams("category=gaming&priority=high");
+    renderWithChild("/upload", searchParams);
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith(
+        "/login?next=%2Fupload%3Fcategory%3Dgaming%26priority%3Dhigh"
+      );
+    });
+  });
+
+  it("redirects to path-only next when there are no query parameters", async () => {
+    mockLoading = false;
+    mockUser = null;
+    renderWithChild("/upload", null);
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/login?next=%2Fupload");
+    });
+  });
+
+  it("preserves empty search params as path-only next", async () => {
+    mockLoading = false;
+    mockUser = null;
+    renderWithChild("/upload", new URLSearchParams(""));
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/login?next=%2Fupload");
+    });
   });
 });
