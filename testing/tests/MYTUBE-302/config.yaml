@@ -1,0 +1,6 @@
+ticket: MYTUBE-302
+title: "Access to bucket via Signed URL — access granted despite PAP"
+environment:
+  GCS_RAW_UPLOADS_BUCKET: mytube-raw-uploads
+  GCP_PROJECT_ID: ai-native-478811
+  GOOGLE_APPLICATION_CREDENTIALS: ""  # path to SA key with storage.objects.get

@@ -1,0 +1,13 @@
+ticket: MYTUBE-310
+title: "MP4 upload to raw bucket — transcoding Cloud Run job triggered automatically"
+type: infrastructure
+framework: gcloud+google-cloud-storage
+platform: gcp
+dependencies: []
+environment:
+  GCP_PROJECT_ID: ai-native-478811
+  GCP_REGION: us-central1
+  GCS_RAW_UPLOADS_BUCKET: mytube-raw-uploads
+  GCP_TRANSCODER_JOB: mytube-transcoder
+  GOOGLE_APPLICATION_CREDENTIALS: ""  # path to CI service account key
+  CLOUD_RUN_TRIGGER_WAIT_SECONDS: "120"

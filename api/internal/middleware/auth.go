@@ -34,11 +34,22 @@ func ClaimsFromContext(ctx context.Context) *auth.TokenClaims {
 // (retrieve with ClaimsFromContext) and the next handler is called.
 // On failure a 401 JSON response is returned and the chain is stopped.
 //
+// OPTIONS preflight requests are passed through without any authentication
+// check: browsers send preflights without credentials, and blocking them would
+// break CORS regardless of the outer CORS middleware ordering.
+//
 // The verifier parameter accepts the auth.TokenVerifier interface so tests can
 // inject a stub without calling Firebase.
 func RequireAuth(verifier auth.TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Pass OPTIONS preflight requests through without auth checks.
+			// Preflights carry no Authorization header and must not be blocked.
+			if r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			token, ok := bearerToken(r)
 			if !ok {
 				writeUnauthorized(w, "missing or malformed Authorization header")
@@ -62,11 +73,20 @@ func RequireAuth(verifier auth.TokenVerifier) func(http.Handler) http.Handler {
 // provided the request is forwarded without claims in the context. When a token
 // is provided but is invalid, a 401 response is returned.
 //
+// OPTIONS preflight requests are always passed through without any token check
+// so that CORS preflights work regardless of middleware ordering.
+//
 // Use this for endpoints that are public but can optionally act differently for
 // authenticated callers (e.g. GET /api/videos/:id with PUT/DELETE on same path).
 func OptionalAuth(verifier auth.TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Pass OPTIONS preflight requests through without any token check.
+			if r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			token, ok := bearerToken(r)
 			if !ok {
 				// No token provided — pass through without claims.

@@ -199,12 +199,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.144
+          key: dmtools-v1.7.146
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.144/install.sh | bash -s v1.7.144
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.146/install.sh | bash -s v1.7.146
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
@@ -321,6 +321,8 @@ jobs:
           GCP_DB_USER_SECRET: ${{ vars.GCP_DB_USER_SECRET }}
           GCP_DB_PASSWORD_SECRET: ${{ vars.GCP_DB_PASSWORD_SECRET }}
           RAW_OBJECT_PATH: ${{ vars.RAW_OBJECT_PATH }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          CDN_BASE_URL: ${{ vars.CDN_BASE_URL }}
 
           # Database (for test automation)
           DB_HOST: ${{ env.DB_HOST }}
