@@ -54,7 +54,7 @@ type stubWriter struct {
 	calls    []struct{ bucket, object string }
 }
 
-func (s *stubWriter) NewWriter(_ context.Context, bucket, object string) io.WriteCloser {
+func (s *stubWriter) NewWriter(_ context.Context, bucket, object string, _ storage.WriteAttrs) io.WriteCloser {
 	s.calls = append(s.calls, struct{ bucket, object string }{bucket, object})
 	if s.wc != nil {
 		s.wc.calledBucket = bucket
@@ -233,7 +233,7 @@ type stubWriterMulti struct {
 	onCreate func(bucket, object string) io.WriteCloser
 }
 
-func (s *stubWriterMulti) NewWriter(_ context.Context, bucket, object string) io.WriteCloser {
+func (s *stubWriterMulti) NewWriter(_ context.Context, bucket, object string, _ storage.WriteAttrs) io.WriteCloser {
 	return s.onCreate(bucket, object)
 }
 
@@ -282,7 +282,7 @@ func (errorWriteCloser) Close() error                { return nil }
 
 type errorWriterStub struct{}
 
-func (s *errorWriterStub) NewWriter(_ context.Context, _, _ string) io.WriteCloser {
+func (s *errorWriterStub) NewWriter(_ context.Context, _, _ string, _ storage.WriteAttrs) io.WriteCloser {
 	return errorWriteCloser{}
 }
 
