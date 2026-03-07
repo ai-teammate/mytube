@@ -17,6 +17,8 @@ env:
   REGION: ${{ vars.GCP_REGION }}
   SERVICE: mytube-api
   IMAGE: gcr.io/${{ vars.GCP_PROJECT_ID }}/mytube-api
+  TRANSCODER_JOB: mytube-transcoder
+  TRANSCODER_IMAGE: gcr.io/${{ vars.GCP_PROJECT_ID }}/mytube-transcoder
 
 jobs:
   deploy:
@@ -37,12 +39,17 @@ jobs:
       - name: Configure Docker for GCR
         run: gcloud auth configure-docker gcr.io --quiet
 
-      - name: Build and push Docker image
+      - name: Build and push API image
         run: |
           docker build -t ${{ env.IMAGE }}:${{ github.sha }} ./api
           docker push ${{ env.IMAGE }}:${{ github.sha }}
 
-      - name: Deploy to Cloud Run
+      - name: Build and push Transcoder image
+        run: |
+          docker build -t ${{ env.TRANSCODER_IMAGE }}:${{ github.sha }} -f ./api/cmd/transcoder/Dockerfile ./api
+          docker push ${{ env.TRANSCODER_IMAGE }}:${{ github.sha }}
+
+      - name: Deploy API to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
             --image ${{ env.IMAGE }}:${{ github.sha }} \
@@ -53,6 +60,13 @@ jobs:
             --add-cloudsql-instances ${{ vars.CLOUD_SQL_CONNECTION_NAME }} \
             --set-env-vars "DB_NAME=${{ vars.DB_NAME }},INSTANCE_UNIX_SOCKET=/cloudsql/${{ vars.CLOUD_SQL_CONNECTION_NAME }},FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }},RAW_UPLOADS_BUCKET=${{ vars.RAW_UPLOADS_BUCKET }},CDN_BASE_URL=${{ vars.CDN_BASE_URL }}" \
             --set-secrets "DB_USER=${{ vars.GCP_DB_USER_SECRET }}:latest,DB_PASSWORD=${{ vars.GCP_DB_PASSWORD_SECRET }}:latest" \
+            --project ${{ env.PROJECT_ID }}
+
+      - name: Deploy Transcoder Cloud Run Job
+        run: |
+          gcloud run jobs update ${{ env.TRANSCODER_JOB }} \
+            --image ${{ env.TRANSCODER_IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }}
 
       - name: Show service URL
@@ -79,13 +93,15 @@ jobs:
 
       - name: Delete old GCR images
         run: |
-          OLD=$(gcloud container images list-tags ${{ env.IMAGE }} \
-            --project ${{ env.PROJECT_ID }} \
-            --format="get(digest)" \
-            --sort-by="~timestamp" | tail -n +2)
-          if [ -n "$OLD" ]; then
-            echo "$OLD" | xargs -I{} gcloud container images delete \
-              "${{ env.IMAGE }}@{}" \
+          for IMG in ${{ env.IMAGE }} ${{ env.TRANSCODER_IMAGE }}; do
+            OLD=$(gcloud container images list-tags "$IMG" \
               --project ${{ env.PROJECT_ID }} \
-              --quiet --force-delete-tags || true
-          fi
+              --format="get(digest)" \
+              --sort-by="~timestamp" | tail -n +2)
+            if [ -n "$OLD" ]; then
+              echo "$OLD" | xargs -I{} gcloud container images delete \
+                "$IMG@{}" \
+                --project ${{ env.PROJECT_ID }} \
+                --quiet --force-delete-tags || true
+            fi
+          done
