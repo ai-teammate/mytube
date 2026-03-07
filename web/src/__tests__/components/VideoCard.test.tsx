@@ -2,8 +2,16 @@
  * Unit tests for src/components/VideoCard.tsx
  */
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { VideoCardItem } from "@/domain/search";
+
+// ─── Mock next/navigation ─────────────────────────────────────────────────────
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+  }),
+}));
 
 // ─── Mock next/image ──────────────────────────────────────────────────────────
 jest.mock("next/image", () => ({
@@ -25,6 +33,11 @@ jest.mock("next/image", () => ({
 }));
 
 import VideoCard from "@/components/VideoCard";
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  sessionStorage.clear();
+});
 
 function makeVideo(overrides: Partial<VideoCardItem> = {}): VideoCardItem {
   return {
@@ -99,5 +112,44 @@ describe("VideoCard", () => {
     // Multiple links may match; just ensure at least one exists.
     const links = screen.getAllByRole("link", { name: "Accessible Video" });
     expect(links.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * Regression tests for MYTUBE-303: clicking a VideoCard navigates via the SPA
+ * shell (/v/_/) rather than directly to /v/<uuid>, so the Next.js static router
+ * (dynamicParams=false) doesn't 404 the watch page.
+ */
+describe("VideoCard — SPA navigation (MYTUBE-303)", () => {
+  it("clicking the thumbnail link stores the video ID in sessionStorage and navigates to /v/_/", () => {
+    render(<VideoCard video={makeVideo({ id: "abc-123" })} />);
+
+    // First link with this name is the thumbnail (aria-label); second is the title text.
+    const [thumbnailLink] = screen.getAllByRole("link", { name: "Test Video" });
+    fireEvent.click(thumbnailLink);
+
+    expect(sessionStorage.getItem("__spa_video_id")).toBe("abc-123");
+    expect(mockPush).toHaveBeenCalledWith("/v/_/");
+  });
+
+  it("clicking the title link stores the video ID in sessionStorage and navigates to /v/_/", () => {
+    render(<VideoCard video={makeVideo({ id: "abc-123", title: "My Video" })} />);
+
+    // Second link is the title text link.
+    const links = screen.getAllByRole("link", { name: "My Video" });
+    const titleLink = links[links.length - 1];
+    fireEvent.click(titleLink);
+
+    expect(sessionStorage.getItem("__spa_video_id")).toBe("abc-123");
+    expect(mockPush).toHaveBeenCalledWith("/v/_/");
+  });
+
+  it("href attribute still reflects the canonical video URL for accessibility", () => {
+    render(<VideoCard video={makeVideo({ id: "vid-1" })} />);
+
+    const links = screen.getAllByRole("link", { name: "Test Video" });
+    links.forEach((link) => {
+      expect(link).toHaveAttribute("href", "/v/vid-1");
+    });
   });
 });
