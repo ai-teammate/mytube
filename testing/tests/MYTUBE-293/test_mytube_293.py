@@ -61,7 +61,6 @@ from testing.components.pages.user_profile_page.user_profile_page import UserPro
 # Constants
 # ---------------------------------------------------------------------------
 
-_TEST_USERNAME = "tester"
 _PAGE_LOAD_TIMEOUT = 30_000   # ms — initial navigation + SPA redirect
 _CONTENT_TIMEOUT = 20_000     # ms — wait for React component to render profile
 
@@ -83,6 +82,13 @@ _MOUNTED_SELECTORS = ["h1", "text=User not found.", "text=Loading"]
 @pytest.fixture(scope="module")
 def web_config() -> WebConfig:
     return WebConfig()
+
+
+@pytest.fixture(scope="module")
+def test_username(web_config: WebConfig) -> str:
+    """Derive the CI test username from FIREBASE_TEST_EMAIL (prefix before '@')."""
+    email = web_config.test_email or "ci-test@mytube.test"
+    return email.split("@")[0]
 
 
 @pytest.fixture(scope="module")
@@ -147,9 +153,10 @@ class TestSpaProfileRedirect:
         self,
         page: Page,
         web_config: WebConfig,
+        test_username: str,
     ) -> None:
         """
-        Step 1-2: Navigate directly to /u/tester and verify the SPA fallback
+        Step 1-2: Navigate directly to /u/<username> and verify the SPA fallback
         (404.html) stores the username in sessionStorage and redirects to /u/_/.
 
         The 404.html script runs synchronously before any React code executes, so
@@ -162,7 +169,7 @@ class TestSpaProfileRedirect:
         username but the React component has not yet run.
         """
         base_url = web_config.base_url  # e.g. https://ai-teammate.github.io/mytube
-        direct_url = f"{base_url}/u/{_TEST_USERNAME}"
+        direct_url = f"{base_url}/u/{test_username}"
 
         # Navigate; follow the 404.html → /u/_/ redirect automatically.
         page.goto(direct_url, wait_until="domcontentloaded", timeout=_PAGE_LOAD_TIMEOUT)
@@ -172,9 +179,9 @@ class TestSpaProfileRedirect:
 
         # The URL must contain the shell path before React corrects it.
         # (React's replaceState may not have fired yet at this point.)
-        assert _SPA_SHELL_SUFFIX in current_url_after_redirect or f"/u/{_TEST_USERNAME}" in current_url_after_redirect, (
+        assert _SPA_SHELL_SUFFIX in current_url_after_redirect or f"/u/{test_username}" in current_url_after_redirect, (
             f"After direct navigation to {direct_url}, expected the browser to land "
-            f"on either {_SPA_SHELL_SUFFIX!r} (SPA shell) or /u/{_TEST_USERNAME} "
+            f"on either {_SPA_SHELL_SUFFIX!r} (SPA shell) or /u/{test_username} "
             f"(corrected URL), but current URL is: {current_url_after_redirect}"
         )
 
@@ -182,16 +189,18 @@ class TestSpaProfileRedirect:
         self,
         page: Page,
         web_config: WebConfig,
+        test_username: str,
     ) -> None:
         """
         Step 2 & 5 (pre-mount): Immediately after the 404.html redirect resolves
-        on /u/_/ (before React runs), sessionStorage must contain __spa_username = "tester".
+        on /u/_/ (before React runs), sessionStorage must contain __spa_username
+        equal to the CI test username.
 
         This validates that the 404.html fallback correctly stored the real username
         before handing off to the React shell.
         """
         base_url = web_config.base_url
-        direct_url = f"{base_url}/u/{_TEST_USERNAME}"
+        direct_url = f"{base_url}/u/{test_username}"
 
         # Navigate; 404.html runs synchronously and redirects to /u/_/.
         # wait_until="domcontentloaded" lets us inspect the page before React finishes.
@@ -209,11 +218,11 @@ class TestSpaProfileRedirect:
         current_url = page.url
 
         spa_key_was_set = (
-            stored_value == _TEST_USERNAME
-            or f"/u/{_TEST_USERNAME}" in current_url  # React already corrected URL
+            stored_value == test_username
+            or f"/u/{test_username}" in current_url  # React already corrected URL
         )
         assert spa_key_was_set, (
-            f"Expected sessionStorage['{_SPA_SESSION_KEY}'] == '{_TEST_USERNAME}' "
+            f"Expected sessionStorage['{_SPA_SESSION_KEY}'] == '{test_username}' "
             f"immediately after redirect to {_SPA_SHELL_SUFFIX}, "
             f"but got: stored_value={stored_value!r}, current_url={current_url!r}. "
             f"The 404.html SPA fallback script may not have stored the username correctly."
@@ -223,15 +232,16 @@ class TestSpaProfileRedirect:
         self,
         page: Page,
         web_config: WebConfig,
+        test_username: str,
     ) -> None:
         """
         Step 3: After the SPA redirect resolves and React finishes mounting,
-        the profile for user 'tester' must be visible: avatar, <h1> username
+        the profile for the CI test user must be visible: avatar, <h1> username
         heading, and at least one video card (or an empty-state message if the
         user has no videos).
         """
         base_url = web_config.base_url
-        direct_url = f"{base_url}/u/{_TEST_USERNAME}"
+        direct_url = f"{base_url}/u/{test_username}"
 
         page.goto(direct_url, wait_until="domcontentloaded", timeout=_PAGE_LOAD_TIMEOUT)
         _wait_for_component_mounted(page, timeout=_CONTENT_TIMEOUT)
@@ -249,18 +259,18 @@ class TestSpaProfileRedirect:
                 f"after navigating to {direct_url}. "
                 f"Current URL: {current_url!r}. "
                 f"Page body: {page_body!r}. "
-                f"The user '{_TEST_USERNAME}' may not exist in the deployed application."
+                f"The user '{test_username}' may not exist in the deployed application."
             )
 
         heading = profile_page.get_username_heading()
-        assert heading == _TEST_USERNAME, (
-            f"Expected <h1> to contain '{_TEST_USERNAME}', got: {heading!r}. "
+        assert heading == test_username, (
+            f"Expected <h1> to contain '{test_username}', got: {heading!r}. "
             f"Current URL: {page.url!r}"
         )
 
         avatar_visible = profile_page.is_avatar_visible()
         assert avatar_visible, (
-            f"Avatar element is not visible on the profile page for '{_TEST_USERNAME}'. "
+            f"Avatar element is not visible on the profile page for '{test_username}'. "
             f"Current URL: {page.url!r}"
         )
 
@@ -268,13 +278,14 @@ class TestSpaProfileRedirect:
         self,
         page: Page,
         web_config: WebConfig,
+        test_username: str,
     ) -> None:
         """
         Step 4: After the React component mounts and calls history.replaceState,
-        the browser's address bar must show /u/tester (not /u/_/).
+        the browser's address bar must show /u/<username> (not /u/_/).
         """
         base_url = web_config.base_url
-        direct_url = f"{base_url}/u/{_TEST_USERNAME}"
+        direct_url = f"{base_url}/u/{test_username}"
 
         page.goto(direct_url, wait_until="domcontentloaded", timeout=_PAGE_LOAD_TIMEOUT)
         # Wait for component to mount (any final rendered state — profile or not-found).
@@ -282,7 +293,7 @@ class TestSpaProfileRedirect:
 
         profile_page = UserProfilePage(page)
         final_url = profile_page.current_url()
-        expected_url_suffix = f"/u/{_TEST_USERNAME}"
+        expected_url_suffix = f"/u/{test_username}"
 
         assert expected_url_suffix in final_url, (
             f"Expected address bar URL to contain '{expected_url_suffix}' after "
@@ -294,7 +305,7 @@ class TestSpaProfileRedirect:
         username_segment = final_url.split("/u/")[-1].rstrip("/")
         assert username_segment != "_", (
             f"Address bar still shows the shell placeholder '/u/_/' after component "
-            f"mount. Expected it to be replaced with '/u/{_TEST_USERNAME}/'. "
+            f"mount. Expected it to be replaced with '/u/{test_username}/'. "
             f"Current URL: {final_url!r}"
         )
 
@@ -302,6 +313,7 @@ class TestSpaProfileRedirect:
         self,
         page: Page,
         web_config: WebConfig,
+        test_username: str,
     ) -> None:
         """
         Step 5: After the React component mounts and reads __spa_username from
@@ -309,7 +321,7 @@ class TestSpaProfileRedirect:
         once the component has rendered (profile or not-found state).
         """
         base_url = web_config.base_url
-        direct_url = f"{base_url}/u/{_TEST_USERNAME}"
+        direct_url = f"{base_url}/u/{test_username}"
 
         page.goto(direct_url, wait_until="domcontentloaded", timeout=_PAGE_LOAD_TIMEOUT)
         # Wait for component to mount (any final rendered state — profile or not-found).
