@@ -21,9 +21,9 @@ Test Steps
    (baseline snapshot taken immediately before the upload).
 3. Upload a minimal valid MP4 file to ``gs://mytube-raw-uploads`` using the CI
    service account credentials.
-4. Poll ``gcloud run jobs executions list`` for the ``mytube-transcoder`` job
-   until a new execution appears (created after the upload timestamp), or until
-   ``CLOUD_RUN_TRIGGER_WAIT_SECONDS`` elapses.
+4. Poll ``EventarcService.list_cloud_run_job_executions`` for the
+   ``mytube-transcoder`` job until a new execution appears (created after the
+   upload timestamp), or until ``CLOUD_RUN_TRIGGER_WAIT_SECONDS`` elapses.
 
 Expected Result
 ---------------
@@ -35,8 +35,7 @@ integration pipeline.
 Environment Variables
 ---------------------
 - GOOGLE_APPLICATION_CREDENTIALS   Path to the CI service account JSON key.
-                                    Defaults to ``gha-creds-d3b12cb7362b0046.json``
-                                    at the repository root.
+                                    Must be set explicitly — no default fallback.
 - GCP_PROJECT_ID                   GCP project ID (default: ``ai-native-478811``).
 - GCP_REGION                       GCP region (default: ``us-central1``).
 - GCS_RAW_UPLOADS_BUCKET           Bucket name (default: ``mytube-raw-uploads``).
@@ -48,7 +47,8 @@ Architecture Notes
 ------------------
 - ``GcpIamService`` is used for all IAM policy queries.
 - ``GCSBucketService`` is used for the GCS upload and cleanup.
-- ``EventarcService`` (gcloud) is used to list Cloud Run Job executions.
+- ``EventarcService.list_cloud_run_job_executions`` is used to list executions.
+- ``poll_until`` from ``testing.core.utils.polling`` drives the polling loop.
 - All GCP credentials are injected via constructor; never hard-coded.
 """
 from __future__ import annotations
@@ -56,9 +56,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
-import subprocess
 import sys
-import time
 import uuid
 
 import pytest
@@ -67,19 +65,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.gcp_config import GcpConfig
 from testing.core.config.gcs_config import GCSConfig
+from testing.core.utils.polling import poll_until
 from testing.components.gcp.gcp_iam_service import GcpIamService
+from testing.components.services.eventarc_service import EventarcService
 from testing.components.services.gcs_bucket_service import GCSBucketService
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-_DEFAULT_CREDS = os.path.join(_REPO_ROOT, "gha-creds-d3b12cb7362b0046.json")
-
-CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", _DEFAULT_CREDS)
+CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
 # Minimal valid ftyp+mdat MP4 (ISO base media file format box header).
 # This 32-byte sequence is enough to create a file with a valid MP4 container
@@ -174,35 +169,14 @@ def gcp_iam_service(gcp_config) -> GcpIamService:
     return GcpIamService(config=gcp_config)
 
 
+@pytest.fixture(scope="module")
+def eventarc_service(gcp_config) -> EventarcService:
+    return EventarcService(project=gcp_config.project_id, region=gcp_config.region)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _list_executions(project: str, region: str, job_name: str) -> list[dict]:
-    """Return Cloud Run Job executions sorted newest-first.
-
-    Returns an empty list if gcloud is unavailable or the job does not exist.
-    """
-    result = subprocess.run(
-        [
-            "gcloud", "run", "jobs", "executions", "list",
-            f"--job={job_name}",
-            f"--region={region}",
-            f"--project={project}",
-            "--format=json",
-            "--sort-by=~createTime",
-            "--limit=20",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return []
-    try:
-        return json.loads(result.stdout) or []
-    except json.JSONDecodeError:
-        return []
 
 
 def _parse_create_time(execution: dict) -> datetime.datetime:
@@ -261,6 +235,7 @@ class TestMP4UploadTriggersCloudRunJob:
         gcp_config: GcpConfig,
         gcs_bucket_service: GCSBucketService,
         gcs_config: GCSConfig,
+        eventarc_service: EventarcService,
     ) -> None:
         """Steps 2–4: Upload MP4 → wait for new Cloud Run Job execution.
 
@@ -268,20 +243,20 @@ class TestMP4UploadTriggersCloudRunJob:
         1. Snapshot existing execution IDs (baseline).
         2. Record upload timestamp.
         3. Upload minimal MP4 to ``raw/<uuid>.mp4`` in the raw-uploads bucket.
-        4. Poll ``gcloud run jobs executions list`` for up to
-           CLOUD_RUN_TRIGGER_WAIT_SECONDS for an execution whose createTime is
-           after the upload timestamp.
+        4. Use ``poll_until`` to call
+           ``EventarcService.list_cloud_run_job_executions`` at
+           ``POLL_INTERVAL_SECONDS`` intervals for up to
+           ``CLOUD_RUN_TRIGGER_WAIT_SECONDS`` until an execution whose
+           createTime is after the upload timestamp appears.
 
         A new execution appearing after the upload confirms that Eventarc fired
         and the ``roles/storage.objectCreator`` fix allows the pipeline to proceed.
         """
-        project = gcp_config.project_id
-        region = gcp_config.region
         job_name = gcp_config.transcoder_job
         bucket_name = gcs_config.raw_uploads_bucket
 
         # --- baseline snapshot -------------------------------------------
-        baseline_executions = _list_executions(project, region, job_name)
+        baseline_executions = eventarc_service.list_cloud_run_job_executions(job_name)
         baseline_ids: set[str] = set()
         for ex in baseline_executions:
             name = ex.get("metadata", {}).get("name", "") or ex.get("name", "")
@@ -302,35 +277,30 @@ class TestMP4UploadTriggersCloudRunJob:
             content_type="video/mp4",
         )
 
-        # --- poll for new execution --------------------------------------
-        deadline = time.monotonic() + TRIGGER_WAIT_SECONDS
-        new_execution_found = False
-        new_execution_name = ""
-        new_execution_time: datetime.datetime = datetime.datetime.min.replace(
-            tzinfo=datetime.timezone.utc
-        )
+        # --- poll for new execution via component layer ------------------
         attempts = 0
 
+        def _check_for_new_execution():
+            nonlocal attempts
+            attempts += 1
+            for ex in eventarc_service.list_cloud_run_job_executions(job_name):
+                name = ex.get("metadata", {}).get("name", "") or ex.get("name", "")
+                created = _parse_create_time(ex)
+                if name and name not in baseline_ids and created >= upload_time:
+                    return (name, created)
+            return None
+
         try:
-            while time.monotonic() < deadline:
-                attempts += 1
-                current_executions = _list_executions(project, region, job_name)
-                for ex in current_executions:
-                    name = ex.get("metadata", {}).get("name", "") or ex.get("name", "")
-                    created = _parse_create_time(ex)
-                    if name and name not in baseline_ids and created >= upload_time:
-                        new_execution_found = True
-                        new_execution_name = name
-                        new_execution_time = created
-                        break
-                if new_execution_found:
-                    break
-                time.sleep(POLL_INTERVAL_SECONDS)
+            result = poll_until(
+                _check_for_new_execution,
+                timeout=TRIGGER_WAIT_SECONDS,
+                interval=POLL_INTERVAL_SECONDS,
+            )
         finally:
             # Cleanup: delete the uploaded test object regardless of outcome.
             gcs_bucket_service.delete_object(object_name)
 
-        assert new_execution_found, (
+        assert result is not None, (
             f"No new Cloud Run Job execution for '{job_name}' was detected "
             f"within {TRIGGER_WAIT_SECONDS}s after uploading "
             f"gs://{bucket_name}/{object_name} at {upload_time.isoformat()}.\n\n"
@@ -346,13 +316,16 @@ class TestMP4UploadTriggersCloudRunJob:
             f"     pattern (expected: raw/<uuid>.mp4, uploaded: {object_name}).\n"
             "  4. The Eventarc delivery itself is delayed beyond the polling window.\n"
             f"  Verify manually: gcloud run jobs executions list "
-            f"--job={job_name} --region={region} --project={project}"
+            f"--job={job_name} --region={gcp_config.region} "
+            f"--project={gcp_config.project_id}"
         )
+
+        new_execution_name, new_execution_time = result
 
         # Extra assertion: log the found execution for traceability.
         assert new_execution_name, (
-            f"Found execution without a name — unexpected response format from "
-            f"gcloud run jobs executions list."
+            "Found execution without a name — unexpected response format from "
+            "gcloud run jobs executions list."
         )
         assert new_execution_time >= upload_time, (
             f"New execution '{new_execution_name}' has createTime "
