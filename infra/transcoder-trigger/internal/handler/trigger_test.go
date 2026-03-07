@@ -207,20 +207,24 @@ func TestTriggerHandler_NonRawPrefixIgnoredWith204(t *testing.T) {
 	}
 }
 
-func TestTriggerHandler_NonMp4ExtensionIgnoredWith204(t *testing.T) {
+func TestTriggerHandler_ProductionUUIDPathProcessed(t *testing.T) {
 	exec := &mockExecutor{}
 	h := handler.NewTriggerHandler(exec, "hls-bucket")
 
-	body := `{"bucket":"mytube-raw-uploads","name":"raw/abc123.txt"}`
+	// Production uploads have no file extension: raw/<userID>/<videoID>
+	body := `{"bucket":"mytube-raw-uploads","name":"raw/a4d86461-b30a-4edb-8de7-271b2839fa76/ca21d36d-ff29-414b-8e45-8f74d1fc509c"}`
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 
 	h(rec, req)
 
 	if rec.Code != http.StatusNoContent {
-		t.Errorf("expected 204 for non-.mp4 upload, got %d", rec.Code)
+		t.Errorf("expected 204 for production UUID upload, got %d", rec.Code)
 	}
-	if exec.called {
-		t.Error("executor must not be called for non-.mp4 objects")
+	if !exec.called {
+		t.Error("executor must be called for production UUID path uploads")
+	}
+	if exec.received.VideoID != "ca21d36d-ff29-414b-8e45-8f74d1fc509c" {
+		t.Errorf("unexpected VideoID: %q", exec.received.VideoID)
 	}
 }

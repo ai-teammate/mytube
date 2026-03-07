@@ -74,7 +74,7 @@ jobs:
             --max-instances 5 \
             --project ${{ env.PROJECT_ID }}
 
-      # ── 4. Grant GCS service agent permission to invoke trigger service ────
+      # ── 4. Grant IAM permissions for Eventarc event delivery ──────────────
       - name: Grant GCS service agent roles/run.invoker on trigger service
         run: |
           GCS_SA=$(gcloud storage service-agent --project "${{ env.PROJECT_ID }}")
@@ -82,6 +82,15 @@ jobs:
             --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }} \
             --member "serviceAccount:${GCS_SA}" \
+            --role roles/run.invoker
+
+      - name: Grant trigger service account roles/run.invoker on trigger service
+        run: |
+          TRANSCODER_SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud run services add-iam-policy-binding ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --member "serviceAccount:${TRANSCODER_SA_EMAIL}" \
             --role roles/run.invoker
 
       # ── 5. Create Eventarc trigger (idempotent: delete-and-recreate) ───────

@@ -138,10 +138,14 @@ func TestIsRawUpload_NonRawPrefix(t *testing.T) {
 	}
 }
 
-func TestIsRawUpload_NonMp4Extension(t *testing.T) {
-	obj := event.StorageObject{Bucket: "mytube-raw-uploads", Name: "raw/abc123.txt"}
-	if obj.IsRawUpload() {
-		t.Error("expected IsRawUpload() == false for non-.mp4 extension")
+func TestIsRawUpload_ValidUUIDNoExtension(t *testing.T) {
+	// Production uploads are stored without a file extension: raw/<userID>/<videoID>
+	obj := event.StorageObject{
+		Bucket: "mytube-raw-uploads",
+		Name:   "raw/a4d86461-b30a-4edb-8de7-271b2839fa76/ca21d36d-ff29-414b-8e45-8f74d1fc509c",
+	}
+	if !obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == true for production UUID path without extension")
 	}
 }
 
