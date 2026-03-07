@@ -42,10 +42,11 @@ jest.mock("@/lib/firebase", () => ({
 
 /** Consumer component that exposes auth state via data-testid attributes */
 function AuthConsumer() {
-  const { user, loading, getIdToken, signOut } = useAuth();
+  const { user, loading, authError, getIdToken, signOut } = useAuth();
   return (
     <div>
       <span data-testid="loading">{String(loading)}</span>
+      <span data-testid="auth-error">{String(authError)}</span>
       <span data-testid="user-email">{user?.email ?? "null"}</span>
       <button
         data-testid="sign-out-btn"
@@ -115,6 +116,35 @@ describe("AuthProvider", () => {
     await waitFor(() =>
       expect(screen.getByTestId("loading")).toHaveTextContent("false")
     );
+  });
+
+  it("sets authError=true when Firebase fires the auth error callback", async () => {
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedErrorCallback?.(
+        Object.assign(new Error("Firebase: Error (auth/invalid-api-key)."), {
+          code: "auth/invalid-api-key",
+        })
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("auth-error")).toHaveTextContent("true")
+    );
+  });
+
+  it("keeps authError=false on successful auth state change", async () => {
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.(null);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+    expect(screen.getByTestId("auth-error")).toHaveTextContent("false");
   });
 
   it("sets user.email when onAuthStateChanged fires with a user", async () => {
@@ -258,6 +288,22 @@ describe("AuthProvider — Firebase initialisation failure", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("false")
     );
     expect(screen.getByTestId("user-email")).toHaveTextContent("null");
+
+    consoleSpy.mockRestore();
+  });
+
+  it("sets authError=true when getFirebaseAuth throws", async () => {
+    mockGetAuth.mockImplementationOnce(() => {
+      throw new Error("Firebase: Error (auth/invalid-api-key).");
+    });
+
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    renderWithProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("auth-error")).toHaveTextContent("true")
+    );
 
     consoleSpy.mockRestore();
   });
