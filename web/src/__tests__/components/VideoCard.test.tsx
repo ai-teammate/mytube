@@ -152,4 +152,12 @@ describe("VideoCard — SPA navigation (MYTUBE-303)", () => {
       expect(link).toHaveAttribute("href", "/v/vid-1");
     });
   });
+
+  it("ctrl+click does not intercept — lets browser open the canonical URL natively", () => {
+    render(<VideoCard video={makeVideo({ id: "abc-123" })} />);
+    const [link] = screen.getAllByRole("link", { name: "Test Video" });
+    fireEvent.click(link, { ctrlKey: true });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("__spa_video_id")).toBeNull();
+  });
 });

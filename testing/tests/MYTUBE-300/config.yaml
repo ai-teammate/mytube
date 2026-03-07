@@ -1,5 +1,0 @@
-test_id: MYTUBE-300
-type: gcs
-framework: gcs
-platform: ~
-dependencies: []

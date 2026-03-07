@@ -24,6 +24,10 @@ export default function VideoCard({ video }: VideoCardProps) {
   // pre-built shell so WatchPageClient can resolve it.
   const handleWatchClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
+      // Let modifier-key clicks (new tab / new window) and non-primary-button
+      // clicks fall through to native browser behaviour.
+      // 404.html SPA fallback handles the resulting hard navigation correctly.
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
       e.preventDefault();
       sessionStorage.setItem("__spa_video_id", video.id);
       router.push("/v/_/");
