@@ -73,7 +73,8 @@ func NewVideoRepository(db VideoQuerier) *VideoRepository {
 }
 
 // GetByID fetches the video with the given ID along with its uploader info.
-// Returns (nil, nil) when no matching row exists or the video status is not "ready".
+// Returns (nil, nil) when no matching row exists, the video status is not "ready",
+// or the video is ready but has no HLS manifest path (broken/incomplete transcoding).
 func (r *VideoRepository) GetByID(ctx context.Context, videoID string) (*VideoDetail, error) {
 	const selectSQL = `
 SELECT v.id,
@@ -90,7 +91,8 @@ SELECT v.id,
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.id = $1
-  AND  v.status = 'ready'`
+  AND  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL`
 
 	row := r.db.QueryRowContext(ctx, selectSQL, videoID)
 
@@ -112,6 +114,12 @@ WHERE  v.id = $1
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get video by id: %w", err)
+	}
+	// Defensive guard: a 'ready' video without an HLS manifest is incomplete.
+	// This should never happen after the DB constraint in migration 0009 is
+	// applied, but we guard here so corrupted rows are never exposed publicly.
+	if v.HLSManifestPath == nil {
+		return nil, nil
 	}
 	return &v, nil
 }
@@ -169,11 +177,12 @@ ORDER BY tag`
 }
 
 // Exists reports whether a ready video row with the given ID exists in the
-// database. Only videos with status = 'ready' are considered to exist, matching
-// the same visibility rule used by GetByID. Use this for a lightweight existence
-// check before operating on video sub-resources (ratings, comments).
+// database. Only videos with status = 'ready' AND a non-null hls_manifest_path
+// are considered to exist, matching the same visibility rule used by GetByID.
+// Use this for a lightweight existence check before operating on video
+// sub-resources (ratings, comments).
 func (r *VideoRepository) Exists(ctx context.Context, videoID string) (bool, error) {
-	const selectSQL = `SELECT 1 FROM videos WHERE id = $1 AND status = 'ready' LIMIT 1`
+	const selectSQL = `SELECT 1 FROM videos WHERE id = $1 AND status = 'ready' AND hls_manifest_path IS NOT NULL LIMIT 1`
 	row := r.db.QueryRowContext(ctx, selectSQL, videoID)
 	var dummy int
 	if err := row.Scan(&dummy); err != nil {

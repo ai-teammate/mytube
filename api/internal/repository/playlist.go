@@ -110,6 +110,7 @@ FROM   playlist_videos pv
 JOIN   videos          v  ON v.id = pv.video_id
 WHERE  pv.playlist_id = $1
   AND  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
 ORDER BY pv.position ASC`
 
 	rows, err := r.db.QueryContext(ctx, videosSQL, playlistID)
