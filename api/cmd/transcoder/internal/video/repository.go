@@ -44,7 +44,8 @@ func (r *Repository) UpdateVideo(ctx context.Context, videoID string, u Update) 
 		UPDATE videos
 		SET hls_manifest_path = $1,
 		    thumbnail_url      = $2,
-		    status             = $3
+		    status             = $3,
+		    updated_at         = now()
 		WHERE id = $4`
 
 	res, err := r.db.ExecContext(ctx, query, u.HLSManifestPath, u.ThumbnailURL, string(u.Status), videoID)

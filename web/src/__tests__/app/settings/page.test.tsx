@@ -10,6 +10,8 @@ import userEvent from "@testing-library/user-event";
 const mockRouterReplace = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
+  usePathname: () => "/settings",
+  useSearchParams: () => null,
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
@@ -60,12 +62,12 @@ describe("SettingsPage", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it("redirects to /login when user is null and not loading", async () => {
+  it("redirects to /login?next=/settings when user is null and not loading", async () => {
     mockUser = null;
     mockLoading = false;
     render(<SettingsPage />);
     await waitFor(() => {
-      expect(mockRouterReplace).toHaveBeenCalledWith("/login");
+      expect(mockRouterReplace).toHaveBeenCalledWith("/login?next=%2Fsettings");
     });
   });
 

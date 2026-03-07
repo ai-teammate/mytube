@@ -204,3 +204,204 @@ func TestClaimsFromContext_Empty(t *testing.T) {
 		t.Errorf("expected nil claims from empty context, got %+v", got)
 	}
 }
+
+// ─── OptionalAuth tests ───────────────────────────────────────────────────────
+
+func TestOptionalAuth_NoToken_CallsNextWithoutClaims(t *testing.T) {
+	v := &stubVerifier{claims: &auth.TokenClaims{UID: "uid", Email: "a@b.com"}}
+	var gotClaims *auth.TokenClaims
+	captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotClaims = middleware.ClaimsFromContext(r.Context())
+	})
+
+	h := middleware.OptionalAuth(v)(captureHandler)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/vid-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotClaims != nil {
+		t.Errorf("expected nil claims when no token, got %+v", gotClaims)
+	}
+}
+
+func TestOptionalAuth_ValidToken_InjectsClaims(t *testing.T) {
+	claims := &auth.TokenClaims{UID: "firebase-uid", Email: "user@example.com"}
+	v := &stubVerifier{claims: claims}
+	var gotClaims *auth.TokenClaims
+	captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotClaims = middleware.ClaimsFromContext(r.Context())
+	})
+
+	h := middleware.OptionalAuth(v)(captureHandler)
+	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-1", nil)
+	req.Header.Set("Authorization", "Bearer valid.token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotClaims == nil {
+		t.Fatal("expected claims in context, got nil")
+	}
+	if gotClaims.UID != claims.UID {
+		t.Errorf("UID: got %q, want %q", gotClaims.UID, claims.UID)
+	}
+}
+
+func TestOptionalAuth_InvalidToken_Returns401(t *testing.T) {
+	v := &stubVerifier{err: errors.New("token expired")}
+	called := false
+	h := middleware.OptionalAuth(v)(nextHandlerCalled(&called))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/videos/vid-1", nil)
+	req.Header.Set("Authorization", "Bearer bad.token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for invalid token, got %d", rec.Code)
+	}
+	if called {
+		t.Error("next handler must not be called for invalid token")
+	}
+}
+
+func TestOptionalAuth_NonBearerScheme_CallsNextWithoutClaims(t *testing.T) {
+	// Non-Bearer scheme: treat as no token (pass through without claims).
+	v := &stubVerifier{claims: &auth.TokenClaims{UID: "uid"}}
+	var gotClaims *auth.TokenClaims
+	captureHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotClaims = middleware.ClaimsFromContext(r.Context())
+	})
+
+	h := middleware.OptionalAuth(v)(captureHandler)
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/vid-1", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotClaims != nil {
+		t.Errorf("expected nil claims for non-Bearer scheme, got %+v", gotClaims)
+	}
+}
+
+// ─── OPTIONS preflight bypass tests ──────────────────────────────────────────
+
+// TestRequireAuth_Options_PassesThrough verifies that RequireAuth never returns
+// 401 for an OPTIONS preflight request.  Browsers send OPTIONS without an
+// Authorization header; blocking it prevents CORS and breaks the dashboard.
+func TestRequireAuth_Options_PassesThrough(t *testing.T) {
+	v := &stubVerifier{} // verifier must never be invoked
+	called := false
+	h := middleware.RequireAuth(v)(nextHandlerCalled(&called))
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/me/videos", nil)
+	req.Header.Set("Origin", "https://ai-teammate.github.io")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "authorization")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusUnauthorized {
+		t.Error("RequireAuth must not return 401 for OPTIONS preflight — OPTIONS must bypass auth")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("RequireAuth OPTIONS preflight: expected 200 from next handler, got %d", rec.Code)
+	}
+	if !called {
+		t.Error("RequireAuth must call the next handler for OPTIONS preflight")
+	}
+}
+
+// TestRequireAuth_Options_DoesNotCheckToken confirms the token verifier is not
+// called for OPTIONS preflight requests.
+func TestRequireAuth_Options_DoesNotCheckToken(t *testing.T) {
+	verifyCalled := false
+	v := &callTrackingVerifier{called: &verifyCalled}
+	h := middleware.RequireAuth(v)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/me/videos", nil)
+	req.Header.Set("Authorization", "Bearer some.token") // token present but should be ignored
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if verifyCalled {
+		t.Error("token verifier must NOT be called for OPTIONS preflight")
+	}
+}
+
+// TestOptionalAuth_Options_PassesThrough verifies that OptionalAuth also passes
+// OPTIONS requests through without checking the token.
+func TestOptionalAuth_Options_PassesThrough(t *testing.T) {
+	v := &stubVerifier{}
+	called := false
+	h := middleware.OptionalAuth(v)(nextHandlerCalled(&called))
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/videos/vid-1", nil)
+	req.Header.Set("Origin", "https://ai-teammate.github.io")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusUnauthorized {
+		t.Error("OptionalAuth must not return 401 for OPTIONS preflight")
+	}
+	if !called {
+		t.Error("OptionalAuth must call the next handler for OPTIONS preflight")
+	}
+}
+
+// callTrackingVerifier is a stub that records whether VerifyIDToken was invoked.
+type callTrackingVerifier struct {
+	called *bool
+	claims *auth.TokenClaims
+	err    error
+}
+
+func (c *callTrackingVerifier) VerifyIDToken(_ context.Context, _ string) (*auth.TokenClaims, error) {
+	*c.called = true
+	return c.claims, c.err
+}
+
+// TestCORSWithRequireAuth_OptionsPreflightOnMeVideos validates CORS-layer
+// behavior for the full middleware stack (CORS → mux → RequireAuth → handler)
+// for /api/me/videos.  Because the CORS middleware intercepts OPTIONS and
+// returns 204 before calling next, RequireAuth is never reached in this test.
+// This test verifies the end-to-end stack response (status, headers) and that
+// the final API handler (innerHandler) is not invoked — it does NOT serve as a
+// regression test for the auth.go OPTIONS bypass itself.  The unit tests
+// TestRequireAuth_Options_PassesThrough and TestRequireAuth_Options_DoesNotCheckToken
+// directly exercise RequireAuth without a CORS wrapper and would fail if the
+// bypass were reverted.
+func TestCORSWithRequireAuth_OptionsPreflightOnMeVideos(t *testing.T) {
+	v := &stubVerifier{}
+	innerHandlerCalled := false
+	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		innerHandlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/me/videos", middleware.RequireAuth(v)(innerHandler))
+	h := middleware.CORS(mux)
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/me/videos", nil)
+	req.Header.Set("Origin", "https://ai-teammate.github.io")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "authorization")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusUnauthorized {
+		t.Errorf("OPTIONS preflight: got 401 — auth middleware intercepted preflight before CORS")
+	}
+	if rec.Code != http.StatusNoContent && rec.Code != http.StatusOK {
+		t.Errorf("OPTIONS preflight: expected 204, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://ai-teammate.github.io" {
+		t.Errorf("Access-Control-Allow-Origin: got %q, want %q", got, "https://ai-teammate.github.io")
+	}
+	if innerHandlerCalled {
+		t.Error("inner handler must NOT be called for OPTIONS preflight (CORS intercepts it)")
+	}
+}

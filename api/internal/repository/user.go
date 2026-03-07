@@ -19,11 +19,21 @@ type User struct {
 	CreatedAt   time.Time
 }
 
+// Video represents a video row as returned by the public profile endpoint.
+type Video struct {
+	ID           string
+	Title        string
+	ThumbnailURL *string
+	ViewCount    int64
+	CreatedAt    time.Time
+}
+
 // UserQuerier is the database interface used by UserRepository.
 // Satisfied by *sql.DB and allows tests to inject a stub.
 type UserQuerier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 // UserRepository handles persistence for the users table.
@@ -37,22 +47,30 @@ func NewUserRepository(db UserQuerier) *UserRepository {
 }
 
 // Upsert inserts a new user row for the given firebase_uid, defaulting the
-// username to the email prefix (the part before "@").  On conflict it does
-// nothing, leaving the existing row unchanged.  The current user row is then
+// username to the email prefix (the part before "@") and storing the picture
+// URL from the Firebase/Google ID token when provided.  On conflict it updates
+// avatar_url only when the current value is NULL (i.e. the first Google login
+// after the row was created with no avatar).  The current user row is then
 // fetched and returned.
 //
 // This implements the auto-provisioning behaviour specified in MYTUBE-13: the
 // first successful token verification creates the users row; all subsequent
-// calls are no-ops.
-func (r *UserRepository) Upsert(ctx context.Context, firebaseUID, email string) (*User, error) {
+// calls are no-ops except for syncing the avatar from Firebase.
+func (r *UserRepository) Upsert(ctx context.Context, firebaseUID, email, pictureURL string) (*User, error) {
 	username := emailPrefix(email)
 
-	const upsertSQL = `
-INSERT INTO users (firebase_uid, username)
-VALUES ($1, $2)
-ON CONFLICT (firebase_uid) DO NOTHING`
+	var avatarArg *string
+	if pictureURL != "" {
+		avatarArg = &pictureURL
+	}
 
-	if _, err := r.db.ExecContext(ctx, upsertSQL, firebaseUID, username); err != nil {
+	const upsertSQL = `
+INSERT INTO users (firebase_uid, username, avatar_url)
+VALUES ($1, $2, $3)
+ON CONFLICT (firebase_uid) DO UPDATE
+    SET avatar_url = COALESCE(users.avatar_url, EXCLUDED.avatar_url)`
+
+	if _, err := r.db.ExecContext(ctx, upsertSQL, firebaseUID, username, avatarArg); err != nil {
 		return nil, fmt.Errorf("upsert user: %w", err)
 	}
 
@@ -77,6 +95,58 @@ WHERE  firebase_uid = $1`
 		return nil, fmt.Errorf("get user by firebase uid: %w", err)
 	}
 	return &u, nil
+}
+
+// GetByUsername fetches the user row identified by username.
+// Returns (nil, nil) when no matching row exists.
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
+	const selectSQL = `
+SELECT id, firebase_uid, username, avatar_url, created_at
+FROM   users
+WHERE  username = $1`
+
+	row := r.db.QueryRowContext(ctx, selectSQL, username)
+
+	var u User
+	if err := row.Scan(&u.ID, &u.FirebaseUID, &u.Username, &u.AvatarURL, &u.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user by username: %w", err)
+	}
+	return &u, nil
+}
+
+// GetVideosByUserID returns up to 50 ready videos uploaded by the user with
+// the given internal user ID, ordered by created_at DESC (newest first).
+func (r *UserRepository) GetVideosByUserID(ctx context.Context, userID string) ([]Video, error) {
+	const selectSQL = `
+SELECT id, title, thumbnail_url, view_count, created_at
+FROM   videos
+WHERE  uploader_id = $1
+  AND  status = 'ready'
+  AND  hls_manifest_path IS NOT NULL
+ORDER BY created_at DESC
+LIMIT 50`
+
+	rows, err := r.db.QueryContext(ctx, selectSQL, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get videos by user id: %w", err)
+	}
+	defer rows.Close()
+
+	var videos []Video
+	for rows.Next() {
+		var v Video
+		if err := rows.Scan(&v.ID, &v.Title, &v.ThumbnailURL, &v.ViewCount, &v.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan video row: %w", err)
+		}
+		videos = append(videos, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate video rows: %w", err)
+	}
+	return videos, nil
 }
 
 // UpdateProfile updates the username and avatar_url for the user identified by

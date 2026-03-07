@@ -53,6 +53,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from testing.core.config.db_config import DBConfig
 from testing.tests.conftest import make_conn_fixture
 
+
+
+def _postgres_available() -> bool:
+    """Return True if a PostgreSQL server is reachable using the default DBConfig."""
+    try:
+        conn = psycopg2.connect(DBConfig().dsn())
+        conn.close()
+        return True
+    except psycopg2.OperationalError:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -71,7 +83,10 @@ _MIGRATION_SCHEMA = os.path.join(_MIGRATIONS_DIR, "0001_initial_schema.up.sql")
 # DB fixture
 # ---------------------------------------------------------------------------
 
-conn = make_conn_fixture([_MIGRATION_SCHEMA])
+conn = make_conn_fixture(
+    [_MIGRATION_SCHEMA],
+    test_usernames=["testuser_mytube80", "testuser_check_mytube80", "testuser_iso_mytube80"],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +288,10 @@ class TestTranscodingFailureMarksDBFailed:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not _postgres_available(),
+    reason="PostgreSQL not available at configured host/port — skipping DB integration tests",
+)
 class TestMarkFailedSQLContract:
     """
     Verifies the exact SQL UPDATE used by video.Repository.MarkFailed at

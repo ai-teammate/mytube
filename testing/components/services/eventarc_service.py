@@ -131,10 +131,12 @@ class EventarcService:
                 bucket_filter = val
 
         # Destination Cloud Run service (short name).
+        # Check the newer cloudRunService path first, fall back to legacy cloudRun.
         destination_service: Optional[str] = None
         dest = raw.get("destination", {})
-        cloud_run = dest.get("cloudRun", {})
-        svc_ref = cloud_run.get("service", "")
+        svc_ref = dest.get("cloudRunService", {}).get("service", "")
+        if not svc_ref:
+            svc_ref = dest.get("cloudRun", {}).get("service", "")
         if svc_ref:
             # Full resource name: projects/.../services/<name>
             destination_service = svc_ref.split("/")[-1]
@@ -156,3 +158,61 @@ class EventarcService:
             return True
         except subprocess.CalledProcessError:
             return False
+
+    def can_list_triggers(self) -> tuple[bool, str]:
+        """Probe whether the active credential has eventarc.triggers.list permission.
+
+        Runs ``gcloud eventarc triggers list`` and inspects the exit code.
+        An empty trigger list (exit 0) still means the permission is present.
+
+        Returns:
+            (True, "")            — permission is present
+            (False, stderr_text)  — permission is absent; stderr contains the
+                                    gcloud error message (PERMISSION_DENIED etc.)
+        """
+        result = subprocess.run(
+            [
+                "gcloud", "eventarc", "triggers", "list",
+                "--location", self._region,
+                "--project", self._project,
+                "--format", "json",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return True, ""
+        return False, result.stderr.strip()
+
+    # ------------------------------------------------------------------
+    # Cloud Run Job Executions
+    # ------------------------------------------------------------------
+
+    def list_cloud_run_job_executions(
+        self, job_name: str, limit: int = 20
+    ) -> list[dict]:
+        """Return Cloud Run Job executions sorted newest-first.
+
+        Returns an empty list if gcloud is unavailable or the job does not
+        exist.  Never raises — callers should treat an empty list as
+        "no executions found".
+        """
+        result = subprocess.run(
+            [
+                "gcloud", "run", "jobs", "executions", "list",
+                f"--job={job_name}",
+                f"--region={self._region}",
+                f"--project={self._project}",
+                "--format=json",
+                "--sort-by=~createTime",
+                f"--limit={limit}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return []
+        try:
+            return json.loads(result.stdout) or []
+        except json.JSONDecodeError:
+            return []

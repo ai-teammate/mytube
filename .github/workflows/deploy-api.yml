@@ -8,6 +8,10 @@ on:
       - 'api/**'
       - '.github/workflows/deploy-api.yml'
 
+concurrency:
+  group: deploy-api-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: ${{ vars.GCP_REGION }}
@@ -47,7 +51,7 @@ jobs:
             --allow-unauthenticated \
             --max-instances 2 \
             --add-cloudsql-instances ${{ vars.CLOUD_SQL_CONNECTION_NAME }} \
-            --set-env-vars "DB_NAME=${{ vars.DB_NAME }},INSTANCE_UNIX_SOCKET=/cloudsql/${{ vars.CLOUD_SQL_CONNECTION_NAME }},FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }}" \
+            --set-env-vars "DB_NAME=${{ vars.DB_NAME }},INSTANCE_UNIX_SOCKET=/cloudsql/${{ vars.CLOUD_SQL_CONNECTION_NAME }},FIREBASE_PROJECT_ID=${{ vars.FIREBASE_PROJECT_ID }},RAW_UPLOADS_BUCKET=${{ vars.RAW_UPLOADS_BUCKET }},CDN_BASE_URL=${{ vars.CDN_BASE_URL }}" \
             --set-secrets "DB_USER=${{ vars.GCP_DB_USER_SECRET }}:latest,DB_PASSWORD=${{ vars.GCP_DB_PASSWORD_SECRET }}:latest" \
             --project ${{ env.PROJECT_ID }}
 

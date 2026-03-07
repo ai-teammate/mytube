@@ -36,3 +36,89 @@ class AuthService:
                 return resp.status, resp.read().decode()
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
+
+    def post(self, path: str, payload: dict, extra_headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue an authenticated POST *path* with a JSON body.
+
+        Serialises *payload* as JSON, sets Content-Type to application/json,
+        and includes Authorization: Bearer header.
+
+        Returns (status_code, response_body).
+        """
+        import json
+        url = f"{self._base_url}{path}"
+        data = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        req = urllib.request.Request(url, data=data, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    def put(self, path: str, payload: dict, extra_headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue an authenticated PUT *path* with a JSON body.
+
+        Serialises *payload* as JSON, sets Content-Type to application/json,
+        and includes Authorization: Bearer header.
+
+        Returns (status_code, response_body).
+        """
+        import json
+        url = f"{self._base_url}{path}"
+        data = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        req = urllib.request.Request(url, data=data, method="PUT", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    def delete(self, path: str, extra_headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue an authenticated DELETE *path*.
+
+        Includes Authorization: Bearer header.
+
+        Returns (status_code, response_body).
+        """
+        url = f"{self._base_url}{path}"
+        headers = {"Authorization": f"Bearer {self._token}"}
+        if extra_headers:
+            headers.update(extra_headers)
+        req = urllib.request.Request(url, method="DELETE", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    @staticmethod
+    def sign_in_with_email_password(api_key: str, email: str, password: str) -> Optional[str]:
+        """Sign in with Firebase email/password; return the ID token or None on error."""
+        import json
+        url = (
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+            "?key=" + api_key
+        )
+        try:
+            data = json.dumps(
+                {"email": email, "password": password, "returnSecureToken": True}
+            ).encode()
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode()).get("idToken")
+        except Exception:
+            return None

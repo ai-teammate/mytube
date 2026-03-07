@@ -11,3 +11,5 @@ node_modules
 **.pyc
 .serena
 testing/testserver/testserver
+api/transcoder
+cloud-sql-proxy

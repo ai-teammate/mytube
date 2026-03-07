@@ -1,0 +1,6 @@
+test_id: MYTUBE-203
+type: api
+framework: pytest+http
+platform: deployed-api
+dependencies:
+  - FIREBASE_TEST_TOKEN
