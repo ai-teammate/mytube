@@ -1,0 +1,5 @@
+test_id: MYTUBE-307
+type: infrastructure
+framework: static
+platform: gcp
+dependencies: []
