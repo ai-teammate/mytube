@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 /**
  * SiteFooter renders the global site footer with placeholder links for
  * Terms of Service and Privacy Policy, plus a copyright notice.
@@ -12,18 +14,18 @@ export default function SiteFooter() {
           &copy; {year} mytube. All rights reserved.
         </p>
         <nav aria-label="Footer navigation" className="flex items-center gap-6">
-          <a
+          <Link
             href="/terms"
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
             Terms
-          </a>
-          <a
+          </Link>
+          <Link
             href="/privacy"
             className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
             Privacy
-          </a>
+          </Link>
         </nav>
       </div>
     </footer>
