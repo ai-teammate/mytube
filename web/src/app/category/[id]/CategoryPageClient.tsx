@@ -4,7 +4,6 @@ import { use, useState, useEffect } from "react";
 import type { VideoCardItem, CategoryRepository, Category } from "@/domain/search";
 import { ApiCategoryRepository } from "@/data/searchRepository";
 import VideoCard from "@/components/VideoCard";
-import SiteHeader from "@/components/SiteHeader";
 
 const defaultRepository: CategoryRepository = new ApiCategoryRepository();
 
@@ -89,38 +88,34 @@ export default function CategoryPage({
   }, [categoryId, repository]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <SiteHeader />
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {loading && (
+        <p className="text-gray-500 text-center py-16">Loading…</p>
+      )}
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {loading && (
-          <p className="text-gray-500 text-center py-16">Loading…</p>
-        )}
+      {error && !loading && (
+        <p role="alert" className="text-red-600 text-center py-8">
+          {error}
+        </p>
+      )}
 
-        {error && !loading && (
-          <p role="alert" className="text-red-600 text-center py-8">
-            {error}
-          </p>
-        )}
+      {!loading && !error && (
+        <>
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">
+            {category ? category.name : `Category ${categoryId}`}
+          </h1>
 
-        {!loading && !error && (
-          <>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
-              {category ? category.name : `Category ${categoryId}`}
-            </h1>
-
-            {videos.length === 0 ? (
-              <p className="text-gray-500">No videos in this category yet.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {videos.map((video) => (
-                  <VideoCard key={video.id} video={video} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </main>
+          {videos.length === 0 ? (
+            <p className="text-gray-500">No videos in this category yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {videos.map((video) => (
+                <VideoCard key={video.id} video={video} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import type { VideoCardItem, SearchRepository } from "@/domain/search";
 import { ApiSearchRepository } from "@/data/searchRepository";
 import VideoCard from "@/components/VideoCard";
-import SiteHeader from "@/components/SiteHeader";
 
 const defaultRepository: SearchRepository = new ApiSearchRepository();
 
@@ -86,11 +85,8 @@ function SearchResults({ repository = defaultRepository }: SearchPageProps) {
 
 export default function SearchPageClient({ repository = defaultRepository }: SearchPageProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <SiteHeader />
-      <Suspense fallback={<p className="text-gray-500 text-center py-16">Loading…</p>}>
-        <SearchResults repository={repository} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<p className="text-gray-500 text-center py-16">Loading…</p>}>
+      <SearchResults repository={repository} />
+    </Suspense>
   );
 }
