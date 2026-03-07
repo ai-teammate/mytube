@@ -202,4 +202,22 @@ describe("SiteHeader — authenticated", () => {
     await user.click(screen.getByRole("button", { name: /user menu/i }));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
+
+  it("closes dropdown when clicking outside the menu container", async () => {
+    const user = userEvent.setup();
+    render(<SiteHeader />);
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("closes dropdown when Escape key is pressed", async () => {
+    const user = userEvent.setup();
+    render(<SiteHeader />);
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 });

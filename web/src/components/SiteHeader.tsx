@@ -59,9 +59,9 @@ export default function SiteHeader() {
 
   return (
     <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4">
-      <a href="/" className="text-xl font-bold text-red-600 shrink-0">
+      <Link href="/" className="text-xl font-bold text-red-600 shrink-0">
         mytube
-      </a>
+      </Link>
 
       <form
         onSubmit={handleSubmit}
