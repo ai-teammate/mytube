@@ -54,7 +54,7 @@ jobs:
         run: |
           PAP=$(gcloud storage buckets describe "gs://${{ env.RAW_BUCKET }}" \
             --project="${{ env.PROJECT_ID }}" \
-            --format="value(iamConfiguration.publicAccessPrevention)")
+            --format="value(public_access_prevention)")
           echo "publicAccessPrevention = ${PAP}"
           [ "${PAP}" = "enforced" ] || { echo "ERROR: expected enforced, got ${PAP}" >&2; exit 1; }
 
