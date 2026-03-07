@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import RequireAuth from "@/components/RequireAuth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -12,20 +13,21 @@ interface ProfileData {
 }
 
 export default function SettingsPage() {
+  return (
+    <RequireAuth>
+      <SettingsPageContent />
+    </RequireAuth>
+  );
+}
+
+function SettingsPageContent() {
   const router = useRouter();
-  const { user, loading, getIdToken, signOut } = useAuth();
+  const { user, getIdToken, signOut } = useAuth();
 
   const [form, setForm] = useState<ProfileData>({ username: "", avatarUrl: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  // Redirect unauthenticated users to login.
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
-    }
-  }, [user, loading, router]);
 
   // Fetch current profile once authenticated.
   useEffect(() => {
@@ -100,17 +102,6 @@ export default function SettingsPage() {
     router.replace("/login");
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -118,7 +109,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Account settings</h1>
-            <p className="mt-1 text-sm text-gray-500">{user.email}</p>
+            <p className="mt-1 text-sm text-gray-500">{user?.email}</p>
           </div>
           <button
             type="button"
