@@ -1,0 +1,14 @@
+ticket: MYTUBE-317
+title: "Validate Eventarc trigger configuration — mytube-gcs-finalize destination is correct"
+type: infrastructure
+framework: gcloud
+platform: gcp
+dependencies: []
+environment:
+  GCP_PROJECT_ID: ai-native-478811
+  GCP_REGION: us-central1
+  EVENTARC_TRIGGER_NAME: mytube-gcs-finalize
+  EXPECTED_DESTINATION_SERVICE: mytube-transcoder-trigger
+  EXPECTED_BUCKET: mytube-raw-uploads
+  EXPECTED_EVENT_TYPE: google.cloud.storage.object.v1.finalized
+  GOOGLE_APPLICATION_CREDENTIALS: ""  # path to CI service account key
