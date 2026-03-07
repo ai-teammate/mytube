@@ -49,6 +49,15 @@ jobs:
             echo "Created gs://${{ env.RAW_BUCKET }}"
           fi
 
+      # ── Verify PAP on raw-uploads bucket ────────────────────────────────────
+      - name: Verify PAP on raw-uploads bucket
+        run: |
+          PAP=$(gcloud storage buckets describe "gs://${{ env.RAW_BUCKET }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --format="value(iamConfiguration.publicAccessPrevention)")
+          echo "publicAccessPrevention = ${PAP}"
+          [ "${PAP}" = "enforced" ] || { echo "ERROR: expected enforced, got ${PAP}" >&2; exit 1; }
+
       # ── 2. Create HLS-output bucket (public read for CDN delivery) ───────────
       - name: Create hls-output bucket (public read)
         run: |

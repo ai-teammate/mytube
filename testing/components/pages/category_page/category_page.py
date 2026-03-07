@@ -30,9 +30,9 @@ class CategoryPage:
     """
 
     _HEADING_SELECTOR = "h1"
-    # Match actual rendered markup (div.rounded-lg) as well as semantic
-    # fallback selectors for future markup changes.
-    _VIDEO_CARD_SELECTOR = "div.rounded-lg, [data-testid='video-card'], .video-card, article"
+    # Use semantic / test-id selectors; avoid generic utility classes that
+    # can match unrelated rounded containers on the page.
+    _VIDEO_CARD_SELECTOR = "[data-testid='video-card'], .video-card, article"
     _VIDEO_TITLE_SELECTOR = "[data-testid='video-title'], .video-title, h2, h3"
     _ERROR_SELECTOR = "[role='alert']"
     _EMPTY_STATE_MESSAGES = ("No videos in this category yet", "No videos")

@@ -55,6 +55,10 @@ else
   PAP=$(gcloud storage buckets describe "gs://${RAW_BUCKET}" \
     --project="${PROJECT}" --format="value(iamConfiguration.publicAccessPrevention)")
   echo "    publicAccessPrevention = ${PAP}"
+  if [ "${PAP}" != "enforced" ]; then
+    echo "    ERROR: publicAccessPrevention is '${PAP}', expected 'enforced'" >&2
+    exit 1
+  fi
 fi
 
 echo ""
