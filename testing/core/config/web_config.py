@@ -47,3 +47,6 @@ class WebConfig:
 
     def dashboard_url(self) -> str:
         return f"{self.base_url}/dashboard/"
+
+    def my_videos_url(self) -> str:
+        return f"{self.base_url}/my-videos/"
