@@ -32,7 +32,14 @@ func NewGCSObjectWriter(client *storage.Client) *GCSObjectWriter {
 	return &GCSObjectWriter{client: client}
 }
 
-// NewWriter opens a GCS object writer for bucket/object.
-func (g *GCSObjectWriter) NewWriter(ctx context.Context, bucket, object string) io.WriteCloser {
-	return g.client.Bucket(bucket).Object(object).NewWriter(ctx)
+// NewWriter opens a GCS object writer for bucket/object with the given metadata attrs.
+func (g *GCSObjectWriter) NewWriter(ctx context.Context, bucket, object string, attrs WriteAttrs) io.WriteCloser {
+	wc := g.client.Bucket(bucket).Object(object).NewWriter(ctx)
+	if attrs.CacheControl != "" {
+		wc.CacheControl = attrs.CacheControl
+	}
+	if attrs.ContentType != "" {
+		wc.ContentType = attrs.ContentType
+	}
+	return wc
 }
