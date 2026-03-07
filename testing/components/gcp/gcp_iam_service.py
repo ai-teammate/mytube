@@ -15,6 +15,24 @@ class GcpIamService:
     # Public API
     # ------------------------------------------------------------------
 
+    def get_project_bindings(self) -> list[dict]:
+        """Return IAM bindings for the GCP project.
+
+        Returns a list of dicts: [{"role": "...", "members": [...]}, ...]
+        Raises RuntimeError if gcloud returns a non-zero exit code.
+        """
+        result = self._run_gcloud(
+            "projects", "get-iam-policy", self._config.project_id,
+            "--format", "json",
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to retrieve IAM policy for project '{self._config.project_id}'.\n"
+                f"stderr: {result.stderr.strip()}"
+            )
+        policy = json.loads(result.stdout)
+        return policy.get("bindings", [])
+
     def get_bucket_bindings(self, bucket: str) -> list[dict]:
         """Return IAM bindings for a GCS bucket.
 

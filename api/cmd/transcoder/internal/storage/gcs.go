@@ -9,6 +9,35 @@ import (
 	"path/filepath"
 )
 
+// WriteAttrs holds optional metadata applied when creating a GCS object.
+type WriteAttrs struct {
+	CacheControl string
+	ContentType  string
+}
+
+// attrsForPath returns appropriate WriteAttrs for a given file path based on its extension.
+func attrsForPath(p string) WriteAttrs {
+	switch filepath.Ext(p) {
+	case ".m3u8":
+		return WriteAttrs{
+			ContentType:  "application/x-mpegurl",
+			CacheControl: "no-cache, no-store, max-age=0",
+		}
+	case ".ts":
+		return WriteAttrs{
+			ContentType:  "video/mp2t",
+			CacheControl: "public, max-age=31536000",
+		}
+	case ".jpg", ".jpeg":
+		return WriteAttrs{
+			ContentType:  "image/jpeg",
+			CacheControl: "public, max-age=3600",
+		}
+	default:
+		return WriteAttrs{}
+	}
+}
+
 // ObjectReader abstracts GCS object reads so tests can inject a stub.
 type ObjectReader interface {
 	// NewReader opens a reader for the given bucket/object.
@@ -17,9 +46,9 @@ type ObjectReader interface {
 
 // ObjectWriter abstracts GCS object writes so tests can inject a stub.
 type ObjectWriter interface {
-	// NewWriter opens a writer for the given bucket/object.
+	// NewWriter opens a writer for the given bucket/object with optional metadata attrs.
 	// The caller must close the writer to finalise the upload.
-	NewWriter(ctx context.Context, bucket, object string) io.WriteCloser
+	NewWriter(ctx context.Context, bucket, object string, attrs WriteAttrs) io.WriteCloser
 }
 
 // Downloader downloads a raw GCS object to the local filesystem.
@@ -68,6 +97,7 @@ func NewUploader(w ObjectWriter) *Uploader {
 }
 
 // UploadFile copies a local file at srcPath to gs://<bucket>/<objectPath>.
+// Content-Type and Cache-Control are set automatically based on the file extension.
 func (u *Uploader) UploadFile(ctx context.Context, bucket, objectPath, srcPath string) error {
 	f, err := os.Open(srcPath)
 	if err != nil {
@@ -75,7 +105,7 @@ func (u *Uploader) UploadFile(ctx context.Context, bucket, objectPath, srcPath s
 	}
 	defer f.Close()
 
-	wc := u.Writer.NewWriter(ctx, bucket, objectPath)
+	wc := u.Writer.NewWriter(ctx, bucket, objectPath, attrsForPath(srcPath))
 	if _, err := io.Copy(wc, f); err != nil {
 		_ = wc.Close()
 		return fmt.Errorf("copy %s to gs://%s/%s: %w", srcPath, bucket, objectPath, err)
