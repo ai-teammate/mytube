@@ -151,10 +151,10 @@ def transcoded_video(
     subprocess.run(
         [
             "ffmpeg", "-y",
-            "-f", "lavfi", "-i", "color=c=black:s=1280x720:d=2",
+            "-f", "lavfi", "-i", "color=c=black:s=1280x720:d=10",
             "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
             "-c:v", "libx264", "-c:a", "aac",
-            "-shortest", "-t", "2",
+            "-t", "10",
             "-movflags", "+faststart",
             tmp_path,
         ],

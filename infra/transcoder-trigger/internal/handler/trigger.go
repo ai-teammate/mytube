@@ -31,6 +31,13 @@ func NewTriggerHandler(executor JobExecutor, hlsBucket string) http.HandlerFunc 
 			return
 		}
 
+		if !obj.IsRawUpload() {
+			log.Printf("trigger: ignoring non-raw-upload object: bucket=%s name=%s", obj.Bucket, obj.Name)
+			// Return 204 so Eventarc does not retry deliveries for ignored events.
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
 		videoID, err := obj.VideoID()
 		if err != nil {
 			log.Printf("trigger: extract video ID: %v", err)

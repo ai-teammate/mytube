@@ -131,10 +131,12 @@ class EventarcService:
                 bucket_filter = val
 
         # Destination Cloud Run service (short name).
+        # Check the newer cloudRunService path first, fall back to legacy cloudRun.
         destination_service: Optional[str] = None
         dest = raw.get("destination", {})
-        cloud_run = dest.get("cloudRun", {})
-        svc_ref = cloud_run.get("service", "")
+        svc_ref = dest.get("cloudRunService", {}).get("service", "")
+        if not svc_ref:
+            svc_ref = dest.get("cloudRun", {}).get("service", "")
         if svc_ref:
             # Full resource name: projects/.../services/<name>
             destination_service = svc_ref.split("/")[-1]
