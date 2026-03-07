@@ -111,3 +111,50 @@ func TestParse_Empty(t *testing.T) {
 		t.Fatal("expected error for empty body, got nil")
 	}
 }
+
+// ── IsRawUpload ───────────────────────────────────────────────────────────────
+
+func TestIsRawUpload_ValidMp4(t *testing.T) {
+	obj := event.StorageObject{Bucket: "mytube-raw-uploads", Name: "raw/abc123.mp4"}
+	if !obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == true for raw/abc123.mp4")
+	}
+}
+
+func TestIsRawUpload_ValidUUIDMp4(t *testing.T) {
+	obj := event.StorageObject{
+		Bucket: "mytube-raw-uploads",
+		Name:   "raw/550e8400-e29b-41d4-a716-446655440000.mp4",
+	}
+	if !obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == true for UUID-named mp4")
+	}
+}
+
+func TestIsRawUpload_NonRawPrefix(t *testing.T) {
+	obj := event.StorageObject{Bucket: "mytube-raw-uploads", Name: "thumbnails/poster.jpg"}
+	if obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == false for non-raw/ prefix")
+	}
+}
+
+func TestIsRawUpload_NonMp4Extension(t *testing.T) {
+	obj := event.StorageObject{Bucket: "mytube-raw-uploads", Name: "raw/abc123.txt"}
+	if obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == false for non-.mp4 extension")
+	}
+}
+
+func TestIsRawUpload_RootLevelFile(t *testing.T) {
+	obj := event.StorageObject{Bucket: "mytube-raw-uploads", Name: "video.mp4"}
+	if obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == false for root-level file (no raw/ prefix)")
+	}
+}
+
+func TestIsRawUpload_EmptyName(t *testing.T) {
+	obj := event.StorageObject{Bucket: "mytube-raw-uploads", Name: ""}
+	if obj.IsRawUpload() {
+		t.Error("expected IsRawUpload() == false for empty name")
+	}
+}

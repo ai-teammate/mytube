@@ -187,3 +187,40 @@ func TestTriggerHandler_EmptyBody_Returns400(t *testing.T) {
 		t.Errorf("expected 400 for empty body, got %d", rec.Code)
 	}
 }
+
+func TestTriggerHandler_NonRawPrefixIgnoredWith204(t *testing.T) {
+	exec := &mockExecutor{}
+	h := handler.NewTriggerHandler(exec, "hls-bucket")
+
+	// Object is not in raw/ prefix — handler must not trigger transcoding.
+	body := `{"bucket":"mytube-raw-uploads","name":"thumbnails/poster.jpg"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 for non-raw-upload, got %d", rec.Code)
+	}
+	if exec.called {
+		t.Error("executor must not be called for non-raw-upload objects")
+	}
+}
+
+func TestTriggerHandler_NonMp4ExtensionIgnoredWith204(t *testing.T) {
+	exec := &mockExecutor{}
+	h := handler.NewTriggerHandler(exec, "hls-bucket")
+
+	body := `{"bucket":"mytube-raw-uploads","name":"raw/abc123.txt"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 for non-.mp4 upload, got %d", rec.Code)
+	}
+	if exec.called {
+		t.Error("executor must not be called for non-.mp4 objects")
+	}
+}

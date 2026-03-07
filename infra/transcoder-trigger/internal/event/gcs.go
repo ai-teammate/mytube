@@ -36,7 +36,16 @@ func (o StorageObject) VideoID() (string, error) {
 	return id, nil
 }
 
-// Parse decodes a JSON-encoded GCS StorageObject from r.
+// IsRawUpload reports whether the object is a valid raw video upload.
+// A valid raw upload must be in the "raw/" prefix and have a ".mp4" extension.
+// The Eventarc trigger is scoped to the correct bucket, so only the path
+// and extension need to be validated here to avoid triggering transcoding
+// for unrelated objects (e.g. thumbnails, manifests) that may land in the bucket.
+func (o StorageObject) IsRawUpload() bool {
+	return strings.HasPrefix(o.Name, "raw/") && strings.HasSuffix(o.Name, ".mp4")
+}
+
+
 func Parse(r io.Reader) (StorageObject, error) {
 	var obj StorageObject
 	if err := json.NewDecoder(r).Decode(&obj); err != nil {
