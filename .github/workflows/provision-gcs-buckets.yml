@@ -36,7 +36,10 @@ jobs:
         run: |
           if gcloud storage buckets describe "gs://${{ env.RAW_BUCKET }}" \
               --project="${{ env.PROJECT_ID }}" &>/dev/null; then
-            echo "gs://${{ env.RAW_BUCKET }} already exists — skipping."
+            echo "gs://${{ env.RAW_BUCKET }} already exists — enforcing public-access-prevention..."
+            gcloud storage buckets update "gs://${{ env.RAW_BUCKET }}" \
+              --public-access-prevention \
+              --project="${{ env.PROJECT_ID }}"
           else
             gcloud storage buckets create "gs://${{ env.RAW_BUCKET }}" \
               --location="${{ env.REGION }}" \
@@ -45,6 +48,15 @@ jobs:
               --project="${{ env.PROJECT_ID }}"
             echo "Created gs://${{ env.RAW_BUCKET }}"
           fi
+
+      # ── Verify PAP on raw-uploads bucket ────────────────────────────────────
+      - name: Verify PAP on raw-uploads bucket
+        run: |
+          PAP=$(gcloud storage buckets describe "gs://${{ env.RAW_BUCKET }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --format="value(iamConfiguration.publicAccessPrevention)")
+          echo "publicAccessPrevention = ${PAP}"
+          [ "${PAP}" = "enforced" ] || { echo "ERROR: expected enforced, got ${PAP}" >&2; exit 1; }
 
       # ── 2. Create HLS-output bucket (public read for CDN delivery) ───────────
       - name: Create hls-output bucket (public read)
@@ -108,6 +120,14 @@ jobs:
             --role="roles/storage.legacyBucketReader" \
             --project="${{ env.PROJECT_ID }}"
 
+      - name: Grant CI SA objectCreator on raw-uploads (test fixture uploads)
+        run: |
+          CI_SA_EMAIL="${{ env.CI_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.RAW_BUCKET }}" \
+            --member="serviceAccount:${CI_SA_EMAIL}" \
+            --role="roles/storage.objectCreator" \
+            --project="${{ env.PROJECT_ID }}"
+
       - name: Grant CI SA legacyBucketReader on hls-output
         run: |
           CI_SA_EMAIL="${{ env.CI_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
@@ -123,7 +143,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Bucket | Access |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read; CI SA read+create) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| gs://${{ env.HLS_BUCKET }} | allUsers objectViewer (CDN delivery) |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "MYTUBE-49 / MYTUBE-127 tests should now pass." >> "$GITHUB_STEP_SUMMARY"
+          echo "MYTUBE-79 / MYTUBE-49 / MYTUBE-127 tests should now pass." >> "$GITHUB_STEP_SUMMARY"

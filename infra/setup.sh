@@ -48,7 +48,17 @@ if ! gcloud storage buckets describe "gs://${RAW_BUCKET}" --project="${PROJECT}"
     --project="${PROJECT}"
   echo "    Created gs://${RAW_BUCKET}"
 else
-  echo "    gs://${RAW_BUCKET} already exists, skipping."
+  echo "    gs://${RAW_BUCKET} already exists — enforcing public-access-prevention..."
+  gcloud storage buckets update "gs://${RAW_BUCKET}" \
+    --public-access-prevention \
+    --project="${PROJECT}"
+  PAP=$(gcloud storage buckets describe "gs://${RAW_BUCKET}" \
+    --project="${PROJECT}" --format="value(iamConfiguration.publicAccessPrevention)")
+  echo "    publicAccessPrevention = ${PAP}"
+  if [ "${PAP}" != "enforced" ]; then
+    echo "    ERROR: publicAccessPrevention is '${PAP}', expected 'enforced'" >&2
+    exit 1
+  fi
 fi
 
 echo ""
@@ -105,6 +115,13 @@ echo "==> Granting ${CI_SA_EMAIL} legacyBucketReader on ${RAW_BUCKET} (CI/testin
 gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
   --member="serviceAccount:${CI_SA_EMAIL}" \
   --role="roles/storage.legacyBucketReader" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} objectCreator on ${RAW_BUCKET} (CI/testing upload access for test fixtures)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.objectCreator" \
   --project="${PROJECT}"
 
 echo ""

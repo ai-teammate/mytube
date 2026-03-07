@@ -17,13 +17,42 @@ export default function CategoryPage({
   params,
   repository = defaultRepository,
 }: CategoryPageProps) {
-  const { id } = use(params);
+  const { id: paramId } = use(params);
+
+  // GitHub Pages SPA fallback: public/404.html stores the real category ID in
+  // sessionStorage under '__spa_category_id' and redirects to the pre-built shell
+  // at /category/_/. Resolve the actual ID once at mount via a lazy state
+  // initialiser so the loadCategory effect always sees the correct ID.
+  const [id] = useState<string>(() => {
+    if (paramId !== "_" || typeof window === "undefined") return paramId;
+    const storedId = sessionStorage.getItem("__spa_category_id");
+    if (storedId) {
+      sessionStorage.removeItem("__spa_category_id");
+      return storedId;
+    }
+    return paramId;
+  });
+
   const categoryId = parseInt(id, 10);
 
   const [videos, setVideos] = useState<VideoCardItem[]>([]);
   const [category, setCategory] = useState<Category | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Correct the browser URL so the address bar shows /category/<real-id>/
+  // instead of the placeholder /category/_/. Runs once after mount.
+  useEffect(() => {
+    if (id !== paramId && paramId === "_" && typeof window !== "undefined") {
+      const corrected = window.location.pathname.replace(
+        "/category/_/",
+        `/category/${id}/`
+      );
+      window.history.replaceState(null, "", corrected);
+    }
+    // Only run once at mount — id and paramId are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (isNaN(categoryId)) {

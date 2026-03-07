@@ -25,7 +25,41 @@ export default function UserProfilePage({
   repository = defaultRepository,
   playlistRepository = defaultPlaylistRepository,
 }: UserProfilePageProps) {
-  const { username } = use(params);
+  const { username: paramUsername } = use(params);
+
+  // GitHub Pages SPA fallback: public/404.html stores the real username in
+  // sessionStorage under '__spa_username' and redirects to the pre-built shell
+  // at /u/_/. Resolve the actual username once at mount via a lazy state
+  // initialiser so the loadProfile effect always sees the correct value on its
+  // first run.
+  const [username] = useState<string>(() => {
+    if (paramUsername !== "_" || typeof window === "undefined")
+      return paramUsername;
+    const stored = sessionStorage.getItem("__spa_username");
+    if (stored) {
+      sessionStorage.removeItem("__spa_username");
+      return stored;
+    }
+    return paramUsername;
+  });
+
+  // Correct the browser URL so the address bar shows /u/<real-username>/
+  // instead of the placeholder /u/_/. Runs once after mount.
+  useEffect(() => {
+    if (
+      username !== paramUsername &&
+      paramUsername === "_" &&
+      typeof window !== "undefined"
+    ) {
+      const corrected = window.location.pathname.replace(
+        "/u/_/",
+        `/u/${username}/`
+      );
+      window.history.replaceState(null, "", corrected);
+    }
+    // Only run once at mount — username and paramUsername are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [notFound, setNotFound] = useState(false);

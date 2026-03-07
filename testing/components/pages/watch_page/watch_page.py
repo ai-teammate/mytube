@@ -30,7 +30,10 @@ class WatchPage:
 
     # Selectors
     _VJS_PLAYER_CONTAINER = "[data-vjs-player]"
-    _VIDEO_JS_ELEMENT = "video.video-js"
+    # Video.js v8 may restructure the DOM so the original <video> tag receives
+    # class "vjs-tech" rather than "video-js".  Both selectors are included so
+    # is_video_element_present() works regardless of initialisation state.
+    _VIDEO_JS_ELEMENT = "video.video-js, video.vjs-tech"
     _VJS_BIG_PLAY_BUTTON = ".vjs-big-play-button"
     _VJS_CONTROL_BAR = ".vjs-control-bar"
     _LOADING_SPINNER = "[class*='vjs-loading-spinner']"
@@ -38,7 +41,7 @@ class WatchPage:
     _TITLE_HEADING = "h1"
     _LOADING_TEXT = "text=Loading…"
     _NOT_FOUND_TEXT = "text=Video not found."
-    _ERROR_ALERT = "[role='alert']"
+    _ERROR_ALERT = "[data-vjs-player] [role='alert']"
 
     _DEFAULT_LOAD_TIMEOUT = 15_000  # ms
     _PLAYER_INIT_TIMEOUT = 20_000   # ms — wait for Video.js to fully init
@@ -99,6 +102,26 @@ class WatchPage:
     # Wait helpers
     # ------------------------------------------------------------------
 
+    def wait_for_controls(self, timeout: int = _PLAYER_INIT_TIMEOUT) -> None:
+        """Wait until the Video.js control bar is visible."""
+        self._page.wait_for_selector(self._VJS_CONTROL_BAR, state="visible", timeout=timeout)
+
+    def wait_for_big_play_button(self, timeout: int = _PLAYER_INIT_TIMEOUT) -> None:
+        """Wait until the big-play-button overlay is visible."""
+        self._page.wait_for_selector(self._VJS_BIG_PLAY_BUTTON, state="visible", timeout=timeout)
+
+    def is_homepage_grid_visible(self) -> bool:
+        """Return True if any homepage discovery section is still rendered."""
+        recently_uploaded = self._page.locator(
+            "section[aria-labelledby='recently-uploaded-heading']"
+        )
+        most_viewed = self._page.locator(
+            "section[aria-labelledby='most-viewed-heading']"
+        )
+        ru_visible = recently_uploaded.count() > 0 and recently_uploaded.is_visible()
+        mv_visible = most_viewed.count() > 0 and most_viewed.is_visible()
+        return ru_visible or mv_visible
+
     def wait_for_metadata(self, timeout: float = _DEFAULT_LOAD_TIMEOUT) -> None:
         """Wait until the loading indicator disappears and the h1 title is visible."""
         # Wait for the loading spinner to go away
@@ -127,13 +150,14 @@ class WatchPage:
     def is_player_initialised(self) -> bool:
         """Return True when Video.js has attached its classes to the video element.
 
-        Video.js adds the `vjs-paused` (or `vjs-playing`) class to the video
-        element once the player is fully initialised.
+        Video.js adds the `vjs-paused` (or `vjs-playing`) class to the wrapping
+        div element once the player is fully initialised. The selector is
+        tag-agnostic to handle Video.js DOM restructuring at runtime.
         """
         try:
             # Wait up to _PLAYER_INIT_TIMEOUT for any vjs-* state class to appear
             self._page.wait_for_selector(
-                "video.video-js.vjs-paused, video.video-js.vjs-playing",
+                ".video-js.vjs-paused, .video-js.vjs-playing",
                 timeout=self._PLAYER_INIT_TIMEOUT,
             )
             return True
@@ -151,14 +175,45 @@ class WatchPage:
         return bool(el and el.is_visible())
 
     def click_play(self) -> None:
-        """Click the big-play-button to start playback."""
-        self._page.locator(self._VJS_BIG_PLAY_BUTTON).click()
+        """Click the play button to start or replay playback.
+
+        Tries the big-play-button overlay first (visible in initial paused
+        state).  If it is hidden (e.g. after ``vjs-ended`` with the app's
+        custom CSS), falls back to the control-bar play/pause toggle so the
+        test can verify replay behaviour without timing out.
+        """
+        big_btn = self._page.query_selector(self._VJS_BIG_PLAY_BUTTON)
+        if big_btn and big_btn.is_visible():
+            big_btn.click()
+            return
+        # vjs-ended or custom CSS: big play button hidden; use the control bar
+        play_ctrl = self._page.query_selector(".vjs-play-control")
+        if play_ctrl and play_ctrl.is_visible():
+            play_ctrl.click()
+            return
+        # Last resort: click the player container (triggers playback in most themes)
+        self._page.locator(self._VJS_PLAYER_CONTAINER).click()
 
     def is_playing(self) -> bool:
         """Return True when Video.js is in the playing state."""
         try:
             self._page.wait_for_selector(
-                "video.video-js.vjs-playing",
+                ".video-js.vjs-playing",
+                timeout=self._PLAYER_INIT_TIMEOUT,
+            )
+            return True
+        except Exception:
+            return False
+
+    def is_playing_or_ended(self) -> bool:
+        """Return True when Video.js is in the playing or ended state.
+
+        For short/mocked streams the player may transition directly from
+        paused → ended without a measurable vjs-playing window.
+        """
+        try:
+            self._page.wait_for_selector(
+                ".video-js.vjs-playing, .video-js.vjs-ended",
                 timeout=self._PLAYER_INIT_TIMEOUT,
             )
             return True
