@@ -30,9 +30,9 @@ class CategoryPage:
     """
 
     _HEADING_SELECTOR = "h1"
-    # Match actual rendered markup (div.rounded-lg) as well as semantic
-    # fallback selectors for future markup changes.
-    _VIDEO_CARD_SELECTOR = "div.rounded-lg, [data-testid='video-card'], .video-card, article"
+    # Use semantic / test-id selectors; avoid generic utility classes that
+    # can match unrelated rounded containers on the page.
+    _VIDEO_CARD_SELECTOR = "[data-testid='video-card'], .video-card, article"
     _VIDEO_TITLE_SELECTOR = "[data-testid='video-title'], .video-title, h2, h3"
     _ERROR_SELECTOR = "[role='alert']"
     _EMPTY_STATE_MESSAGES = ("No videos in this category yet", "No videos")
@@ -143,19 +143,26 @@ class CategoryPage:
         )
 
     def has_empty_state_message(self) -> bool:
-        """Return True if the page contains a user-friendly empty-state message."""
+        """Return True if an empty-state message is visibly rendered in the DOM.
+
+        Uses get_by_text() so only text actually rendered in the viewport is
+        matched — not hidden elements, <script> bundles, or <noscript> blocks.
+        """
         try:
-            content = self._page.content()
-            return any(msg in content for msg in self._EMPTY_STATE_MESSAGES)
+            for msg in self._EMPTY_STATE_MESSAGES:
+                locator = self._page.get_by_text(msg, exact=False)
+                if locator.count() > 0 and locator.first.is_visible():
+                    return True
+            return False
         except Exception:
             return False
 
     def get_empty_state_message(self) -> Optional[str]:
-        """Return the first matching empty-state message found in the page, or None."""
+        """Return the first empty-state message visibly rendered in the DOM, or None."""
         try:
-            content = self._page.content()
             for msg in self._EMPTY_STATE_MESSAGES:
-                if msg in content:
+                locator = self._page.get_by_text(msg, exact=False)
+                if locator.count() > 0 and locator.first.is_visible():
                     return msg
         except Exception:
             pass
