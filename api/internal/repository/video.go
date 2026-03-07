@@ -395,7 +395,8 @@ type GCSPaths struct {
 // SoftDelete sets the status of the video with the given ID to 'deleted'.
 // Ownership is checked explicitly before the update so callers can distinguish
 // between "video not found" and "caller is not the owner":
-//   - Returns (false, nil, nil)          when the video does not exist or is already deleted.
+//   - Returns (false, nil, nil)          when the video does not exist or is already deleted
+//     (including the TOCTOU case where the SELECT succeeds but UPDATE affects 0 rows).
 //   - Returns (false, nil, ErrForbidden) when the video exists but uploaderID is not the owner.
 //   - Returns (true,  *GCSPaths, nil)    on successful soft-deletion; GCSPaths contains
 //     the raw and HLS paths so the caller can clean up GCS objects.
@@ -431,7 +432,10 @@ WHERE  id          = $1
 	if err != nil {
 		return false, nil, fmt.Errorf("soft delete video rows affected: %w", err)
 	}
-	return rows > 0, &paths, nil
+	if rows == 0 {
+		return false, nil, nil
+	}
+	return true, &paths, nil
 }
 
 // Create inserts a new video row with status=processing and the given GCS raw path,

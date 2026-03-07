@@ -68,6 +68,9 @@ func NewManageVideoHandlerWithDeleter(videos VideoProvider, manager VideoManager
 func newManageVideoHandlerWithDeleter(videos VideoProvider, manager VideoManager, users UserIDProvider, cdnBaseURL string, deleter storage.ObjectDeleter) http.Handler {
 	deleteEnabled := os.Getenv("DELETE_ON_VIDEO_DELETE") != "false"
 	rawBucket := os.Getenv("RAW_UPLOADS_BUCKET")
+	if deleteEnabled && rawBucket == "" {
+		log.Printf("warning: DELETE_ON_VIDEO_DELETE=true but RAW_UPLOADS_BUCKET is not set; raw-file cleanup will be skipped")
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -244,7 +247,9 @@ func cleanupVideoGCSObjects(ctx context.Context, deleter storage.ObjectDeleter, 
 	// Delete raw upload.
 	if rawBucket != "" && paths.RawPath != nil && *paths.RawPath != "" {
 		rawPath := *paths.RawPath
-		if !strings.HasPrefix(rawPath, "videos/") {
+		if strings.HasPrefix(rawPath, "videos/") {
+			log.Printf("cleanup: skipping raw path %q — looks like an HLS path, refusing to delete from raw bucket", rawPath)
+		} else {
 			if err := deleter.DeleteObject(ctx, rawBucket, rawPath); err != nil {
 				log.Printf("cleanup: delete raw gs://%s/%s: %v", rawBucket, rawPath, err)
 			} else {

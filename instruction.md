@@ -183,5 +183,13 @@ All environment-specific values live in `dmtools.env` (gitignored) and are provi
 | `CODEMIE_BASE_URL` | Codemie endpoint |
 | `CODEMIE_MODEL` | Codemie model name |
 | `CODEMIE_MAX_TURNS` | Codemie max turns |
+
+### Cloud Run Environment Variables
+
+These variables are set directly on the Cloud Run service (and Cloud Run Jobs) via `gcloud run services update --set-env-vars` or Terraform. They are **not** GitHub Actions variables and have no effect if configured in GitHub.
+
+| Variable | Description |
+|----------|-------------|
+| `RAW_UPLOADS_BUCKET` | Name of the GCS bucket for raw video uploads (e.g. `mytube-raw-uploads`). Required for raw-file cleanup on video delete; if unset, raw-file cleanup is skipped with a warning log. |
 | `DELETE_ON_VIDEO_DELETE` | Set to `false` to disable GCS object cleanup on video delete (default: `true`) |
 | `CLEANUP_ON_TRANSCODE_FAILURE` | Set to `false` to disable HLS cleanup on transcoding failure (default: `true`) |
