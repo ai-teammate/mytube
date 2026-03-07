@@ -6,6 +6,10 @@
  *
  * GitHub's recommended pattern: configure-pages runs BEFORE the build so the
  * Pages environment is validated before any build work is done.
+ *
+ * Also covers MYTUBE-282: next build overwrites out/404.html with the
+ * Next.js-generated /_not-found page, replacing the custom SPA redirect in
+ * public/404.html. A post-build step must restore the SPA redirect page.
  */
 
 import * as fs from "fs";
@@ -46,5 +50,44 @@ describe("deploy-pages.yml workflow configuration", () => {
     // The Next.js static export writes to web/out. If the path is wrong the
     // uploaded artifact is empty and GitHub Pages returns 404.
     expect(workflowContent).toMatch(/path:\s+['"]?\.\/web\/out['"]?/);
+  });
+
+  it("does NOT overwrite public/404.html with the homepage HTML (MYTUBE-280)", () => {
+    // Root cause of MYTUBE-280: the workflow used to copy out/index.html over
+    // out/404.html.  This caused GitHub Pages to serve pre-rendered *homepage*
+    // HTML for every unknown URL (e.g. /v/<uuid>/).  The Next.js App Router
+    // then hydrated the DOM as the homepage instead of routing to the watch page.
+    //
+    // The fix: public/404.html is now a proper SPA redirect page included in
+    // the build output by Next.js itself.  The cp step must not be present.
+    expect(workflowContent).not.toContain("cp out/index.html out/404.html");
+  });
+
+  it("restores custom SPA 404.html after build — next build overwrites it (MYTUBE-282)", () => {
+    // Root cause of MYTUBE-282: `next build` with `output: 'export'` generates
+    // out/404.html from the /_not-found route (the Next.js default error page).
+    // This overwrites public/404.html (the custom SPA redirect) before the artifact
+    // is uploaded.  GitHub Pages then serves the Next.js "This page could not be
+    // found." page for every unknown URL (e.g. /v/<uuid>/) instead of the SPA
+    // redirect to the pre-built shell at /v/_/.
+    //
+    // Fix: a post-build step must copy public/404.html to out/404.html so the
+    // SPA redirect page is always present in the uploaded artifact.
+    expect(workflowContent).toContain("cp public/404.html out/404.html");
+  });
+
+  it("restore step must appear after the build step and before artifact upload (MYTUBE-282)", () => {
+    // The copy must happen after `npm run build` (which generates out/404.html)
+    // and before `upload-pages-artifact` (which packages the artifact).
+    const buildIdx = workflowContent.indexOf("npm run build");
+    const restoreIdx = workflowContent.indexOf("cp public/404.html out/404.html");
+    const uploadIdx = workflowContent.indexOf("upload-pages-artifact");
+
+    expect(buildIdx).toBeGreaterThan(-1);
+    expect(restoreIdx).toBeGreaterThan(-1);
+    expect(uploadIdx).toBeGreaterThan(-1);
+
+    expect(restoreIdx).toBeGreaterThan(buildIdx);
+    expect(restoreIdx).toBeLessThan(uploadIdx);
   });
 });

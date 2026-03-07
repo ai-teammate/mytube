@@ -81,6 +81,7 @@ SELECT v.id,
        v.description,
        v.hls_manifest_path,
        v.thumbnail_url,
+       v.category_id,
        v.view_count,
        v.created_at,
        v.status,
@@ -100,6 +101,7 @@ WHERE  v.id = $1
 		&v.Description,
 		&v.HLSManifestPath,
 		&v.ThumbnailURL,
+		&v.CategoryID,
 		&v.ViewCount,
 		&v.CreatedAt,
 		&v.Status,
@@ -410,13 +412,13 @@ WHERE  id          = $1
 	return rows > 0, nil
 }
 
-// Create inserts a new video row with status=pending and the given GCS raw path,
+// Create inserts a new video row with status=processing and the given GCS raw path,
 // then inserts any provided tags into the video_tags table.
 // Returns the created VideoRecord.
 func (r *VideoRepository) Create(ctx context.Context, p CreateVideoParams) (*VideoRecord, error) {
 	const insertSQL = `
 INSERT INTO videos (id, uploader_id, title, description, category_id, status, gcs_raw_path)
-VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+VALUES ($1, $2, $3, $4, $5, 'processing', $6)
 RETURNING id, uploader_id, title, description, category_id, status, gcs_raw_path, created_at`
 
 	row := r.db.QueryRowContext(ctx, insertSQL,

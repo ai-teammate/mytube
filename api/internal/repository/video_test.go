@@ -62,7 +62,7 @@ func (q *videoDetailQuerier) QueryRowContext(_ context.Context, _ string, _ ...a
 		{
 			columns: []string{
 				"id", "title", "description", "hls_manifest_path",
-				"thumbnail_url", "view_count", "created_at", "status",
+				"thumbnail_url", "category_id", "view_count", "created_at", "status",
 				"username", "avatar_url",
 			},
 			rows: [][]driver.Value{{
@@ -71,6 +71,7 @@ func (q *videoDetailQuerier) QueryRowContext(_ context.Context, _ string, _ ...a
 				descVal,
 				hlsVal,
 				thumbVal,
+				q.video.CategoryID,
 				q.video.ViewCount,
 				q.video.CreatedAt,
 				q.video.Status,
@@ -128,6 +129,7 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 	hls := "gs://bucket/videos/v1/index.m3u8"
 	thumb := "https://cdn.example.com/thumb.jpg"
 	avatarURL := "https://example.com/avatar.png"
+	catID := 3
 
 	expected := &repository.VideoDetail{
 		ID:                "video-id-1",
@@ -135,6 +137,7 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 		Description:       &desc,
 		HLSManifestPath:   &hls,
 		ThumbnailURL:      &thumb,
+		CategoryID:        &catID,
 		ViewCount:         123,
 		CreatedAt:         now,
 		Status:            "ready",
@@ -168,6 +171,9 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 	if got.ThumbnailURL == nil || *got.ThumbnailURL != thumb {
 		t.Errorf("ThumbnailURL: got %v, want %q", got.ThumbnailURL, thumb)
 	}
+	if got.CategoryID == nil || *got.CategoryID != catID {
+		t.Errorf("CategoryID: got %v, want %d", got.CategoryID, catID)
+	}
 	if got.ViewCount != 123 {
 		t.Errorf("ViewCount: got %d, want 123", got.ViewCount)
 	}
@@ -190,6 +196,7 @@ func TestGetByID_NilOptionalFields(t *testing.T) {
 		Description:       nil,
 		HLSManifestPath:   nil,
 		ThumbnailURL:      nil,
+		CategoryID:        nil,
 		ViewCount:         0,
 		CreatedAt:         now,
 		Status:            "ready",
@@ -216,6 +223,9 @@ func TestGetByID_NilOptionalFields(t *testing.T) {
 	}
 	if got.ThumbnailURL != nil {
 		t.Errorf("expected nil ThumbnailURL, got %v", got.ThumbnailURL)
+	}
+	if got.CategoryID != nil {
+		t.Errorf("expected nil CategoryID, got %d", *got.CategoryID)
 	}
 	if got.UploaderAvatarURL != nil {
 		t.Errorf("expected nil UploaderAvatarURL, got %v", got.UploaderAvatarURL)
@@ -418,7 +428,7 @@ func TestVideoCreate_ReturnsVideoRecord(t *testing.T) {
 		Title:       "My First Video",
 		Description: &desc,
 		CategoryID:  &catID,
-		Status:      "pending",
+		Status:      "processing",
 		GCSRawPath:  &rawPath,
 		CreatedAt:   time.Now().Truncate(time.Second),
 	}
@@ -447,8 +457,8 @@ func TestVideoCreate_ReturnsVideoRecord(t *testing.T) {
 	if got.Title != expected.Title {
 		t.Errorf("Title: got %q, want %q", got.Title, expected.Title)
 	}
-	if got.Status != "pending" {
-		t.Errorf("Status: got %q, want %q", got.Status, "pending")
+	if got.Status != "processing" {
+		t.Errorf("Status: got %q, want %q", got.Status, "processing")
 	}
 	if got.Description == nil || *got.Description != desc {
 		t.Errorf("Description: got %v, want %q", got.Description, desc)
@@ -466,7 +476,7 @@ func TestVideoCreate_NilDescriptionAndCategory(t *testing.T) {
 		Title:       "No Description",
 		Description: nil,
 		CategoryID:  nil,
-		Status:      "pending",
+		Status:      "processing",
 		GCSRawPath:  &rawPath,
 		CreatedAt:   time.Now().Truncate(time.Second),
 	}
@@ -518,7 +528,7 @@ func TestVideoCreate_InsertsTagsViaExec(t *testing.T) {
 		ID:         "vid-tags",
 		UploaderID: "uploader-tags",
 		Title:      "Tagged Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
@@ -547,7 +557,7 @@ func TestVideoCreate_SkipsEmptyTags(t *testing.T) {
 		ID:         "vid-empty-tags",
 		UploaderID: "uploader-3",
 		Title:      "Some Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
@@ -578,7 +588,7 @@ func TestVideoCreate_TagExecError_ReturnsError(t *testing.T) {
 		ID:         "vid-tag-err",
 		UploaderID: "uploader-4",
 		Title:      "Error Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
@@ -606,7 +616,7 @@ func TestVideoCreate_NoTags_NoExecCalls(t *testing.T) {
 		ID:         "vid-no-tags",
 		UploaderID: "uploader-5",
 		Title:      "No Tags Video",
-		Status:     "pending",
+		Status:     "processing",
 		GCSRawPath: &rawPath,
 		CreatedAt:  time.Now().Truncate(time.Second),
 	}
