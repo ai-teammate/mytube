@@ -126,7 +126,7 @@ def navigation_result(
     clicked_title = home_page.click_first_video_card_title()
 
     # Wait until we're on a /v/ path (client-side navigation)
-    home_page._page.wait_for_url(re.compile(r"/v/[^/]+"), timeout=_PAGE_LOAD_TIMEOUT)
+    home_page.wait_for_navigation_to_watch(timeout=_PAGE_LOAD_TIMEOUT)
 
     # Wait for loading indicator to disappear and h1 to appear
     watch_page.wait_for_metadata(timeout=_PAGE_LOAD_TIMEOUT)
@@ -186,12 +186,7 @@ class TestWatchPageNavigationFromHomepage:
 
     def test_vjs_control_bar_visible(self, navigation_result: dict, watch_page: WatchPage):
         """Step 5a: .vjs-control-bar must be visible after player initialisation."""
-        # Wait for Video.js to fully initialise before asserting
-        watch_page._page.wait_for_selector(
-            ".vjs-control-bar",
-            state="visible",
-            timeout=_PLAYER_INIT_TIMEOUT,
-        )
+        watch_page.wait_for_controls(timeout=_PLAYER_INIT_TIMEOUT)
         assert watch_page.is_controls_visible(), (
             ".vjs-control-bar is not visible. "
             "The Video.js player control bar did not render — the player may "
@@ -200,11 +195,7 @@ class TestWatchPageNavigationFromHomepage:
 
     def test_vjs_big_play_button_visible(self, navigation_result: dict, watch_page: WatchPage):
         """Step 5b: .vjs-big-play-button must be visible (player ready, paused state)."""
-        watch_page._page.wait_for_selector(
-            ".vjs-big-play-button",
-            state="visible",
-            timeout=_PLAYER_INIT_TIMEOUT,
-        )
+        watch_page.wait_for_big_play_button(timeout=_PLAYER_INIT_TIMEOUT)
         assert watch_page.is_big_play_button_visible(), (
             ".vjs-big-play-button is not visible. "
             "The Video.js big-play-button overlay did not appear — the player "
@@ -233,17 +224,7 @@ class TestWatchPageNavigationFromHomepage:
 
     def test_homepage_grid_not_rendered(self, navigation_result: dict, watch_page: WatchPage):
         """Step 9: After navigation, the homepage discovery grid must not be visible."""
-        recently_uploaded = watch_page._page.locator(
-            "section[aria-labelledby='recently-uploaded-heading']"
-        )
-        most_viewed = watch_page._page.locator(
-            "section[aria-labelledby='most-viewed-heading']"
-        )
-        assert recently_uploaded.count() == 0 or not recently_uploaded.is_visible(), (
-            "The 'Recently Uploaded' homepage section is still visible on the watch page. "
-            "The client-side router did not unmount the homepage component."
-        )
-        assert most_viewed.count() == 0 or not most_viewed.is_visible(), (
-            "The 'Most Viewed' homepage section is still visible on the watch page. "
+        assert not watch_page.is_homepage_grid_visible(), (
+            "Homepage discovery sections are still visible on the watch page. "
             "The client-side router did not unmount the homepage component."
         )

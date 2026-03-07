@@ -249,3 +249,8 @@ class HomePage:
     def has_video_cards(self) -> bool:
         """Return True if at least one video card title link is present."""
         return self._page.locator("a.text-sm.font-medium").count() > 0
+
+    def wait_for_navigation_to_watch(self, timeout: int = 30_000) -> None:
+        """Wait until the browser URL contains a /v/<uuid> segment."""
+        import re
+        self._page.wait_for_url(re.compile(r"/v/[^/]+"), timeout=timeout)
