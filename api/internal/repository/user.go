@@ -125,6 +125,7 @@ SELECT id, title, thumbnail_url, view_count, created_at
 FROM   videos
 WHERE  uploader_id = $1
   AND  status = 'ready'
+  AND  hls_manifest_path IS NOT NULL
 ORDER BY created_at DESC
 LIMIT 50`
 
