@@ -30,7 +30,10 @@ class WatchPage:
 
     # Selectors
     _VJS_PLAYER_CONTAINER = "[data-vjs-player]"
-    _VIDEO_JS_ELEMENT = "video.video-js"
+    # Video.js v8 may restructure the DOM so the original <video> tag receives
+    # class "vjs-tech" rather than "video-js".  Both selectors are included so
+    # is_video_element_present() works regardless of initialisation state.
+    _VIDEO_JS_ELEMENT = "video.video-js, video.vjs-tech"
     _VJS_BIG_PLAY_BUTTON = ".vjs-big-play-button"
     _VJS_CONTROL_BAR = ".vjs-control-bar"
     _LOADING_SPINNER = "[class*='vjs-loading-spinner']"
@@ -172,14 +175,45 @@ class WatchPage:
         return bool(el and el.is_visible())
 
     def click_play(self) -> None:
-        """Click the big-play-button to start playback."""
-        self._page.locator(self._VJS_BIG_PLAY_BUTTON).click()
+        """Click the play button to start or replay playback.
+
+        Tries the big-play-button overlay first (visible in initial paused
+        state).  If it is hidden (e.g. after ``vjs-ended`` with the app's
+        custom CSS), falls back to the control-bar play/pause toggle so the
+        test can verify replay behaviour without timing out.
+        """
+        big_btn = self._page.query_selector(self._VJS_BIG_PLAY_BUTTON)
+        if big_btn and big_btn.is_visible():
+            big_btn.click()
+            return
+        # vjs-ended or custom CSS: big play button hidden; use the control bar
+        play_ctrl = self._page.query_selector(".vjs-play-control")
+        if play_ctrl and play_ctrl.is_visible():
+            play_ctrl.click()
+            return
+        # Last resort: click the player container (triggers playback in most themes)
+        self._page.locator(self._VJS_PLAYER_CONTAINER).click()
 
     def is_playing(self) -> bool:
         """Return True when Video.js is in the playing state."""
         try:
             self._page.wait_for_selector(
                 ".video-js.vjs-playing",
+                timeout=self._PLAYER_INIT_TIMEOUT,
+            )
+            return True
+        except Exception:
+            return False
+
+    def is_playing_or_ended(self) -> bool:
+        """Return True when Video.js is in the playing or ended state.
+
+        For short/mocked streams the player may transition directly from
+        paused → ended without a measurable vjs-playing window.
+        """
+        try:
+            self._page.wait_for_selector(
+                ".video-js.vjs-playing, .video-js.vjs-ended",
                 timeout=self._PLAYER_INIT_TIMEOUT,
             )
             return True
