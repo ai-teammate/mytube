@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useRef, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import RequireAuth from "@/components/RequireAuth";
 import { ApiVideoUploadRepository } from "@/data/videoUploadRepository";
 import {
   ACCEPTED_VIDEO_MIME_TYPES,
@@ -46,8 +47,16 @@ function formatBytes(bytes: number): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function UploadPage() {
+  return (
+    <RequireAuth>
+      <UploadPageContent />
+    </RequireAuth>
+  );
+}
+
+function UploadPageContent() {
   const router = useRouter();
-  const { user, loading, getIdToken } = useAuth();
+  const { user, getIdToken } = useAuth();
 
   const [form, setForm] = useState<UploadFormState>({
     title: "",
@@ -65,13 +74,6 @@ export default function UploadPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const xhrRef = useRef<XMLHttpRequest | null>(null);
-
-  // Redirect unauthenticated users to login.
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
-    }
-  }, [user, loading, router]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -208,18 +210,6 @@ export default function UploadPage() {
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-start justify-center py-12 px-4">
