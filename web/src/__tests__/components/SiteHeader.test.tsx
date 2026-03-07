@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 // ─── Mock next/navigation ─────────────────────────────────────────────────────
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
