@@ -131,7 +131,6 @@ class TestGCSBucketServicePublicAccess(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=exc):
             result = service.attempt_public_access("probe.txt")
 
-        self.assertEqual(result.http_status, 403)
         # The integration test assertion (from MYTUBE-48) must pass:
         self.assertEqual(
             result.http_status,
