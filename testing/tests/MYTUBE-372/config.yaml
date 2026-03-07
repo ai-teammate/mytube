@@ -1,0 +1,5 @@
+test_id: MYTUBE-372
+type: infrastructure
+framework: static-analysis+go-test
+platform: cloud-run
+dependencies: []
