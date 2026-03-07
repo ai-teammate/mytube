@@ -43,6 +43,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
+// ─── Mock AuthContext for SiteHeader ──────────────────────────────────────────
+jest.mock("@/context/AuthContext", () => ({
+  useAuth: () => ({ user: null, loading: false, signOut: jest.fn() }),
+}));
+
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 import CategoryPage from "@/app/category/[id]/CategoryPageClient";
 

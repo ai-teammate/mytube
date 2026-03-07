@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   signInWithEmailAndPassword,
@@ -11,20 +11,33 @@ import {
 import { getFirebaseAuth } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
-export default function LoginPage() {
+/**
+ * Validates a `next` redirect URL.
+ * Must be a relative path starting with "/" and not an absolute URL.
+ */
+export function getSafeNextUrl(next: string | null): string {
+  if (!next) return "/";
+  if (next.startsWith("/") && !next.startsWith("//")) return next;
+  return "/";
+}
+
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect already-authenticated users to home.
+  const next = getSafeNextUrl(searchParams.get("next"));
+
+  // Redirect already-authenticated users to the intended page (or home).
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/");
+      router.replace(next);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, next]);
 
   async function handleEmailSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +46,7 @@ export default function LoginPage() {
     try {
       const auth = getFirebaseAuth();
       await signInWithEmailAndPassword(auth, email, password);
-      router.replace("/");
+      router.replace(next);
     } catch (err: unknown) {
       setError(getFirebaseErrorMessage(err));
     } finally {
@@ -48,7 +61,7 @@ export default function LoginPage() {
       const auth = getFirebaseAuth();
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-      router.replace("/");
+      router.replace(next);
     } catch (err: unknown) {
       setError(getFirebaseErrorMessage(err));
     } finally {
@@ -59,7 +72,7 @@ export default function LoginPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
+        <p className="text-gray-600">Loading…</p>
       </div>
     );
   }
@@ -167,7 +180,7 @@ export default function LoginPage() {
           Sign in with Google
         </button>
 
-        <p className="text-center text-sm text-gray-500">
+        <p className="text-center text-sm text-gray-600">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="text-blue-600 hover:underline font-medium">
             Create one
@@ -175,6 +188,20 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-gray-600">Loading…</p>
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }
 

@@ -8,8 +8,11 @@ import userEvent from "@testing-library/user-event";
 // ─── Mock next/navigation ─────────────────────────────────────────────────────
 
 const mockRouterReplace = jest.fn();
+let mockSearchParamsNext: string | null = null;
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
+  useSearchParams: () => ({ get: (key: string) => (key === "next" ? mockSearchParamsNext : null) }),
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
@@ -40,7 +43,7 @@ jest.mock("@/lib/firebase", () => ({
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 
-import LoginPage from "@/app/login/page";
+import LoginPage, { getSafeNextUrl } from "@/app/login/page";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,7 @@ describe("LoginPage", () => {
     jest.clearAllMocks();
     mockUser = null;
     mockLoading = false;
+    mockSearchParamsNext = null;
   });
 
   it("renders loading state when loading=true", () => {
@@ -72,11 +76,20 @@ describe("LoginPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("redirects to / when user is already authenticated", async () => {
+  it("redirects to / when user is already authenticated and no next param", async () => {
     mockUser = { email: "alice@example.com" };
     render(<LoginPage />);
     await waitFor(() => {
       expect(mockRouterReplace).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("redirects to next param URL when user is already authenticated", async () => {
+    mockUser = { email: "alice@example.com" };
+    mockSearchParamsNext = "/upload";
+    render(<LoginPage />);
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/upload");
     });
   });
 
@@ -98,7 +111,7 @@ describe("LoginPage", () => {
     });
   });
 
-  it("redirects to / on successful email sign-in", async () => {
+  it("redirects to / on successful email sign-in with no next param", async () => {
     mockSignInWithEmailAndPassword.mockResolvedValue({});
     const user = userEvent.setup();
     render(<LoginPage />);
@@ -109,6 +122,34 @@ describe("LoginPage", () => {
 
     await waitFor(() => {
       expect(mockRouterReplace).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("redirects to next param on successful email sign-in", async () => {
+    mockSignInWithEmailAndPassword.mockResolvedValue({});
+    mockSearchParamsNext = "/dashboard";
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.type(screen.getByLabelText(/email/i), "alice@example.com");
+    await user.type(screen.getByLabelText(/password/i), "pass");
+    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/dashboard");
+    });
+  });
+
+  it("redirects to next param on successful Google sign-in", async () => {
+    mockSignInWithPopup.mockResolvedValue({});
+    mockSearchParamsNext = "/settings";
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/settings");
     });
   });
 
@@ -191,7 +232,7 @@ describe("LoginPage", () => {
     });
   });
 
-  it("redirects to / on successful Google sign-in", async () => {
+  it("redirects to / on successful Google sign-in with no next param", async () => {
     mockSignInWithPopup.mockResolvedValue({});
     const user = userEvent.setup();
     render(<LoginPage />);
@@ -238,5 +279,37 @@ describe("LoginPage", () => {
       expect(mockGetIdToken).toBeDefined();
       expect(typeof mockGetIdToken).toBe("function");
     });
+  });
+});
+
+// ─── getSafeNextUrl ───────────────────────────────────────────────────────────
+
+describe("getSafeNextUrl", () => {
+  it("returns / for null input", () => {
+    expect(getSafeNextUrl(null)).toBe("/");
+  });
+
+  it("returns / for empty string", () => {
+    expect(getSafeNextUrl("")).toBe("/");
+  });
+
+  it("returns the path when it starts with /", () => {
+    expect(getSafeNextUrl("/upload")).toBe("/upload");
+    expect(getSafeNextUrl("/dashboard?uploaded=123")).toBe("/dashboard?uploaded=123");
+    expect(getSafeNextUrl("/settings")).toBe("/settings");
+  });
+
+  it("returns / for absolute URLs to prevent open redirect", () => {
+    expect(getSafeNextUrl("https://evil.com")).toBe("/");
+    expect(getSafeNextUrl("http://evil.com/path")).toBe("/");
+  });
+
+  it("returns / for protocol-relative URLs (//) to prevent open redirect", () => {
+    expect(getSafeNextUrl("//evil.com")).toBe("/");
+  });
+
+  it("returns / for paths without leading slash", () => {
+    expect(getSafeNextUrl("evil.com")).toBe("/");
+    expect(getSafeNextUrl("upload")).toBe("/");
   });
 });
