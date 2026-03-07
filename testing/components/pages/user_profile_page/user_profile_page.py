@@ -28,7 +28,7 @@ class UserProfilePage:
     _USERNAME_HEADING = "h1"
     _AVATAR_IMAGE = "img[alt*=\"avatar\"]"
     _AVATAR_INITIALS = "[aria-label*=\"avatar\"]"
-    _VIDEO_CARD = "a[href^='/v/']"
+    _VIDEO_CARD = "a[href*='/v/']"
     _LOADING_SPINNER = "text=Loading\u2026"  # "Loading…"
 
     def __init__(self, page: Page) -> None:
@@ -37,11 +37,6 @@ class UserProfilePage:
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
-
-    def navigate_to_user(self, base_url: str, username: str) -> None:
-        """Navigate to the profile page for *username* and wait for load."""
-        url = f"{base_url.rstrip('/')}/u/{username}"
-        self._page.goto(url, wait_until="domcontentloaded")
 
     def navigate(self, base_url: str, username: str) -> None:
         """Navigate to /u/<username> and wait for the loading spinner to disappear."""
@@ -115,7 +110,7 @@ class UserProfilePage:
 
     def all_video_hrefs_match_pattern(self) -> bool:
         """Return True if every video card href matches the /v/<id> pattern."""
-        pattern = re.compile(r"^/v/.+")
+        pattern = re.compile(r"^(/[^/]+)?/v/.+")
         hrefs = self.get_video_hrefs()
         if not hrefs:
             return False
