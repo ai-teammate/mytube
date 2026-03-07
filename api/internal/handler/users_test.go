@@ -333,3 +333,20 @@ func TestNewUsersHandler_GET_InvalidUsernameChars_Returns400(t *testing.T) {
 		t.Errorf("expected 400 for invalid username chars, got %d", rec.Code)
 	}
 }
+
+// TestNewUsersHandler_GET_HyphenatedUsername_Returns200 is the reproduction
+// test for MYTUBE-304: the ci-test user has a hyphen in their username
+// (derived from ci-test@mytube.test). The handler was rejecting the request
+// with 400 because usernameRE did not allow hyphens.
+func TestNewUsersHandler_GET_HyphenatedUsername_Returns200(t *testing.T) {
+	user := &repository.User{ID: "ci-user-id", Username: "ci-test"}
+	p := &stubPublicUserProvider{user: user, videos: []repository.Video{}}
+	h := handler.NewUsersHandler(p)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/users/ci-test", nil)
+	rec := serveUsers(h, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for hyphenated username ci-test, got %d", rec.Code)
+	}
+}

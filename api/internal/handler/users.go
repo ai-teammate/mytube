@@ -35,10 +35,12 @@ type UserProfileResponse struct {
 	Videos    []VideoSummary `json:"videos"`
 }
 
-// usernameRE matches valid usernames: alphanumerics and underscores only.
-// This mirrors the character set used when auto-deriving usernames from email
-// prefixes and the deduplication logic in migration 0005.
-var usernameRE = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+// usernameRE matches valid usernames: alphanumerics, underscores, and hyphens.
+// Hyphens are required because usernames are derived from email prefixes via
+// emailPrefix() (e.g. "ci-test@example.com" → "ci-test"), and email local
+// parts can legally contain hyphens.  The deduplication logic in migration
+// 0005 appends numeric suffixes with underscores (e.g. "ci-test_2").
+var usernameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // isValidUsername returns true when username is non-empty, at most 100
 // characters (matching the users.username VARCHAR(100) column), and contains
