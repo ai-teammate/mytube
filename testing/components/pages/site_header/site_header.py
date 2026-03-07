@@ -44,3 +44,41 @@ class SiteHeader:
     def logo_text(self) -> str:
         """Return the text content of the logo link."""
         return self._page.locator(self._LOGO_LINK).first.inner_text().strip()
+
+    # ------------------------------------------------------------------
+    # Auth-state assertions
+    # ------------------------------------------------------------------
+
+    # role="alert" span rendered by SiteHeader.tsx when authError=true
+    _AUTH_ERROR_ALERT_SELECTOR = "[role='alert']"
+
+    # "Sign in" navigation link rendered when not authenticated and no auth error.
+    # Scoped to <header> to avoid matching form buttons/headings on other pages.
+    _SIGN_IN_LINK_SELECTOR = "header a:has-text('Sign in')"
+
+    def has_auth_error_alert(self) -> bool:
+        """Return True if the auth-error alert is visible in the site header.
+
+        The alert is the ``<span role="alert">`` rendered by SiteHeader.tsx
+        when ``authError=true``.  It contains the text
+        "Authentication services are currently unavailable".
+        """
+        locator = self._page.locator(self._AUTH_ERROR_ALERT_SELECTOR)
+        return locator.count() > 0 and locator.first.is_visible()
+
+    def auth_error_alert_text(self) -> str:
+        """Return the text content of the auth-error alert, or empty string."""
+        locator = self._page.locator(self._AUTH_ERROR_ALERT_SELECTOR)
+        if locator.count() == 0 or not locator.first.is_visible():
+            return ""
+        return (locator.first.text_content() or "").strip()
+
+    def has_sign_in_link(self) -> bool:
+        """Return True if the 'Sign in' navigation link is visible in the header.
+
+        This checks *only* ``<a>`` elements inside ``<header>`` to avoid
+        matching 'Sign in' buttons or headings on other parts of the page
+        (e.g., the login form's ``<h2>Sign in</h2>``).
+        """
+        locator = self._page.locator(self._SIGN_IN_LINK_SELECTOR)
+        return locator.count() > 0 and locator.first.is_visible()
