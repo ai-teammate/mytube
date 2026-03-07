@@ -1,0 +1,137 @@
+name: Deploy Transcoder Trigger
+
+# Deploys the mytube-transcoder-trigger Cloud Run Service and ensures the
+# Eventarc pipeline (API enablement + trigger creation) is in place.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/transcoder-trigger/**'
+      - '.github/workflows/deploy-transcoder-trigger.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-transcoder-trigger-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID:      ${{ vars.GCP_PROJECT_ID }}
+  REGION:          ${{ vars.GCP_REGION }}
+  SERVICE:         mytube-transcoder-trigger
+  IMAGE:           gcr.io/${{ vars.GCP_PROJECT_ID }}/mytube-transcoder-trigger
+  JOB_NAME:        mytube-transcoder
+  HLS_BUCKET:      mytube-hls-output
+  TRANSCODER_SA:   mytube-transcoder
+  RAW_BUCKET:      mytube-raw-uploads
+  TRIGGER_NAME:    mytube-gcs-finalize
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── 1. Enable required APIs ────────────────────────────────────────────
+      - name: Enable required APIs
+        run: |
+          gcloud services enable \
+            eventarc.googleapis.com \
+            run.googleapis.com \
+            pubsub.googleapis.com \
+            --project="${{ env.PROJECT_ID }}"
+
+      # ── 2. Build and push Docker image ────────────────────────────────────
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker gcr.io --quiet
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t ${{ env.IMAGE }}:${{ github.sha }} ./infra/transcoder-trigger
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+
+      # ── 3. Deploy Cloud Run Service ────────────────────────────────────────
+      - name: Deploy mytube-transcoder-trigger to Cloud Run
+        run: |
+          TRANSCODER_SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --no-allow-unauthenticated \
+            --service-account "${TRANSCODER_SA_EMAIL}" \
+            --set-env-vars "JOB_NAME=${{ env.JOB_NAME }},GCP_REGION=${{ env.REGION }},GCP_PROJECT=${{ env.PROJECT_ID }},HLS_BUCKET=${{ env.HLS_BUCKET }}" \
+            --max-instances 5 \
+            --project ${{ env.PROJECT_ID }}
+
+      # ── 4. Grant IAM permissions for Eventarc event delivery ──────────────
+      - name: Grant GCS service agent roles/run.invoker on trigger service
+        run: |
+          GCS_SA=$(gcloud storage service-agent --project "${{ env.PROJECT_ID }}")
+          gcloud run services add-iam-policy-binding ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --member "serviceAccount:${GCS_SA}" \
+            --role roles/run.invoker
+
+      - name: Grant trigger service account roles/run.invoker on trigger service
+        run: |
+          TRANSCODER_SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud run services add-iam-policy-binding ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --member "serviceAccount:${TRANSCODER_SA_EMAIL}" \
+            --role roles/run.invoker
+
+      # ── 5. Create Eventarc trigger (idempotent: delete-and-recreate) ───────
+      - name: Create or update Eventarc trigger mytube-gcs-finalize
+        run: |
+          TRANSCODER_SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+
+          # Delete the trigger if it already exists so we can re-create with
+          # the latest settings (Eventarc triggers cannot be updated in-place
+          # for destination or filter changes).
+          if gcloud eventarc triggers describe ${{ env.TRIGGER_NAME }} \
+              --location=${{ env.REGION }} \
+              --project=${{ env.PROJECT_ID }} &>/dev/null; then
+            echo "Deleting existing trigger ${{ env.TRIGGER_NAME }}..."
+            gcloud eventarc triggers delete ${{ env.TRIGGER_NAME }} \
+              --location=${{ env.REGION }} \
+              --project=${{ env.PROJECT_ID }} \
+              --quiet
+          fi
+
+          gcloud eventarc triggers create ${{ env.TRIGGER_NAME }} \
+            --location=${{ env.REGION }} \
+            --destination-run-service=${{ env.SERVICE }} \
+            --destination-run-region=${{ env.REGION }} \
+            --event-filters="type=google.cloud.storage.object.v1.finalized" \
+            --event-filters="bucket=${{ env.RAW_BUCKET }}" \
+            --service-account="${TRANSCODER_SA_EMAIL}" \
+            --project=${{ env.PROJECT_ID }}
+
+      # ── 6. Summary ─────────────────────────────────────────────────────────
+      - name: Print deployment summary
+        run: |
+          TRIGGER_URL=$(gcloud run services describe ${{ env.SERVICE }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --format 'value(status.url)')
+          echo "## Transcoder Trigger Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Service URL | ${TRIGGER_URL} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Eventarc trigger | ${{ env.TRIGGER_NAME }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bucket filter | gs://${{ env.RAW_BUCKET }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cloud Run Job | ${{ env.JOB_NAME }} |" >> "$GITHUB_STEP_SUMMARY"
