@@ -79,10 +79,14 @@ class DashboardPage:
             return video_id in self._page.content()
 
     def is_404_page(self) -> bool:
-        """Return True if the page shows a 404 not-found indicator."""
-        content = self._page.content().lower()
-        url = self._page.url
-        return "404" in content or "not found" in content or "page not found" in content
+        """Return True if the page visibly displays a 404 not-found error.
+
+        Uses DOM-based locators to avoid false positives from Next.js RSC JSON
+        payloads that embed a 404 component on every page.
+        """
+        four_oh_four = self._page.locator("text=404").count()
+        not_found = self._page.locator("text=page could not be found").count()
+        return four_oh_four > 0 or not_found > 0
 
     def get_uploaded_video_id_from_url(self) -> Optional[str]:
         """Extract the ?uploaded=<videoId> query param from the current URL."""
