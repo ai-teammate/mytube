@@ -47,17 +47,15 @@ Architecture Notes
 ------------------
 - ``HLSTranscoderService`` is used to execute the Cloud Run Job and list bucket
   objects; its ``run_transcoding_job`` method is called with a known-invalid
-  raw object path to force a permanent download failure.
+  raw object path and ``extra_env_vars={"CLEANUP_ON_TRANSCODE_FAILURE": "false"}``
+  to force a permanent download failure while disabling cleanup.
 - ``GCSService`` (google-cloud-storage) is used to pre-seed and verify the
   partial artifact files in the HLS bucket.
 - All GCP credentials are injected via constructor; never hard-coded.
-- The gcloud CLI is called with ``--update-env-vars`` to pass
-  ``CLEANUP_ON_TRANSCODE_FAILURE=false`` alongside the other runtime variables.
 """
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import uuid
 
@@ -171,70 +169,21 @@ def seeded_artifacts(gcp_config: GcpConfig, storage_client, test_video_id: str) 
 
 @pytest.fixture(scope="module")
 def failed_job_result(
-    gcp_config: GcpConfig,
+    transcoder_service: HLSTranscoderService,
     test_video_id: str,
     seeded_artifacts,  # ensures artifacts are seeded before job runs
 ) -> JobExecutionResult:
     """
-    Execute the Cloud Run Job in failure mode:
+    Execute the Cloud Run Job in failure mode via HLSTranscoderService:
     - RAW_OBJECT_PATH points to a non-existent GCS object (causes download failure).
     - CLEANUP_ON_TRANSCODE_FAILURE=false (disables GCS cleanup on failure).
-
-    Calls gcloud directly to inject CLEANUP_ON_TRANSCODE_FAILURE alongside the
-    other runtime env vars (HLSTranscoderService.run_transcoding_job does not
-    expose this flag as a parameter).
     """
-    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-    if not creds_path or not os.path.isfile(creds_path):
-        pytest.skip("GOOGLE_APPLICATION_CREDENTIALS not set — skipping Cloud Run Job execution.")
-
-    env_vars = (
-        f"VIDEO_ID={test_video_id},"
-        f"RAW_OBJECT_PATH={_INVALID_RAW_OBJECT_PATH},"
-        f"HLS_BUCKET={gcp_config.hls_bucket},"
-        f"CDN_BASE_URL={gcp_config.cdn_base_url},"
-        f"RAW_BUCKET={gcp_config.raw_bucket},"
-        f"CLEANUP_ON_TRANSCODE_FAILURE=false"
+    return transcoder_service.run_transcoding_job(
+        video_id=test_video_id,
+        raw_object_path=_INVALID_RAW_OBJECT_PATH,
+        timeout_seconds=_FAILURE_WAIT_SECONDS,
+        extra_env_vars={"CLEANUP_ON_TRANSCODE_FAILURE": "false"},
     )
-
-    cmd = [
-        "gcloud", "run", "jobs", "execute",
-        gcp_config.transcoder_job,
-        f"--region={gcp_config.region}",
-        f"--project={gcp_config.project_id}",
-        "--wait",
-        f"--update-env-vars={env_vars}",
-    ]
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=_FAILURE_WAIT_SECONDS,
-        )
-        return JobExecutionResult(
-            success=(result.returncode == 0),
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-    except subprocess.TimeoutExpired:
-        return JobExecutionResult(
-            success=False,
-            exit_code=-1,
-            stdout="",
-            stderr="",
-            error_message=f"Job execution timed out after {_FAILURE_WAIT_SECONDS}s",
-        )
-    except Exception as exc:  # noqa: BLE001
-        return JobExecutionResult(
-            success=False,
-            exit_code=-1,
-            stdout="",
-            stderr="",
-            error_message=str(exc),
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +237,7 @@ class TestTranscoderCleanupDisabled:
 
     def test_partial_artifacts_retained_after_failure(
         self,
+        gcp_config: GcpConfig,
         transcoder_service: HLSTranscoderService,
         test_video_id: str,
         seeded_artifacts: list[str],
@@ -295,7 +245,8 @@ class TestTranscoderCleanupDisabled:
     ) -> None:
         """
         Step 3 — After the job fails with CLEANUP_ON_TRANSCODE_FAILURE=false,
-        all pre-seeded partial HLS artifacts must still exist in the bucket.
+        each pre-seeded partial HLS artifact must still exist in the bucket by
+        exact object name.
 
         This is the core assertion of MYTUBE-376: cleanup logic is skipped when
         the flag is false, so no GCS objects are deleted on failure.
@@ -303,35 +254,10 @@ class TestTranscoderCleanupDisabled:
         objects = transcoder_service.list_output_objects(test_video_id)
         object_set = set(objects)
 
-        missing = [name for name in seeded_artifacts if name not in object_set]
-        assert not missing, (
-            f"The following partial HLS artifacts were DELETED from bucket "
-            f"'{transcoder_service._config.hls_bucket}' after the transcoding job failed, "
-            f"even though CLEANUP_ON_TRANSCODE_FAILURE=false was set.\n"
-            f"Missing objects: {missing}\n"
-            f"Objects still present: {sorted(object_set)}\n\n"
-            "This indicates that the cleanup logic ran despite being explicitly "
-            "disabled by the CLEANUP_ON_TRANSCODE_FAILURE=false environment variable."
-        )
-
-    def test_all_seeded_artifact_names_present(
-        self,
-        transcoder_service: HLSTranscoderService,
-        test_video_id: str,
-        seeded_artifacts: list[str],
-        failed_job_result: JobExecutionResult,
-    ) -> None:
-        """
-        Step 3 (detail) — Each individually seeded artifact must be present
-        by exact object name after the failed job execution.
-        """
-        objects = transcoder_service.list_output_objects(test_video_id)
-        object_set = set(objects)
-
         for expected_object in seeded_artifacts:
             assert expected_object in object_set, (
                 f"Seeded artifact '{expected_object}' is missing from bucket "
-                f"'{transcoder_service._config.hls_bucket}' after the transcoding job failed.\n"
+                f"'{gcp_config.hls_bucket}' after the transcoding job failed.\n"
                 f"CLEANUP_ON_TRANSCODE_FAILURE=false should have prevented its deletion.\n"
                 f"Bucket prefix 'videos/{test_video_id}/' currently contains: {sorted(object_set)}"
             )
