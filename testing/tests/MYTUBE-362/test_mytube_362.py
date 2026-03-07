@@ -32,10 +32,12 @@ PLAYWRIGHT_SLOW_MO      Slow-motion delay in ms (default: 0).
 Architecture
 ------------
 - Uses SearchPage (Page Object) from testing/components/pages/search_page/ for
-  the search input interaction methods.
+  all search input interaction and state-query methods.
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest module-scoped fixtures.
 - No hardcoded URLs, credentials, or time.sleep calls.
+- Raw locators and page.evaluate() calls are encapsulated in SearchPage;
+  test methods never call Playwright APIs directly.
 """
 from __future__ import annotations
 
@@ -162,21 +164,13 @@ class TestSearchBarVisibility:
 
         _logger.info("Checking search input is present on %s", page.url)
 
-        input_locator = page.locator('input[type="search"]')
-
-        # The search input must exist
-        assert input_locator.count() > 0, (
-            "No <input type=\"search\"> element found in the header. "
-            f"URL: {page.url}"
-        )
-
         # Placeholder must be visible and correct
-        placeholder = input_locator.first.get_attribute("placeholder") or ""
-        assert placeholder.strip(), (
+        placeholder = search_page.get_search_input_placeholder()
+        assert placeholder, (
             "The search input has no placeholder attribute or the placeholder is empty. "
             f"URL: {page.url}"
         )
-        assert placeholder.strip() == _EXPECTED_PLACEHOLDER, (
+        assert placeholder == _EXPECTED_PLACEHOLDER, (
             f"Expected placeholder to be {_EXPECTED_PLACEHOLDER!r}, "
             f"got {placeholder!r}. URL: {page.url}"
         )
@@ -193,30 +187,43 @@ class TestSearchBarVisibility:
         - The input background is light (white / near-white) so that the
           browser's default grey placeholder is readable.
         """
-        input_locator = page.locator('input[type="search"]').first
+        search_page = SearchPage(page)
 
         # Input must be visible
-        assert input_locator.is_visible(), (
+        assert search_page.is_search_input_visible(), (
             "The search input is not visible on the homepage. "
             f"URL: {page.url}"
         )
 
         # Check background-color of the input is light (white or near-white),
         # which ensures the placeholder grey text will be readable.
-        bg_color: str = page.evaluate(
-            """() => {
-                const el = document.querySelector('input[type="search"]');
-                if (!el) return 'not-found';
-                return window.getComputedStyle(el).backgroundColor;
-            }"""
-        )
+        bg_color = search_page.get_search_input_background_color()
         _logger.info("Search input background-color: %s", bg_color)
 
-        # Accept white / transparent backgrounds (both are fine)
         assert bg_color not in ("", "not-found"), (
             f"Could not retrieve background-color for search input. Got: {bg_color!r}. "
             f"URL: {page.url}"
         )
+
+        # Accept white (#fff), near-white, or transparent backgrounds.
+        # Check for transparent BEFORE parsing because rgba(0,0,0,0) parses
+        # to (0,0,0) which looks dark despite being fully transparent.
+        allowed = {"rgba(0, 0, 0, 0)", "transparent"}
+        if bg_color in allowed:
+            _logger.info("Background is transparent — acceptable for contrast")
+        else:
+            r, g, b = _parse_rgb(bg_color)
+            if (r, g, b) == (-1, -1, -1):
+                assert False, (
+                    f"Unexpected background-color: {bg_color!r}. URL: {page.url}"
+                )
+            else:
+                bg_brightness = _perceived_brightness(r, g, b)
+                assert bg_brightness >= 200, (
+                    f"Search input background {bg_color!r} (brightness={bg_brightness:.1f}) "
+                    "is too dark; the placeholder may not have sufficient contrast. "
+                    f"URL: {page.url}"
+                )
 
     def test_typed_text_is_visible_and_dark(
         self, page: Page, web_config: WebConfig
@@ -234,10 +241,8 @@ class TestSearchBarVisibility:
         # Click into the search bar and type
         search_page.fill_search_input(_SEARCH_TEXT)
 
-        input_locator = page.locator('input[type="search"]').first
-
         # Assert value is reflected in the DOM
-        actual_value = input_locator.input_value()
+        actual_value = search_page.get_search_input_value()
         assert actual_value == _SEARCH_TEXT, (
             f"Expected search input value {_SEARCH_TEXT!r}, got {actual_value!r}. "
             f"URL: {page.url}"
@@ -245,26 +250,7 @@ class TestSearchBarVisibility:
         _logger.info("Search input value: %r — OK", actual_value)
 
         # Retrieve computed text color — ask the browser to convert to rgb() via canvas
-        text_color: str = page.evaluate(
-            """() => {
-                const el = document.querySelector('input[type="search"]');
-                if (!el) return 'not-found';
-                const raw = window.getComputedStyle(el).color;
-                // Use a canvas to normalise any CSS Color Level 4 format (oklch, lab, etc.)
-                // to a standard rgb(r, g, b) string.
-                try {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 1; canvas.height = 1;
-                    const ctx = canvas.getContext('2d');
-                    ctx.fillStyle = raw;
-                    ctx.fillRect(0, 0, 1, 1);
-                    const d = ctx.getImageData(0, 0, 1, 1).data;
-                    return 'rgb(' + d[0] + ', ' + d[1] + ', ' + d[2] + ')';
-                } catch (e) {
-                    return raw;
-                }
-            }"""
-        )
+        text_color = search_page.get_search_input_text_color_rgb()
         _logger.info("Search input computed color: %s", text_color)
 
         assert text_color not in ("", "not-found"), (
