@@ -1,43 +1,43 @@
-# Архитектура проекта mytube
+# mytube — Architecture Overview
 
-Кратко:
-- Frontend: /web — Next.js 16 + React 19, Tailwind, video.js, Firebase (клиент). Деплой: GitHub Pages (static export).
-- Backend: /api — Go 1.24, Dockerfile, развернут на Cloud Run через GitHub Actions; использует Cloud SQL (Postgres) и GCS.
-- Транскодер: /api/cmd/transcoder + infra/transcoder-trigger — FFmpeg в контейнере, выполняется как Cloud Run Job, запускается Eventarc -> Trigger.
-- Хранение видео: GCS — RAW_UPLOADS_BUCKET (private) для исходников, HLS_BUCKET (public) для HLS/плейлистов (CDN_BASE_URL).
-- Авторизация: Firebase Auth (клиент SDK в /web, серверная проверка в /api через auth.NewFirebaseVerifier).
-- CI/CD и infra: .github/workflows (deploy-api, deploy-transcoder-trigger, deploy-pages), infra/setup.sh, cloudjobs.yaml.
+Short summary:
+- Frontend: /web — Next.js 16, React 19, Tailwind CSS, video.js; Firebase client SDK. Deployed as a static export to GitHub Pages via GitHub Actions.
+- Backend: /api — Go 1.24, built into a Docker image and deployed to Cloud Run. Uses Cloud SQL (Postgres) and Google Cloud Storage; provides signed upload URLs and verifies Firebase ID tokens server-side.
+- Transcoder: /api/cmd/transcoder + infra/transcoder-trigger — FFmpeg in a container; runs as a Cloud Run Job (mytube-transcoder) started by a lightweight trigger service via Eventarc when objects are finalized in the raw uploads bucket.
+- Storage: Google Cloud Storage — RAW_UPLOADS_BUCKET (private) for raw uploads, mytube-hls-output (public) for HLS segments/playlists; CDN_BASE_URL used for public delivery.
+- Auth: Firebase Authentication (client SDK in /web; server-side verification in /api via auth.NewFirebaseVerifier).
+- CI/CD & infra: .github/workflows (deploy-api, deploy-transcoder-trigger, deploy-pages), infra/setup.sh, infra/cloudjobs.yaml.
 
-> Текста минимум — ниже в основном диаграммы mermaid.
+> Minimal text; most of the README is mermaid diagrams describing the system.
 
 ---
 
-## Схема: общая архитектура
+## High-level architecture
 
 ```mermaid
 flowchart LR
   subgraph Client
-    U[Пользователь]
+    U[User]
   end
   U --> Browser[Next.js (web/) — GitHub Pages]
   Browser -->|ID Token| Firebase[Firebase Auth]
-  Browser -->|REST (JWT)| API[API — Go (Cloud Run)]
-  API -->|signed URLs| GCS_RAW[GCS: RAW_UPLOADS_BUCKET (private)]
+  Browser -->|REST (Bearer ID Token)| API[API — Go (Cloud Run)]
+  API -->|signed URLs| GCS_RAW[Google Cloud Storage — RAW_UPLOADS_BUCKET (private)]
   GCS_RAW -->|object.finalize| Eventarc[Eventarc]
-  Eventarc --> Trigger[Transcoder Trigger (Cloud Run)]
-  Trigger -->|start job| Transcoder[Transcoder Job (Cloud Run Job, FFmpeg)]
-  Transcoder --> GCS_HLS[GCS: HLS_BUCKET (public)]
+  Eventarc --> Trigger[Transcoder Trigger — Cloud Run service]
+  Trigger -->|start job| Transcoder[Transcoder Job — Cloud Run Job (FFmpeg)]
+  Transcoder --> GCS_HLS[HLS_BUCKET (public)]
   Transcoder --> DB[(Postgres — Cloud SQL)]
   API --> DB
   API --> GCS_HLS
   GitHubActions[GitHub Actions] -->|deploy| API
   GitHubActions -->|deploy| Trigger
-  GitHubActions -->|deploy| Pages[GitHub Pages (web/out)]
+  GitHubActions -->|deploy| Pages[GitHub Pages]
 ```
 
 ---
 
-## Развёртывание (где что работает)
+## Deployment topology (where components run)
 
 ```mermaid
 graph TB
@@ -54,7 +54,7 @@ graph TB
   end
   subgraph "CI/CD"
     GHActions[.github/workflows]
-    GCR[gcr.io (container registry)]
+    GCR[gcr.io (Container Registry)]
     Pages[GitHub Pages]
   end
   GHActions --> GCR
@@ -72,7 +72,7 @@ graph TB
 
 ---
 
-## Поток загрузки и транскодирования (upload → transcode → HLS)
+## Upload & transcode flow
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +103,7 @@ sequenceDiagram
 
 ---
 
-## Структура репозитория (коротко)
+## Repository layout (short)
 
 ```mermaid
 flowchart LR
@@ -117,10 +117,10 @@ flowchart LR
 
 ---
 
-Файлы для подробностей:
-- web/package.json — фронтенд зависимости (Next.js, React, Firebase, video.js, Tailwind)
-- api/main.go — вход в API (Firebase verifier, GCS signer, маршруты)
-- api/internal/storage/gcs.go — генерация signed PUT URL (GCSSigner)
-- infra/setup.sh, infra/cloudjobs.yaml — инструкции по развёртыванию transcoder job и bucket'ов
+Key files to inspect:
+- web/package.json — frontend dependencies (Next.js, React, Firebase, video.js, Tailwind)
+- api/main.go — API entrypoint (Firebase verifier, GCS signer, route registration)
+- api/internal/storage/gcs.go — GCSSigner (signed PUT URL generation)
+- infra/setup.sh, infra/cloudjobs.yaml — GCP setup and Cloud Run Job spec
 - .github/workflows/deploy-*.yml — CI/CD: deploy-api (Cloud Run), deploy-transcoder-trigger (Cloud Run), deploy-pages (GitHub Pages)
 
