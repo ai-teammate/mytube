@@ -25,7 +25,9 @@ from testing.tests.conftest import _cleanup_users
 
 _TEST_USERNAME    = "testuser_mytube146"
 _TEST_FIREBASE_UID = "firebase_uid_mytube146"
-_HLS_TEMPLATE      = "gs://mytube-hls-output/videos/{vid}/index.m3u8"
+# Use full HTTPS CDN URL so the browser can load it without Mixed Content
+# restrictions, and Playwright route interception can mock the manifest.
+_HLS_TEMPLATE      = "https://storage.googleapis.com/mytube-hls-output/videos/{vid}/index.m3u8"
 _THUMB_TEMPLATE    = "https://storage.googleapis.com/mytube-hls-output/videos/{vid}/thumbnail.jpg"
 
 
