@@ -128,6 +128,7 @@ class TestAuthorizedServiceAccountAccess:
     def test_step1_upload_succeeds(
         self,
         uploaded_object: str,
+        gcs_service: GCSService,
         gcs_config: GCSConfig,
     ) -> None:
         """Step 1 — upload a test file using admin credentials.
@@ -138,11 +139,8 @@ class TestAuthorizedServiceAccountAccess:
         assert uploaded_object, (
             "Step 1 failed: upload_test_object returned an empty object name."
         )
-        # Confirm the object exists by checking it through the authenticated client.
-        from google.cloud import storage as gcs_storage
-        client = gcs_storage.Client(project=gcs_config.project_id)
-        blob = client.bucket(gcs_config.raw_uploads_bucket).blob(uploaded_object)
-        exists = blob.exists()
+        # Confirm the object exists via the injected service (no inline client creation).
+        exists = gcs_service.blob_exists(gcs_config.raw_uploads_bucket, uploaded_object)
         assert exists, (
             f"Step 1 failed: object '{uploaded_object}' was not found in bucket "
             f"'{gcs_config.raw_uploads_bucket}' after upload. "
