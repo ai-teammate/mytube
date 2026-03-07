@@ -32,25 +32,23 @@ Environment Variables
 
 Architecture Notes
 ------------------
-- Uses ``google.cloud.storage`` for signed-URL generation and object upload/cleanup.
-- HTTP GET to the signed URL is performed with ``requests`` — no GCP credentials
-  attached to the request — simulating an unauthenticated client.
+- Uses ``GCSBucketService`` for all GCS SDK interactions (upload, delete,
+  signed-URL generation, and unauthenticated HTTP fetch).
 - A unique test object is uploaded as part of the test and deleted on teardown,
   so the precondition is always satisfied without relying on pre-existing objects.
 """
 from __future__ import annotations
 
-import datetime
 import os
 import sys
 import uuid
 
 import pytest
-import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.gcs_config import GCSConfig
+from testing.components.services.gcs_bucket_service import GCSBucketService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -103,56 +101,48 @@ def sa_credentials():
 
 @pytest.fixture(scope="module")
 def storage_client(sa_credentials, gcs_config):
-    """Authenticated GCS client used to upload/delete the test object."""
+    """Authenticated GCS client used by GCSBucketService."""
     try:
         from google.cloud import storage as gcs_storage
-        from google.auth.exceptions import DefaultCredentialsError
     except ImportError:
         pytest.skip("google-cloud-storage is not installed.")
 
-    client = gcs_storage.Client(
+    return gcs_storage.Client(
         project=gcs_config.project_id,
         credentials=sa_credentials,
     )
-    return client
 
 
 @pytest.fixture(scope="module")
-def test_object(storage_client, gcs_config):
+def gcs_bucket_service(storage_client, gcs_config) -> GCSBucketService:
+    """Component that encapsulates all GCS interactions for this test."""
+    return GCSBucketService(config=gcs_config, storage_client=storage_client)
+
+
+@pytest.fixture(scope="module")
+def test_object(gcs_bucket_service: GCSBucketService):
     """Upload a unique test object and yield its name; delete it on teardown."""
-    bucket_name = gcs_config.raw_uploads_bucket
     object_name = f"test-signed-url-probe-{uuid.uuid4()}.txt"
 
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(object_name)
-    blob.upload_from_string(
+    gcs_bucket_service.upload_object(
+        object_name,
         b"MYTUBE-302 signed-URL probe content",
         content_type="text/plain",
     )
 
     yield object_name
 
-    # Teardown: remove the test object
-    try:
-        blob.delete()
-    except Exception:
-        pass  # Best-effort cleanup; don't fail the test on cleanup errors
+    gcs_bucket_service.delete_object(object_name)
 
 
 @pytest.fixture(scope="module")
-def signed_url(storage_client, gcs_config, sa_credentials, test_object) -> str:
+def signed_url(gcs_bucket_service: GCSBucketService, sa_credentials, test_object) -> str:
     """Generate a V4 signed URL for the test object using the service account key."""
-    bucket_name = gcs_config.raw_uploads_bucket
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(test_object)
-
-    url = blob.generate_signed_url(
-        version="v4",
-        expiration=datetime.timedelta(minutes=SIGNED_URL_EXPIRY_MINUTES),
-        method="GET",
-        credentials=sa_credentials,
+    return gcs_bucket_service.generate_signed_url(
+        test_object,
+        sa_credentials,
+        expiry_minutes=SIGNED_URL_EXPIRY_MINUTES,
     )
-    return url
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +153,7 @@ def signed_url(storage_client, gcs_config, sa_credentials, test_object) -> str:
 class TestSignedUrlBypassesPAP:
     """MYTUBE-302: Signed URL access succeeds even when PAP is enforced."""
 
-    def test_signed_url_returns_200(self, signed_url: str, test_object: str) -> None:
+    def test_signed_url_returns_200(self, gcs_bucket_service: GCSBucketService, signed_url: str, test_object: str) -> None:
         """Step 2: HTTP GET to the Signed URL from an unauthenticated client
         must return HTTP 200 OK.
 
@@ -171,17 +161,11 @@ class TestSignedUrlBypassesPAP:
         simulating an external unauthenticated client.  If PAP incorrectly blocks
         Signed-URL access, GCS will return HTTP 403 instead of 200.
         """
-        resp = requests.get(
-            signed_url,
-            allow_redirects=True,
-            timeout=30,
-            # Explicitly strip any default auth — simulate unauthenticated client.
-            headers={"Authorization": ""},
-        )
-        assert resp.status_code == 200, (
+        result = gcs_bucket_service.fetch_signed_url(signed_url)
+        assert result.http_status == 200, (
             f"Expected HTTP 200 OK from Signed URL for object '{test_object}', "
-            f"but got HTTP {resp.status_code}.\n"
-            f"Response body: {resp.text[:500]}\n\n"
+            f"but got HTTP {result.http_status}.\n"
+            f"Response body: {result.error_message[:500]}\n\n"
             "This may indicate that:\n"
             "  1. The signing service account lacks storage.objects.get on the "
             "bucket, causing GCS to deny access via the signed URL.\n"
@@ -192,26 +176,19 @@ class TestSignedUrlBypassesPAP:
         )
 
     def test_signed_url_response_body_contains_probe_content(
-        self, signed_url: str, test_object: str
+        self, gcs_bucket_service: GCSBucketService, signed_url: str, test_object: str
     ) -> None:
         """Verify the response body matches the uploaded probe content.
 
         Confirms that the correct object was retrieved, not a redirect or
         error document that happened to return 200.
         """
-        resp = requests.get(
-            signed_url,
-            allow_redirects=True,
-            timeout=30,
-            headers={"Authorization": ""},
-        )
-        # Only assert body if status is 200 (avoid confusing assertion messages
-        # when the primary status assertion already failed).
-        if resp.status_code != 200:
+        result = gcs_bucket_service.fetch_signed_url(signed_url)
+        if result.http_status != 200:
             pytest.skip(
-                f"Skipping body check — signed URL returned HTTP {resp.status_code}."
+                f"Skipping body check — signed URL returned HTTP {result.http_status}."
             )
-        assert b"MYTUBE-302 signed-URL probe content" in resp.content, (
+        assert b"MYTUBE-302 signed-URL probe content" in result.content, (
             f"Expected the response body to contain the probe content, "
-            f"but got: {resp.content[:200]!r}"
+            f"but got: {result.content[:200]!r}"
         )
