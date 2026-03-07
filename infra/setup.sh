@@ -19,6 +19,8 @@ RAW_BUCKET="mytube-raw-uploads"
 HLS_BUCKET="mytube-hls-output"
 TRANSCODER_SA="mytube-transcoder"
 TRANSCODER_SA_EMAIL="${TRANSCODER_SA}@${PROJECT}.iam.gserviceaccount.com"
+CI_SA="ai-teammate-gcloud"
+CI_SA_EMAIL="${CI_SA}@${PROJECT}.iam.gserviceaccount.com"
 TRIGGER_SERVICE="mytube-transcoder-trigger"
 JOB_NAME="mytube-transcoder"
 
@@ -42,11 +44,21 @@ if ! gcloud storage buckets describe "gs://${RAW_BUCKET}" --project="${PROJECT}"
   gcloud storage buckets create "gs://${RAW_BUCKET}" \
     --location="${REGION}" \
     --uniform-bucket-level-access \
-    --no-public-access-prevention \
+    --public-access-prevention \
     --project="${PROJECT}"
   echo "    Created gs://${RAW_BUCKET}"
 else
-  echo "    gs://${RAW_BUCKET} already exists, skipping."
+  echo "    gs://${RAW_BUCKET} already exists — enforcing public-access-prevention..."
+  gcloud storage buckets update "gs://${RAW_BUCKET}" \
+    --public-access-prevention \
+    --project="${PROJECT}"
+  PAP=$(gcloud storage buckets describe "gs://${RAW_BUCKET}" \
+    --project="${PROJECT}" --format="value(public_access_prevention)")
+  echo "    publicAccessPrevention = ${PAP}"
+  if [ "${PAP}" != "enforced" ]; then
+    echo "    ERROR: publicAccessPrevention is '${PAP}', expected 'enforced'" >&2
+    exit 1
+  fi
 fi
 
 echo ""
@@ -97,6 +109,43 @@ gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
   --member="serviceAccount:${TRANSCODER_SA_EMAIL}" \
   --role="roles/storage.objectCreator" \
   --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} legacyBucketReader on ${RAW_BUCKET} (CI/testing read access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.legacyBucketReader" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} objectViewer on ${RAW_BUCKET} (CI/testing download access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.objectViewer" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} objectCreator on ${RAW_BUCKET} (CI/testing upload access for test fixtures)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.objectCreator" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} legacyBucketReader on ${HLS_BUCKET} (CI/testing read access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.legacyBucketReader" \
+  --project="${PROJECT}"
+
+# Grant the CI SA project-level eventarc.viewer so it can read the project IAM
+# policy and inspect Eventarc trigger configurations without PERMISSION_DENIED.
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} roles/eventarc.viewer at the project level (CI inspection)..."
+gcloud projects add-iam-policy-binding "${PROJECT}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/eventarc.viewer" \
+  --condition=None
 
 # ── 5. Allow trigger service to invoke Cloud Run Jobs ─────────────────────────
 # The trigger Cloud Run Service needs run.jobs.run permission.

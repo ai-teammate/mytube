@@ -187,3 +187,44 @@ func TestTriggerHandler_EmptyBody_Returns400(t *testing.T) {
 		t.Errorf("expected 400 for empty body, got %d", rec.Code)
 	}
 }
+
+func TestTriggerHandler_NonRawPrefixIgnoredWith204(t *testing.T) {
+	exec := &mockExecutor{}
+	h := handler.NewTriggerHandler(exec, "hls-bucket")
+
+	// Object is not in raw/ prefix — handler must not trigger transcoding.
+	body := `{"bucket":"mytube-raw-uploads","name":"thumbnails/poster.jpg"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 for non-raw-upload, got %d", rec.Code)
+	}
+	if exec.called {
+		t.Error("executor must not be called for non-raw-upload objects")
+	}
+}
+
+func TestTriggerHandler_ProductionUUIDPathProcessed(t *testing.T) {
+	exec := &mockExecutor{}
+	h := handler.NewTriggerHandler(exec, "hls-bucket")
+
+	// Production uploads have no file extension: raw/<userID>/<videoID>
+	body := `{"bucket":"mytube-raw-uploads","name":"raw/a4d86461-b30a-4edb-8de7-271b2839fa76/ca21d36d-ff29-414b-8e45-8f74d1fc509c"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 for production UUID upload, got %d", rec.Code)
+	}
+	if !exec.called {
+		t.Error("executor must be called for production UUID path uploads")
+	}
+	if exec.received.VideoID != "ca21d36d-ff29-414b-8e45-8f74d1fc509c" {
+		t.Errorf("unexpected VideoID: %q", exec.received.VideoID)
+	}
+}

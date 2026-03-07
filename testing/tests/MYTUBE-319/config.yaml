@@ -1,0 +1,12 @@
+ticket: MYTUBE-319
+title: "CI service account describes Eventarc trigger — project-level eventarc.viewer role is present"
+type: infrastructure
+framework: gcloud
+platform: gcp
+dependencies: []
+environment:
+  GCP_PROJECT_ID: ai-native-478811
+  CI_SA_EMAIL: ai-teammate-gcloud@ai-native-478811.iam.gserviceaccount.com
+  EXPECTED_ROLE: roles/eventarc.viewer
+  EXPECTED_PERMISSION: eventarc.triggers.get
+  GOOGLE_APPLICATION_CREDENTIALS: ""  # path to CI service account key (optional for this test)

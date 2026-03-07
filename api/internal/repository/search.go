@@ -16,6 +16,7 @@ type SearchVideo struct {
 	ViewCount        int64
 	UploaderUsername string
 	CreatedAt        time.Time
+	Status           string
 }
 
 // Category represents a row in the categories table.
@@ -94,6 +95,7 @@ func (r *SearchRepository) Search(ctx context.Context, p SearchParams) ([]Search
 	var qb queryBuilder
 
 	qb.add("v.status = 'ready'")
+	qb.add("v.hls_manifest_path IS NOT NULL")
 
 	if p.Query != "" {
 		// Match against title (full-text) OR video_tags.tag (exact).
@@ -133,7 +135,8 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  %s
@@ -163,10 +166,12 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
 ORDER BY v.created_at DESC
 LIMIT  $1`
 
@@ -191,10 +196,12 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
 ORDER BY v.view_count DESC
 LIMIT  $1`
 
@@ -253,10 +260,12 @@ SELECT v.id,
        v.thumbnail_url,
        v.view_count,
        u.username,
-       v.created_at
+       v.created_at,
+       v.status
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
   AND  v.category_id = $1
 ORDER BY v.created_at DESC
 LIMIT  $2 OFFSET $3`
@@ -286,6 +295,7 @@ func scanSearchVideos(rows interface {
 			&v.ViewCount,
 			&v.UploaderUsername,
 			&v.CreatedAt,
+			&v.Status,
 		); err != nil {
 			return nil, fmt.Errorf("scan search video row: %w", err)
 		}

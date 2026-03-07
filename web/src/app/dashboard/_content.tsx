@@ -8,18 +8,21 @@ import {
   ApiDashboardVideoRepository,
   ApiVideoManagementRepository,
 } from "@/data/dashboardRepository";
+import { ApiPlaylistRepository } from "@/data/playlistRepository";
 import type {
   DashboardVideo,
   DashboardVideoRepository,
   UpdateVideoParams,
   VideoManagementRepository,
 } from "@/domain/dashboard";
+import type { PlaylistRepository, PlaylistSummary } from "@/domain/playlist";
 import { CATEGORIES } from "@/domain/categories";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export const defaultDashboardRepo = new ApiDashboardVideoRepository(API_URL);
 export const defaultManagementRepo = new ApiVideoManagementRepository(API_URL);
+export const defaultPlaylistRepo = new ApiPlaylistRepository(API_URL);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +30,7 @@ export interface DashboardPageProps {
   /** Injected in tests; defaults to the real API-backed implementations. */
   dashboardRepo?: DashboardVideoRepository;
   managementRepo?: VideoManagementRepository;
+  playlistRepo?: PlaylistRepository;
 }
 
 interface EditFormState {
@@ -37,6 +41,13 @@ interface EditFormState {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const STATUS_DISPLAY_NAMES: Record<DashboardVideo["status"], string> = {
+  ready: "Ready",
+  processing: "Processing",
+  pending: "Pending",
+  failed: "Failed",
+};
 
 /** Returns Tailwind classes for a status badge pill. */
 function statusBadgeClasses(status: DashboardVideo["status"]): string {
@@ -73,7 +84,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadgeClasses(status)}`}
     >
-      {status}
+      {STATUS_DISPLAY_NAMES[status]}
     </span>
   );
 }
@@ -253,10 +264,14 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
 export function DashboardContent({
   dashboardRepo = defaultDashboardRepo,
   managementRepo = defaultManagementRepo,
+  playlistRepo = defaultPlaylistRepo,
 }: DashboardPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, getIdToken } = useAuth();
+
+  // Active tab: "videos" | "playlists"
+  const [activeTab, setActiveTab] = useState<"videos" | "playlists">("videos");
 
   const [videos, setVideos] = useState<DashboardVideo[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -270,9 +285,24 @@ export function DashboardContent({
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Returning from upload — show a "processing" banner for the new video.
   const uploadedId = searchParams.get("uploaded");
+
+  // ─── Playlist state ─────────────────────────────────────────────────────────
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
+  const [playlistsLoading, setPlaylistsLoading] = useState(false);
+  const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
+  const [playlistsError, setPlaylistsError] = useState<string | null>(null);
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
+  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [renamingPlaylistId, setRenamingPlaylistId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renamingLoading, setRenamingLoading] = useState(false);
+  const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null);
+  const [playlistDeleteError, setPlaylistDeleteError] = useState<string | null>(null);
+  const [deletingPlaylist, setDeletingPlaylist] = useState(false);
 
   // Auth guard: return null during loading to prevent flash.
   useEffect(() => {
@@ -298,11 +328,35 @@ export function DashboardContent({
     }
   }, [dashboardRepo, getIdToken]);
 
+  const fetchPlaylists = useCallback(async () => {
+    const token = await getIdToken();
+    if (!token) return;
+    setPlaylistsLoading(true);
+    setPlaylistsError(null);
+    try {
+      const data = await playlistRepo.listMine(token);
+      setPlaylists(data);
+    } catch (err: unknown) {
+      setPlaylistsError(
+        err instanceof Error ? err.message : "Failed to load playlists."
+      );
+    } finally {
+      setPlaylistsLoading(false);
+    }
+  }, [playlistRepo, getIdToken]);
+
   useEffect(() => {
     if (user && !loading) {
       fetchVideos();
     }
   }, [user, loading, fetchVideos]);
+
+  // Lazy-load playlists — only on first activation of the "My playlists" tab.
+  useEffect(() => {
+    if (activeTab !== "playlists" || playlistsLoaded || !user || loading) return;
+    setPlaylistsLoaded(true);
+    fetchPlaylists();
+  }, [activeTab, playlistsLoaded, user, loading, fetchPlaylists]);
 
   // Return null during auth loading to prevent flash.
   if (loading) {
@@ -376,19 +430,89 @@ export function DashboardContent({
 
   async function handleDeleteConfirm() {
     if (!deletingId) return;
+    const videoIdToDelete = deletingId;
     const token = await getIdToken();
     if (!token) {
       setDeleteError("You are not authenticated. Please sign in again.");
       return;
     }
+    setDeleting(true);
+    setDeleteError(null);
     try {
-      await managementRepo.deleteVideo(deletingId, token);
-      setVideos((prev) => prev.filter((v) => v.id !== deletingId));
-      setDeletingId(null);
+      await managementRepo.deleteVideo(videoIdToDelete, token);
+      // After successful deletion, filter out the video and reset state
+      setVideos((prev) => prev.filter((v) => v.id !== videoIdToDelete));
     } catch (err: unknown) {
       setDeleteError(
         err instanceof Error ? err.message : "Failed to delete video."
       );
+    } finally {
+      setDeletingId(null);
+      setDeleting(false);
+    }
+  }
+
+  // ─── Playlist handlers ──────────────────────────────────────────────────────
+
+  async function handleCreatePlaylist() {
+    const title = newPlaylistTitle.trim();
+    if (!title) return;
+    const token = await getIdToken();
+    if (!token) return;
+    setCreatingPlaylist(true);
+    setPlaylistsError(null);
+    try {
+      const created = await playlistRepo.create(title, token);
+      setPlaylists((prev) => [created, ...prev]);
+      setNewPlaylistTitle("");
+    } catch (err: unknown) {
+      setPlaylistsError(err instanceof Error ? err.message : "Failed to create playlist.");
+    } finally {
+      setCreatingPlaylist(false);
+    }
+  }
+
+  function handleRenameClick(pl: PlaylistSummary) {
+    setRenamingPlaylistId(pl.id);
+    setRenameTitle(pl.title);
+  }
+
+  async function handleRenameConfirm() {
+    if (!renamingPlaylistId) return;
+    const title = renameTitle.trim();
+    if (!title) return;
+    const token = await getIdToken();
+    if (!token) return;
+    setRenamingLoading(true);
+    setPlaylistsError(null);
+    try {
+      const updated = await playlistRepo.updateTitle(renamingPlaylistId, title, token);
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p))
+      );
+      setRenamingPlaylistId(null);
+    } catch (err: unknown) {
+      setPlaylistsError(err instanceof Error ? err.message : "Failed to rename playlist.");
+    } finally {
+      setRenamingLoading(false);
+    }
+  }
+
+  async function handleDeletePlaylistConfirm() {
+    if (!deletingPlaylistId) return;
+    const playlistIdToDelete = deletingPlaylistId;
+    const token = await getIdToken();
+    if (!token) return;
+    setDeletingPlaylist(true);
+    setPlaylistDeleteError(null);
+    try {
+      await playlistRepo.deletePlaylist(playlistIdToDelete, token);
+      setPlaylists((prev) => prev.filter((p) => p.id !== playlistIdToDelete));
+    } catch (err: unknown) {
+      setPlaylistDeleteError(err instanceof Error ? err.message : "Failed to delete playlist.");
+    } finally {
+      setDeletingPlaylistId(null);
+      setDeletingPlaylist(false);
     }
   }
 
@@ -399,7 +523,7 @@ export function DashboardContent({
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">My videos</h1>
+          <h1 className="text-2xl font-bold text-gray-900">My studio</h1>
           <Link
             href="/upload"
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
@@ -408,157 +532,331 @@ export function DashboardContent({
           </Link>
         </div>
 
-        {/* Upload success banner */}
-        {uploadedId && (
-          <div
-            role="status"
-            className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700"
-          >
-            Your video is being processed. It will appear as{" "}
-            <strong>ready</strong> once transcoding is complete.
-          </div>
-        )}
-
-        {/* Fetch error */}
-        {fetchError && (
-          <div
-            role="alert"
-            className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-          >
-            {fetchError}
-          </div>
-        )}
-
-        {/* Delete error */}
-        {deleteError && (
-          <div
-            role="alert"
-            className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-          >
-            {deleteError}
-          </div>
-        )}
-
-        {/* Loading / empty / table */}
-        {fetching ? (
-          <p className="text-gray-500">Loading your videos…</p>
-        ) : videos.length === 0 ? (
-          <div className="rounded-2xl bg-white shadow-sm p-8 text-center">
-            <p className="text-gray-500 mb-4">You haven&apos;t uploaded any videos yet.</p>
-            <Link
-              href="/upload"
-              className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-6">
+            <button
+              onClick={() => setActiveTab("videos")}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "videos"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
             >
-              Upload your first video
-            </Link>
-          </div>
-        ) : (
-          <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left">
-                  <th className="px-4 py-3 font-medium text-gray-500 w-16">Thumb</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Title</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Status</th>
-                  <th className="px-4 py-3 font-medium text-gray-500 text-right">Views</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Date</th>
-                  <th className="px-4 py-3 font-medium text-gray-500 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {videos.map((video) => (
-                  <tr
-                    key={video.id}
-                    className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
-                  >
-                    {/* Thumbnail */}
-                    <td className="px-4 py-3">
-                      {video.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={video.thumbnailUrl}
-                          alt={`${video.title} thumbnail`}
-                          className="w-14 h-9 object-cover rounded"
-                        />
-                      ) : (
-                        <div className="w-14 h-9 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">
-                          —
-                        </div>
-                      )}
-                    </td>
+              My videos
+            </button>
+            <button
+              onClick={() => setActiveTab("playlists")}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "playlists"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              My playlists
+            </button>
+          </nav>
+        </div>
 
-                    {/* Title */}
-                    <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">
-                      {video.status === "ready" ? (
-                        <Link
-                          href={`/v/${video.id}`}
-                          className="hover:text-blue-600 transition-colors"
-                        >
-                          {video.title}
-                        </Link>
-                      ) : (
-                        video.title
-                      )}
-                    </td>
+        {/* Videos tab content */}
+        {activeTab === "videos" && (
+          <>
+            {/* Upload success banner */}
+            {uploadedId && (
+              <div
+                role="status"
+                className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700"
+              >
+                Your video is being processed. It will appear as{" "}
+                <strong>ready</strong> once transcoding is complete.
+              </div>
+            )}
 
-                    {/* Status badge */}
-                    <td className="px-4 py-3">
-                      <StatusBadge status={video.status} />
-                    </td>
+            {/* Fetch error */}
+            {fetchError && (
+              <div
+                role="alert"
+                className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+              >
+                {fetchError}
+              </div>
+            )}
 
-                    {/* View count */}
-                    <td className="px-4 py-3 text-right text-gray-500">
-                      {video.viewCount.toLocaleString()}
-                    </td>
+            {/* Delete error */}
+            {deleteError && (
+              <div
+                role="alert"
+                className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+              >
+                {deleteError}
+              </div>
+            )}
 
-                    {/* Created date */}
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                      {new Date(video.createdAt).toLocaleDateString()}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => handleEditClick(video)}
-                        className="text-blue-600 hover:text-blue-800 font-medium mr-3"
-                        aria-label={`Edit ${video.title}`}
+            {/* Loading / empty / table */}
+            {fetching ? (
+              <p className="text-gray-500">Loading your videos…</p>
+            ) : videos.length === 0 ? (
+              <div className="rounded-2xl bg-white shadow-sm p-8 text-center">
+                <p className="text-gray-500 mb-4">You haven&apos;t uploaded any videos yet.</p>
+                <Link
+                  href="/upload"
+                  className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Upload your first video
+                </Link>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left">
+                      <th className="px-4 py-3 font-medium text-gray-500 w-16">Thumb</th>
+                      <th className="px-4 py-3 font-medium text-gray-500">Title</th>
+                      <th className="px-4 py-3 font-medium text-gray-500">Status</th>
+                      <th className="px-4 py-3 font-medium text-gray-500 text-right">Views</th>
+                      <th className="px-4 py-3 font-medium text-gray-500">Date</th>
+                      <th className="px-4 py-3 font-medium text-gray-500 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {videos.map((video) => (
+                      <tr
+                        key={video.id}
+                        className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
                       >
-                        Edit
-                      </button>
-                      {deletingId === video.id ? (
-                        <span className="inline-flex gap-2">
+                        {/* Thumbnail */}
+                        <td className="px-4 py-3">
+                          {video.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={video.thumbnailUrl}
+                              alt={`${video.title} thumbnail`}
+                              className="w-14 h-9 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-14 h-9 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">
+                              —
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Title */}
+                        <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">
+                          {video.status === "ready" ? (
+                            <Link
+                              href={`/v/${video.id}`}
+                              className="hover:text-blue-600 transition-colors"
+                            >
+                              {video.title}
+                            </Link>
+                          ) : (
+                            video.title
+                          )}
+                        </td>
+
+                        {/* Status badge */}
+                        <td className="px-4 py-3">
+                          <StatusBadge status={video.status} />
+                        </td>
+
+                        {/* View count */}
+                        <td className="px-4 py-3 text-right text-gray-500">
+                          {video.viewCount.toLocaleString()}
+                        </td>
+
+                        {/* Created date */}
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {new Date(video.createdAt).toLocaleDateString()}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
                           <button
-                            onClick={handleDeleteConfirm}
-                            className="text-red-600 hover:text-red-800 font-medium"
+                            onClick={() => handleEditClick(video)}
+                            className="text-blue-600 hover:text-blue-800 font-medium mr-3"
+                            aria-label={`Edit ${video.title}`}
                           >
-                            Confirm
+                            Edit
                           </button>
+                          {deletingId === video.id ? (
+                            <span className="inline-flex gap-2">
+                              <button
+                                onClick={() => handleDeleteConfirm()}
+                                disabled={deleting}
+                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {deleting ? "Deleting..." : "Confirm"}
+                              </button>
+                              <button
+                                onClick={handleDeleteCancel}
+                                disabled={deleting}
+                                className="text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleDeleteClick(video.id)}
+                              className="text-red-600 hover:text-red-800 font-medium"
+                              aria-label={`Delete ${video.title}`}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Playlists tab content */}
+        {activeTab === "playlists" && (
+          <>
+            {/* Error */}
+            {playlistsError && (
+              <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                {playlistsError}
+              </div>
+            )}
+            {playlistDeleteError && (
+              <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                {playlistDeleteError}
+              </div>
+            )}
+
+            {/* Create new playlist */}
+            <div className="flex gap-2 items-center">
+              <input
+                type="text"
+                value={newPlaylistTitle}
+                onChange={(e) => setNewPlaylistTitle(e.target.value)}
+                placeholder="New playlist title"
+                maxLength={255}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreatePlaylist();
+                }}
+              />
+              <button
+                onClick={handleCreatePlaylist}
+                disabled={creatingPlaylist || !newPlaylistTitle.trim()}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {creatingPlaylist ? "Creating…" : "Create playlist"}
+              </button>
+            </div>
+
+            {/* Playlist list */}
+            {playlistsLoading ? (
+              <p className="text-gray-500">Loading your playlists…</p>
+            ) : playlists.length === 0 ? (
+              <div className="rounded-2xl bg-white shadow-sm p-8 text-center">
+                <p className="text-gray-500">You don&apos;t have any playlists yet.</p>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left">
+                      <th className="px-4 py-3 font-medium text-gray-500">Title</th>
+                      <th className="px-4 py-3 font-medium text-gray-500">Date</th>
+                      <th className="px-4 py-3 font-medium text-gray-500 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {playlists.map((pl) => (
+                      <tr key={pl.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          {renamingPlaylistId === pl.id ? (
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={renameTitle}
+                                onChange={(e) => setRenameTitle(e.target.value)}
+                                maxLength={255}
+                                className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleRenameConfirm();
+                                  if (e.key === "Escape") setRenamingPlaylistId(null);
+                                }}
+                              />
+                              <button
+                                onClick={handleRenameConfirm}
+                                disabled={renamingLoading || !renameTitle.trim()}
+                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                              >
+                                {renamingLoading ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                onClick={() => setRenamingPlaylistId(null)}
+                                className="text-gray-500 hover:text-gray-700 font-medium"
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <Link href={`/pl/${pl.id}`} className="hover:text-blue-600 transition-colors">
+                              {pl.title}
+                            </Link>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {new Date(pl.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
                           <button
-                            onClick={handleDeleteCancel}
-                            className="text-gray-500 hover:text-gray-700 font-medium"
+                            onClick={() => handleRenameClick(pl)}
+                            className="text-blue-600 hover:text-blue-800 font-medium mr-3"
+                            aria-label={`Rename ${pl.title}`}
                           >
-                            Cancel
+                            Rename
                           </button>
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleDeleteClick(video.id)}
-                          className="text-red-600 hover:text-red-800 font-medium"
-                          aria-label={`Delete ${video.title}`}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          {deletingPlaylistId === pl.id ? (
+                            <span className="inline-flex gap-2">
+                              <button
+                                onClick={() => handleDeletePlaylistConfirm()}
+                                disabled={deletingPlaylist}
+                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {deletingPlaylist ? "Deleting..." : "Confirm"}
+                              </button>
+                              <button
+                                onClick={() => setDeletingPlaylistId(null)}
+                                disabled={deletingPlaylist}
+                                className="text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setDeletingPlaylistId(pl.id);
+                                setPlaylistDeleteError(null);
+                              }}
+                              className="text-red-600 hover:text-red-800 font-medium"
+                              aria-label={`Delete ${pl.title}`}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Edit modal */}
+      {/* Edit modal (videos tab) */}
       {editingVideo && (
         <EditModal
           video={editingVideo}

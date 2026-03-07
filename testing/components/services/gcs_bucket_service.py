@@ -6,6 +6,7 @@ methods and never call the GCS SDK directly.
 """
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -32,6 +33,7 @@ class PublicAccessResult:
     url: str
     http_status: int
     error_message: str = ""
+    content: bytes = field(default_factory=bytes)
 
 
 class GCSBucketService:
@@ -78,6 +80,61 @@ class GCSBucketService:
             public_access_prevention=pap,
             uniform_bucket_level_access=uble,
             raw_iam_bindings=bindings,
+        )
+
+    def upload_object(
+        self,
+        object_name: str,
+        content: bytes,
+        content_type: str = "text/plain",
+    ) -> None:
+        """Upload *content* to *object_name* in the raw-uploads bucket."""
+        bucket = self._client.bucket(self._config.raw_uploads_bucket)
+        blob = bucket.blob(object_name)
+        blob.upload_from_string(content, content_type=content_type)
+
+    def delete_object(self, object_name: str) -> None:
+        """Delete *object_name* from the raw-uploads bucket (best-effort)."""
+        try:
+            bucket = self._client.bucket(self._config.raw_uploads_bucket)
+            blob = bucket.blob(object_name)
+            blob.delete()
+        except Exception:
+            pass
+
+    def generate_signed_url(
+        self,
+        object_name: str,
+        credentials,
+        expiry_minutes: int = 15,
+    ) -> str:
+        """Generate a V4 signed GET URL for *object_name* in the raw-uploads bucket."""
+        bucket = self._client.bucket(self._config.raw_uploads_bucket)
+        blob = bucket.blob(object_name)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(minutes=expiry_minutes),
+            method="GET",
+            credentials=credentials,
+        )
+
+    def fetch_signed_url(self, url: str, timeout: int = 30) -> PublicAccessResult:
+        """Perform an unauthenticated HTTP GET to a signed URL.
+
+        Strips any Authorization header to simulate an external client.
+        """
+        import requests
+        resp = requests.get(
+            url,
+            allow_redirects=True,
+            timeout=timeout,
+            headers={"Authorization": ""},
+        )
+        return PublicAccessResult(
+            url=url,
+            http_status=resp.status_code,
+            error_message=resp.text if resp.status_code != 200 else "",
+            content=resp.content,
         )
 
     def attempt_public_access(self, object_name: str = "probe.txt") -> PublicAccessResult:

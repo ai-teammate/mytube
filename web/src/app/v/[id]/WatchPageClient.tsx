@@ -2,15 +2,19 @@
 
 import { use, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
 import type { RatingRepository } from "@/domain/rating";
 import type { CommentRepository } from "@/domain/comment";
+import type { PlaylistRepository } from "@/domain/playlist";
 import { ApiVideoRepository } from "@/data/videoRepository";
 import { ApiRatingRepository } from "@/data/ratingRepository";
 import { ApiCommentRepository } from "@/data/commentRepository";
+import { ApiPlaylistRepository } from "@/data/playlistRepository";
 import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
 import CommentSection from "@/components/CommentSection";
+import SaveToPlaylist from "@/components/SaveToPlaylist";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
 import dynamic from "next/dynamic";
@@ -27,6 +31,7 @@ const VideoPlayer = dynamic(() => import("@/components/VideoPlayer"), {
 const defaultRepository: VideoRepository = new ApiVideoRepository();
 const defaultRatingRepository: RatingRepository = new ApiRatingRepository();
 const defaultCommentRepository: CommentRepository = new ApiCommentRepository();
+const defaultPlaylistRepository: PlaylistRepository = new ApiPlaylistRepository();
 
 interface WatchPageProps {
   // Next.js 15+ passes params as a Promise; unwrap with React.use().
@@ -35,6 +40,7 @@ interface WatchPageProps {
   repository?: VideoRepository;
   ratingRepository?: RatingRepository;
   commentRepository?: CommentRepository;
+  playlistRepository?: PlaylistRepository;
 }
 
 export default function WatchPage({
@@ -42,10 +48,39 @@ export default function WatchPage({
   repository = defaultRepository,
   ratingRepository = defaultRatingRepository,
   commentRepository = defaultCommentRepository,
+  playlistRepository = defaultPlaylistRepository,
 }: WatchPageProps) {
-  const { id } = use(params);
+  const { id: paramId } = use(params);
 
-  const { getIdToken, loading: authLoading } = useAuth();
+  // GitHub Pages SPA fallback: public/404.html stores the real video UUID in
+  // sessionStorage under '__spa_video_id' and redirects to the pre-built shell
+  // at /v/_/. Resolve the actual ID once at mount via a lazy state initialiser
+  // so the loadVideo effect always sees the correct UUID on its first run.
+  const [id] = useState<string>(() => {
+    if (paramId !== "_" || typeof window === "undefined") return paramId;
+    const storedId = sessionStorage.getItem("__spa_video_id");
+    if (storedId) {
+      sessionStorage.removeItem("__spa_video_id");
+      return storedId;
+    }
+    return paramId;
+  });
+
+  // Correct the browser URL so the address bar shows /v/<real-uuid>/ instead
+  // of the placeholder /v/_/. Runs once after mount.
+  useEffect(() => {
+    if (id !== paramId && paramId === "_" && typeof window !== "undefined") {
+      const corrected = window.location.pathname.replace(
+        "/v/_/",
+        `/v/${id}/`
+      );
+      window.history.replaceState(null, "", corrected);
+    }
+    // Only run once at mount — id and paramId are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const { user, getIdToken, loading: authLoading } = useAuth();
 
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -178,25 +213,31 @@ export default function WatchPage({
               {video.uploader.username.charAt(0).toUpperCase()}
             </div>
           )}
-          <a
+          <Link
             href={`/u/${video.uploader.username}`}
             className="text-sm font-medium text-gray-900 hover:underline"
           >
             {video.uploader.username}
-          </a>
+          </Link>
           <span className="text-sm text-gray-500 ml-auto">
             {video.viewCount.toLocaleString()} views ·{" "}
             {new Date(video.createdAt).toLocaleDateString()}
           </span>
         </div>
 
-        {/* Star rating widget */}
-        <div className="mb-4">
+        {/* Actions row: ratings + save to playlist */}
+        <div className="flex items-center gap-4 mb-4 flex-wrap">
           <StarRating
             videoID={id}
             repository={ratingRepository}
             getToken={getToken}
             authLoading={authLoading}
+          />
+          <SaveToPlaylist
+            videoID={id}
+            repository={playlistRepository}
+            getToken={getToken}
+            hidden={authLoading || !user}
           />
         </div>
 

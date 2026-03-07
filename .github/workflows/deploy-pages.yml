@@ -35,6 +35,9 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
       - name: Build Next.js static export
         working-directory: web
         run: npm run build
@@ -48,12 +51,12 @@ jobs:
           NEXT_PUBLIC_FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
 
-      - name: Copy index.html to 404.html for SPA routing
+      - name: Restore custom SPA 404.html (MYTUBE-282)
+        # next build generates out/404.html from /_not-found (the Next.js error
+        # page). This overwrites public/404.html (the custom SPA redirect page).
+        # Copy it back so GitHub Pages serves the SPA redirect for unknown URLs.
         working-directory: web
-        run: cp out/index.html out/404.html
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+        run: cp public/404.html out/404.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

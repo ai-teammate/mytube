@@ -30,9 +30,12 @@ class CategoryPage:
     """
 
     _HEADING_SELECTOR = "h1"
+    # Use semantic / test-id selectors; avoid generic utility classes that
+    # can match unrelated rounded containers on the page.
     _VIDEO_CARD_SELECTOR = "[data-testid='video-card'], .video-card, article"
     _VIDEO_TITLE_SELECTOR = "[data-testid='video-title'], .video-title, h2, h3"
     _ERROR_SELECTOR = "[role='alert']"
+    _EMPTY_STATE_MESSAGES = ("No videos in this category yet", "No videos")
     _LOADING_TEXT = "Loading"
     _LOAD_TIMEOUT_MS = 30_000
     _CONTENT_TIMEOUT_MS = 15_000
@@ -96,10 +99,17 @@ class CategoryPage:
         return titles
 
     def has_error(self) -> bool:
-        """Return True if an error message is visible on the page."""
+        """Return True if an error message with non-empty text is visible on the page.
+
+        Next.js injects a visually-hidden [role="alert"] element for accessibility
+        on every page; this method ignores that empty element and only returns True
+        when the alert contains actual text.
+        """
         try:
             el = self._page.query_selector(self._ERROR_SELECTOR)
-            return el is not None and el.is_visible()
+            if el and el.is_visible():
+                return bool(el.inner_text().strip())
+            return False
         except Exception:
             return False
 
@@ -131,6 +141,32 @@ class CategoryPage:
             error_text=self.get_error_text(),
             is_loading=self.is_loading(),
         )
+
+    def has_empty_state_message(self) -> bool:
+        """Return True if an empty-state message is visibly rendered in the DOM.
+
+        Uses get_by_text() so only text actually rendered in the viewport is
+        matched — not hidden elements, <script> bundles, or <noscript> blocks.
+        """
+        try:
+            for msg in self._EMPTY_STATE_MESSAGES:
+                locator = self._page.get_by_text(msg, exact=False)
+                if locator.count() > 0 and locator.first.is_visible():
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def get_empty_state_message(self) -> Optional[str]:
+        """Return the first empty-state message visibly rendered in the DOM, or None."""
+        try:
+            for msg in self._EMPTY_STATE_MESSAGES:
+                locator = self._page.get_by_text(msg, exact=False)
+                if locator.count() > 0 and locator.first.is_visible():
+                    return msg
+        except Exception:
+            pass
+        return None
 
     def current_url(self) -> str:
         """Return the current browser URL."""

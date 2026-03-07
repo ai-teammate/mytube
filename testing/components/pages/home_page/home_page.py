@@ -39,9 +39,9 @@ class HomePage:
       - <section aria-labelledby="most-viewed-heading">
 
     Each VideoCard contains:
-      - Thumbnail anchor: a[href^='/v/'] with aria-label=<title>
-      - Title anchor:     a[href^='/v/'] (text link)
-      - Uploader anchor:  a[href^='/u/']
+      - Thumbnail anchor: a[href*='/v/'] with aria-label=<title>
+      - Title anchor:     a[href*='/v/'] (text link)
+      - Uploader anchor:  a[href*='/u/']
       - View count:       <p> with "{N} views"
     """
 
@@ -55,8 +55,10 @@ class HomePage:
     # Card selectors (inside each section)
     # Each VideoCard has a thumbnail anchor and a title anchor both pointing to /v/<id>
     _VIDEO_CARD = "div.rounded-lg"
-    _CARD_TITLE_LINK = "a[href^='/v/']"
-    _CARD_UPLOADER_LINK = "a[href^='/u/']"
+    _CARD_TITLE_LINK = "a[href*='/v/']"
+    _CARD_UPLOADER_LINK = "a[href*='/u/']"
+    # Thumbnail anchor — link wrapping the image, identified by aria-label
+    _CARD_THUMBNAIL_LINK = "a[href*='/v/'][aria-label]"
     # View count paragraph
     _CARD_VIEW_COUNT = "p.text-xs"
 
@@ -152,7 +154,7 @@ class HomePage:
         for i in range(count):
             card = cards.nth(i)
 
-            # Title link (second a[href^='/v/'] — the text link, not the thumbnail)
+            # Title link (second a[href*='/v/'] — the text link, not the thumbnail)
             title_links = card.locator(self._CARD_TITLE_LINK)
             if title_links.count() > 0:
                 # The text title link is the one with font-medium class
@@ -191,14 +193,26 @@ class HomePage:
             card_view_counts=view_counts,
         )
 
+    def get_section_thumbnail_missing_indexes(self, section_selector: str) -> list:
+        """Return indexes of cards in *section_selector* that have no thumbnail anchor."""
+        section = self._page.locator(section_selector)
+        cards = section.locator(self._VIDEO_CARD)
+        missing = []
+        for i in range(cards.count()):
+            if cards.nth(i).locator(self._CARD_THUMBNAIL_LINK).count() == 0:
+                missing.append(i)
+        return missing
+
     def all_card_hrefs_match_video_pattern(self, section_selector: str) -> bool:
         """Return True if every video card link in the section matches /v/<id>."""
         section = self._page.locator(section_selector)
         links = section.locator(self._CARD_TITLE_LINK)
-        pattern = re.compile(r"^/v/.+")
-        for i in range(links.count()):
+        count = links.count()
+        if count == 0:
+            return False  # guard: no links found is a failure, not a pass
+        for i in range(count):
             href = links.nth(i).get_attribute("href") or ""
-            if not pattern.match(href):
+            if not re.search(r"/v/.+", href):  # use search to tolerate basePath prefix
                 return False
         return True
 
@@ -214,3 +228,29 @@ class HomePage:
 
     def current_url(self) -> str:
         return self._page.url
+
+    def click_first_video_card_title(self) -> str:
+        """Click the title link of the first video card on the page.
+
+        Searches both homepage sections for the first available card title
+        link and clicks it.  Returns the title text for later assertion.
+
+        Raises ``AssertionError`` if no video cards are found.
+        """
+        title_link = self._page.locator("a.text-sm.font-medium").first
+        assert title_link.count() > 0 or title_link.is_visible(), (
+            "No video card title links found on the homepage. "
+            "Ensure at least one video with 'ready' status is available."
+        )
+        title_text = title_link.inner_text().strip()
+        title_link.click()
+        return title_text
+
+    def has_video_cards(self) -> bool:
+        """Return True if at least one video card title link is present."""
+        return self._page.locator("a.text-sm.font-medium").count() > 0
+
+    def wait_for_navigation_to_watch(self, timeout: int = 30_000) -> None:
+        """Wait until the browser URL contains a /v/<uuid> segment."""
+        import re
+        self._page.wait_for_url(re.compile(r"/v/[^/]+"), timeout=timeout)

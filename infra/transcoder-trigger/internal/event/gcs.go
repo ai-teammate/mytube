@@ -15,7 +15,7 @@ import (
 type StorageObject struct {
 	// Bucket is the GCS bucket name (e.g. "mytube-raw-uploads").
 	Bucket string `json:"bucket"`
-	// Name is the GCS object path (e.g. "raw/<uuid>.mp4").
+	// Name is the GCS object path (e.g. "raw/<userID>/<videoID>").
 	Name string `json:"name"`
 }
 
@@ -34,6 +34,15 @@ func (o StorageObject) VideoID() (string, error) {
 		return "", fmt.Errorf("could not derive video ID from object name %q", o.Name)
 	}
 	return id, nil
+}
+
+// IsRawUpload reports whether the object is a raw video upload.
+// Raw uploads are stored under the "raw/" prefix (e.g. "raw/<userID>/<videoID>")
+// without a file extension. The Eventarc trigger is already scoped to
+// mytube-raw-uploads, so the prefix check alone is sufficient to exclude
+// unrelated objects from other paths.
+func (o StorageObject) IsRawUpload() bool {
+	return strings.HasPrefix(o.Name, "raw/")
 }
 
 // Parse decodes a JSON-encoded GCS StorageObject from r.

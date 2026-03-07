@@ -544,3 +544,51 @@ func TestNewVideoHandler_GET_AllowMethod_SetOn405(t *testing.T) {
 		t.Errorf("Allow header: got %q, expected to contain GET", allow)
 	}
 }
+
+func TestNewVideoHandler_GET_CategoryID_IncludedInResponse(t *testing.T) {
+	catID := 1
+	video := makeReadyVideo()
+	video.CategoryID = &catID
+	p := &stubVideoProvider{video: video, tags: []string{}}
+	h := handler.NewVideoHandler(p, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
+	rec := serveVideo(h, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body handler.VideoResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.CategoryID == nil {
+		t.Fatal("CategoryID: got nil, want non-nil")
+	}
+	if *body.CategoryID != catID {
+		t.Errorf("CategoryID: got %d, want %d", *body.CategoryID, catID)
+	}
+}
+
+func TestNewVideoHandler_GET_CategoryID_NilWhenNotSet(t *testing.T) {
+	video := makeReadyVideo()
+	video.CategoryID = nil
+	p := &stubVideoProvider{video: video, tags: []string{}}
+	h := handler.NewVideoHandler(p, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/"+testVideoID, nil)
+	rec := serveVideo(h, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body handler.VideoResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.CategoryID != nil {
+		t.Errorf("CategoryID: got %v, want nil", *body.CategoryID)
+	}
+}

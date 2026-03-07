@@ -33,6 +33,11 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
+// ─── Mock AuthContext for SiteHeader ──────────────────────────────────────────
+jest.mock("@/context/AuthContext", () => ({
+  useAuth: () => ({ user: null, loading: false, signOut: jest.fn() }),
+}));
+
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 import SearchPage from "@/app/search/SearchPageClient";
 
