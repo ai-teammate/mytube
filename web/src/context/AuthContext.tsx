@@ -16,7 +16,7 @@ import {
 import { getFirebaseAuth } from "@/lib/firebase";
 
 /** How often the heartbeat probes Firebase auth reachability (ms). */
-export const HEARTBEAT_INTERVAL_MS = 30_000;
+export const HEARTBEAT_INTERVAL_MS = 120_000;
 
 export interface AuthContextValue {
   /** The currently authenticated Firebase user, or null if not signed in. */
@@ -77,7 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const probe = async () => {
       try {
         await user.getIdToken(/* forceRefresh */ true);
-      } catch {
+      } catch (err) {
+        // Intentionally not re-throwing — treat any failure as auth unreachable.
+        console.error("[AuthContext] Heartbeat probe failed:", err);
         setAuthError(true);
       }
     };
