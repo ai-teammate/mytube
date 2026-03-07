@@ -36,8 +36,10 @@ Environment Variables
 Architecture Notes
 ------------------
 - ``EventarcService`` from ``testing.components.services.eventarc_service`` is
-  used for all gcloud calls. Raw JSON is inspected for ``cloudRunService``
-  destination path in addition to the legacy ``cloudRun`` path.
+  used for all gcloud calls. It handles both the newer ``cloudRunService``
+  destination path and the legacy ``cloudRun`` path internally.
+- Tests consume parsed fields from ``EventarcTriggerInfo`` directly; no
+  raw-JSON parsing helpers are needed in the test file.
 - All GCP credentials are injected via environment variables; never hard-coded.
 """
 from __future__ import annotations
@@ -49,7 +51,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.components.services.eventarc_service import EventarcService
+from testing.components.services.eventarc_service import EventarcService, EventarcTriggerInfo
 
 # ---------------------------------------------------------------------------
 # Config — read from environment, fall back to defaults
@@ -68,45 +70,6 @@ EXPECTED_EVENT_TYPE: str = os.environ.get(
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _extract_destination_service(raw: dict) -> str | None:
-    """Extract the short Cloud Run service name from the trigger raw JSON.
-
-    Handles both ``destination.cloudRunService.service`` (newer Eventarc
-    resource representation) and the legacy ``destination.cloudRun.service``
-    path, returning the leaf service name in either case.
-    """
-    dest = raw.get("destination", {})
-
-    # Newer path: destination.cloudRunService.service
-    cloud_run_service = dest.get("cloudRunService", {})
-    svc_ref = cloud_run_service.get("service", "")
-    if svc_ref:
-        return svc_ref.split("/")[-1]
-
-    # Legacy path: destination.cloudRun.service
-    cloud_run = dest.get("cloudRun", {})
-    svc_ref = cloud_run.get("service", "")
-    if svc_ref:
-        return svc_ref.split("/")[-1]
-
-    return None
-
-
-def _extract_event_filters(raw: dict) -> dict[str, str]:
-    """Return a mapping of event-filter attribute → value from raw trigger JSON."""
-    filters: dict[str, str] = {}
-    for f in raw.get("eventFilters", []):
-        attr = f.get("attribute", "")
-        val = f.get("value", "")
-        if attr:
-            filters[attr] = val
-    return filters
-
-
-# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -116,10 +79,9 @@ def eventarc_service() -> EventarcService:
 
 
 @pytest.fixture(scope="module")
-def trigger_raw(eventarc_service: EventarcService) -> dict:
-    """Describe the Eventarc trigger and return the raw JSON dict."""
-    info = eventarc_service.describe_eventarc_trigger(TRIGGER_NAME)
-    return info.raw
+def trigger_info(eventarc_service: EventarcService) -> EventarcTriggerInfo:
+    """Describe the Eventarc trigger and return the parsed EventarcTriggerInfo."""
+    return eventarc_service.describe_eventarc_trigger(TRIGGER_NAME)
 
 
 # ---------------------------------------------------------------------------
@@ -136,29 +98,24 @@ class TestEventarcTriggerConfiguration:
             f"project='{PROJECT_ID}' location='{REGION}'."
         )
 
-    def test_destination_service_is_correct(self, trigger_raw: dict) -> None:
-        """Step 2: destination.cloudRunService.service must be mytube-transcoder-trigger."""
-        service_name = _extract_destination_service(trigger_raw)
-        assert service_name == EXPECTED_DESTINATION_SERVICE, (
+    def test_destination_service_is_correct(self, trigger_info: EventarcTriggerInfo) -> None:
+        """Step 2: destination service must be mytube-transcoder-trigger."""
+        assert trigger_info.destination_service == EXPECTED_DESTINATION_SERVICE, (
             f"Expected destination service '{EXPECTED_DESTINATION_SERVICE}', "
-            f"got '{service_name}'.\n"
-            f"Raw destination: {trigger_raw.get('destination')}"
+            f"got '{trigger_info.destination_service}'.\n"
+            f"Raw destination: {trigger_info.raw.get('destination')}"
         )
 
-    def test_event_filter_bucket_is_correct(self, trigger_raw: dict) -> None:
+    def test_event_filter_bucket_is_correct(self, trigger_info: EventarcTriggerInfo) -> None:
         """Step 3a: eventFilters must include bucket=mytube-raw-uploads."""
-        filters = _extract_event_filters(trigger_raw)
-        bucket = filters.get("bucket")
-        assert bucket == EXPECTED_BUCKET, (
+        assert trigger_info.bucket_filter == EXPECTED_BUCKET, (
             f"Expected eventFilter bucket='{EXPECTED_BUCKET}', "
-            f"got '{bucket}'.\nAll event filters: {filters}"
+            f"got '{trigger_info.bucket_filter}'."
         )
 
-    def test_event_filter_type_is_correct(self, trigger_raw: dict) -> None:
+    def test_event_filter_type_is_correct(self, trigger_info: EventarcTriggerInfo) -> None:
         """Step 3b: eventFilters must include type=google.cloud.storage.object.v1.finalized."""
-        filters = _extract_event_filters(trigger_raw)
-        event_type = filters.get("type")
-        assert event_type == EXPECTED_EVENT_TYPE, (
+        assert trigger_info.event_type == EXPECTED_EVENT_TYPE, (
             f"Expected eventFilter type='{EXPECTED_EVENT_TYPE}', "
-            f"got '{event_type}'.\nAll event filters: {filters}"
+            f"got '{trigger_info.event_type}'."
         )
