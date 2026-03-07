@@ -182,6 +182,24 @@ class TestHomepageDiscoverySections:
             "but some hrefs did not match the pattern."
         )
 
+    def test_recently_uploaded_cards_have_thumbnail(self, loaded_home: HomePage):
+        """Every card in 'Recently Uploaded' must have a thumbnail anchor element."""
+        missing = loaded_home.get_section_thumbnail_missing_indexes(
+            loaded_home._RECENTLY_UPLOADED_SECTION
+        )
+        assert not missing, (
+            f"Cards at indexes {missing} in 'Recently Uploaded' are missing a thumbnail."
+        )
+
+    def test_most_viewed_cards_have_thumbnail(self, loaded_home: HomePage):
+        """Every card in 'Most Viewed' must have a thumbnail anchor element."""
+        missing = loaded_home.get_section_thumbnail_missing_indexes(
+            loaded_home._MOST_VIEWED_SECTION
+        )
+        assert not missing, (
+            f"Cards at indexes {missing} in 'Most Viewed' are missing a thumbnail."
+        )
+
     def test_recently_uploaded_cards_have_uploader_username(self, loaded_home: HomePage):
         """Every video card in 'Recently Uploaded' must display an uploader username."""
         info = loaded_home.get_recently_uploaded_section_info()

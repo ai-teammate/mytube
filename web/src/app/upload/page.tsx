@@ -191,6 +191,15 @@ export default function UploadPage() {
 
     if (!uploadFailed) {
       setPhase("done");
+      // After successful GCS upload, verify the session is still valid before
+      // redirecting. If the session expired during the upload, the user should
+      // be redirected to login.
+      const newToken = await getIdToken();
+      if (!newToken) {
+        // Session has expired; redirect to login
+        router.replace("/login");
+        return;
+      }
       // Redirect to the dashboard showing the video as "Processing".
       // Use a generic dashboard route rather than a user-profile URL to avoid
       // depending on the Firebase displayName (client-controlled, may be null).

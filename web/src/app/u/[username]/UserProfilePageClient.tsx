@@ -25,7 +25,41 @@ export default function UserProfilePage({
   repository = defaultRepository,
   playlistRepository = defaultPlaylistRepository,
 }: UserProfilePageProps) {
-  const { username } = use(params);
+  const { username: paramUsername } = use(params);
+
+  // GitHub Pages SPA fallback: public/404.html stores the real username in
+  // sessionStorage under '__spa_username' and redirects to the pre-built shell
+  // at /u/_/. Resolve the actual username once at mount via a lazy state
+  // initialiser so the loadProfile effect always sees the correct value on its
+  // first run.
+  const [username] = useState<string>(() => {
+    if (paramUsername !== "_" || typeof window === "undefined")
+      return paramUsername;
+    const stored = sessionStorage.getItem("__spa_username");
+    if (stored) {
+      sessionStorage.removeItem("__spa_username");
+      return stored;
+    }
+    return paramUsername;
+  });
+
+  // Correct the browser URL so the address bar shows /u/<real-username>/
+  // instead of the placeholder /u/_/. Runs once after mount.
+  useEffect(() => {
+    if (
+      username !== paramUsername &&
+      paramUsername === "_" &&
+      typeof window !== "undefined"
+    ) {
+      const corrected = window.location.pathname.replace(
+        "/u/_/",
+        `/u/${username}/`
+      );
+      window.history.replaceState(null, "", corrected);
+    }
+    // Only run once at mount — username and paramUsername are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -39,6 +73,8 @@ export default function UserProfilePage({
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [playlistsLoading, setPlaylistsLoading] = useState(false);
   const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
+  const [hasPlaylists, setHasPlaylists] = useState(false);
+  const [playlistsCheckLoading, setPlaylistsCheckLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +102,40 @@ export default function UserProfilePage({
       cancelled = true;
     };
   }, [username, repository]);
+
+  // Check if user has playlists on component mount (before tab click).
+  useEffect(() => {
+    if (playlistsCheckLoading || playlistsLoaded) return;
+    let cancelled = false;
+
+    async function checkPlaylists() {
+      setPlaylistsCheckLoading(true);
+      try {
+        const data = await playlistRepository.listByUsername(username);
+        if (!cancelled) {
+          setHasPlaylists(data.length > 0);
+          // If we already have the data, we can set the playlists now
+          // to avoid re-fetching when the tab is clicked
+          if (data.length > 0) {
+            setPlaylists(data);
+            setPlaylistsLoaded(true);
+          }
+        }
+      } catch {
+        // Silently fail - if we can't check, assume no playlists
+        if (!cancelled) {
+          setHasPlaylists(false);
+        }
+      } finally {
+        if (!cancelled) setPlaylistsCheckLoading(false);
+      }
+    }
+
+    checkPlaylists();
+    return () => {
+      cancelled = true;
+    };
+  }, [username, playlistRepository]);
 
   // Load playlists when the playlists tab is first activated.
   useEffect(() => {
@@ -160,16 +230,18 @@ export default function UserProfilePage({
             >
               Videos
             </button>
-            <button
-              onClick={() => setActiveTab("playlists")}
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "playlists"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Playlists
-            </button>
+            {hasPlaylists && (
+              <button
+                onClick={() => setActiveTab("playlists")}
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "playlists"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Playlists
+              </button>
+            )}
           </nav>
         </div>
 

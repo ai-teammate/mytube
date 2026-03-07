@@ -19,7 +19,10 @@ Test sequence:
 from __future__ import annotations
 
 import os
+import pathlib
+import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -63,14 +66,6 @@ def gcp_config() -> GcpConfig:
             "Set GCP_PROJECT_ID and GOOGLE_APPLICATION_CREDENTIALS to run this test."
         )
     return cfg
-
-
-@pytest.fixture(scope="module")
-def raw_object_path() -> str:
-    value = os.environ.get("RAW_OBJECT_PATH", "")
-    if not value:
-        pytest.skip("RAW_OBJECT_PATH is not set — skipping transcoder integration test.")
-    return value
 
 
 @pytest.fixture(scope="module")
@@ -119,7 +114,7 @@ def transcoded_video(
     conn,
     gcp_config: GcpConfig,
     transcoder_service: HLSTranscoderService,
-    raw_object_path: str,
+    storage_client,
     db_dsn: str,
 ) -> dict:
     """
@@ -149,10 +144,34 @@ def transcoded_video(
         f"Precondition failed: expected status 'processing' or 'pending', got '{initial_status}'."
     )
 
+    # ── Step 0: Generate a minimal MP4 with both video AND audio streams ──
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "color=c=black:s=1280x720:d=2",
+            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+            "-c:v", "libx264", "-c:a", "aac",
+            "-shortest", "-t", "2",
+            "-movflags", "+faststart",
+            tmp_path,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    raw_object_key = f"test-videos/{video_id}/input.mp4"
+    raw_bucket = storage_client.bucket(gcp_cfg.raw_bucket)
+    raw_blob = raw_bucket.blob(raw_object_key)
+    raw_blob.upload_from_filename(tmp_path)
+    pathlib.Path(tmp_path).unlink(missing_ok=True)
+
     # ── Step 1 (ticket): Run the Cloud Run transcoding job ────────────────
     job_result = transcoder_service.run_transcoding_job(
         video_id=video_id,
-        raw_object_path=raw_object_path,
+        raw_object_path=raw_object_key,
         db_dsn=db_dsn,
     )
 
@@ -163,14 +182,8 @@ def transcoded_video(
         f"Error: {job_result.error_message}"
     )
 
-    # ── Step 2 (ticket): Query the videos table for the updated record ────
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT status, hls_manifest_path, thumbnail_url FROM videos WHERE id = %s",
-            (video_id,),
-        )
-        updated = cur.fetchone()
-
+    # ── Step 2 (ticket): Query the videos table via VideoService ──────────
+    updated = video_svc.get_video_by_id(video_id)
     assert updated is not None, f"Video row {video_id} not found after transcoding job."
 
     # Derive the expected values from config (same logic as the transcoder)
@@ -179,14 +192,17 @@ def transcoded_video(
     expected_hls_manifest_path = f"gs://{gcp_cfg.hls_bucket}/videos/{video_id}/index.m3u8"
     expected_thumbnail_url = f"{gcp_cfg.cdn_base_url}/videos/{video_id}/thumbnail.jpg"
 
-    return {
+    yield {
         "video_id": video_id,
-        "status": updated[0],
-        "hls_manifest_path": updated[1],
-        "thumbnail_url": updated[2],
+        "status": updated["status"],
+        "hls_manifest_path": updated["hls_manifest_path"],
+        "thumbnail_url": updated["thumbnail_url"],
         "expected_hls_manifest_path": expected_hls_manifest_path,
         "expected_thumbnail_url": expected_thumbnail_url,
     }
+
+    # ── Teardown: remove the generated GCS object ─────────────────────────
+    raw_bucket.blob(raw_object_key).delete()
 
 
 # ---------------------------------------------------------------------------
