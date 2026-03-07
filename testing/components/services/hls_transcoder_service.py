@@ -111,7 +111,7 @@ class HLSTranscoderService:
             f"VIDEO_ID={video_id},"
             f"RAW_OBJECT_PATH={raw_object_path},"
             f"HLS_BUCKET={self._config.hls_bucket},"
-            f"DB_DSN={db_dsn}",
+            f"CDN_BASE_URL={self._config.cdn_base_url}",
         ]
         try:
             result = subprocess.run(
