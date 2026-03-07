@@ -16,23 +16,23 @@ Short summary:
 
 ```mermaid
 flowchart LR
-  subgraph Client
-    U[User]
+  subgraph "Client"
+    U["User"]
   end
-  U --> Browser[Next.js (web/) — GitHub Pages]
-  Browser -->|ID Token| Firebase[Firebase Auth]
-  Browser -->|REST (Bearer ID Token)| API[API — Go (Cloud Run)]
-  API -->|signed URLs| GCS_RAW[Google Cloud Storage — RAW_UPLOADS_BUCKET (private)]
-  GCS_RAW -->|object.finalize| Eventarc[Eventarc]
-  Eventarc --> Trigger[Transcoder Trigger — Cloud Run service]
-  Trigger -->|start job| Transcoder[Transcoder Job — Cloud Run Job (FFmpeg)]
-  Transcoder --> GCS_HLS[HLS_BUCKET (public)]
-  Transcoder --> DB[(Postgres — Cloud SQL)]
+  U --> Browser["Next.js (web/) — GitHub Pages"]
+  Browser -->|"ID Token"| Firebase["Firebase Auth"]
+  Browser -->|"REST (Bearer ID Token)"| API["API — Go (Cloud Run)"]
+  API -->|"signed URLs"| GCS_RAW["GCS: RAW_UPLOADS_BUCKET (private)"]
+  GCS_RAW -->|"object.finalize"| Eventarc["Eventarc"]
+  Eventarc --> Trigger["Transcoder Trigger (Cloud Run)"]
+  Trigger -->|"start job"| Transcoder["Transcoder Job (Cloud Run Job, FFmpeg)"]
+  Transcoder --> GCS_HLS["HLS_BUCKET (public)"]
+  Transcoder --> DB["Postgres — Cloud SQL"]
   API --> DB
   API --> GCS_HLS
-  GitHubActions[GitHub Actions] -->|deploy| API
-  GitHubActions -->|deploy| Trigger
-  GitHubActions -->|deploy| Pages[GitHub Pages]
+  GitHubActions["GitHub Actions"] -->|"deploy"| API
+  GitHubActions -->|"deploy"| Trigger
+  GitHubActions -->|"deploy"| Pages["GitHub Pages"]
 ```
 
 ---
@@ -43,19 +43,19 @@ flowchart LR
 graph TB
   subgraph "Google Cloud Platform"
     direction TB
-    CloudRunAPI[Cloud Run — mytube-api]
-    CloudRunTrigger[Cloud Run — mytube-transcoder-trigger]
-    CloudRunJob[Cloud Run Job — mytube-transcoder]
-    GCS_RAW[Cloud Storage — mytube-raw-uploads]
-    GCS_HLS[Cloud Storage — mytube-hls-output (public)]
-    CloudSQL[(Cloud SQL — Postgres)]
-    Eventarc[Eventarc]
-    SecretManager[Secret Manager]
+    CloudRunAPI["Cloud Run — mytube-api"]
+    CloudRunTrigger["Cloud Run — mytube-transcoder-trigger"]
+    CloudRunJob["Cloud Run Job — mytube-transcoder"]
+    GCS_RAW["Cloud Storage — mytube-raw-uploads"]
+    GCS_HLS["Cloud Storage — mytube-hls-output (public)"]
+    CloudSQL["Cloud SQL — Postgres"]
+    Eventarc["Eventarc"]
+    SecretManager["Secret Manager"]
   end
   subgraph "CI/CD"
-    GHActions[.github/workflows]
-    GCR[gcr.io (Container Registry)]
-    Pages[GitHub Pages]
+    GHActions[".github/workflows"]
+    GCR["gcr.io (Container Registry)"]
+    Pages["GitHub Pages"]
   end
   GHActions --> GCR
   GHActions --> CloudRunAPI
@@ -66,8 +66,8 @@ graph TB
   CloudRunAPI --> GCS_HLS
   GCS_RAW --> Eventarc --> CloudRunTrigger --> CloudRunJob --> GCS_HLS
   CloudRunJob --> CloudSQL
-  SecretManager -->|DB creds| CloudRunAPI
-  SecretManager -->|DB creds| CloudRunJob
+  SecretManager -->|"DB creds"| CloudRunAPI
+  SecretManager -->|"DB creds"| CloudRunJob
 ```
 
 ---
@@ -76,28 +76,28 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-  participant User as User (browser)
-  participant Web as Web (Next.js)
-  participant API as API (Go)
-  participant GCS as GCS RAW_BUCKET
-  participant Eventarc as Eventarc
-  participant Trigger as Trigger (Cloud Run)
-  participant Job as Transcoder Job
-  participant HLS as GCS HLS_BUCKET
-  participant DB as Postgres (Cloud SQL)
+  participant User as "User (browser)"
+  participant Web as "Web (Next.js)"
+  participant API as "API (Go)"
+  participant GCS as "GCS RAW_BUCKET"
+  participant Eventarc as "Eventarc"
+  participant Trigger as "Trigger (Cloud Run)"
+  participant Job as "Transcoder Job"
+  participant HLS as "GCS HLS_BUCKET"
+  participant DB as "Postgres (Cloud SQL)"
 
-  User->>Web: Login (Firebase SDK) → ID token
+  User->>Web: Login (Firebase SDK) -> ID token
   Web->>API: POST /api/videos (Authorization: Bearer ID_TOKEN)
   API->>API: Verify ID token via Firebase Verifier
-  API->>DB: Create video DB row (pending)
+  API->>DB: Create video DB row (status: pending)
   API->>API: Sign PUT URL (GCSSigner) for RAW_BUCKET
   API->>Web: Return signed PUT URL
   Web->>GCS: PUT upload to RAW_BUCKET (direct)
   GCS->>Eventarc: object.finalize (gs://RAW_BUCKET/...)
   Eventarc->>Trigger: Invoke trigger service
   Trigger->>Job: Start Cloud Run Job (override RAW_OBJECT_PATH)
-  Job->>Job: Transcode (ffmpeg) → write HLS to HLS_BUCKET
-  Job->>DB: Update video row (ready + HLS URLs)
+  Job->>Job: Transcode (ffmpeg) -> write HLS to HLS_BUCKET
+  Job->>DB: Update video row (status: ready + HLS URLs)
   Web->>API: GET /api/videos/{id} (show processed video)
 ```
 
@@ -107,7 +107,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  repo[Repository root]
+  repo["Repository root"]
   repo --> web["/web — Next.js, React, Tailwind, video.js, firebase (client)"]
   repo --> api["/api — Go 1.24, handlers, repository, storage, Dockerfile, migrations"]
   repo --> transcoder["/api/cmd/transcoder — FFmpeg-enabled binary + Dockerfile"]
