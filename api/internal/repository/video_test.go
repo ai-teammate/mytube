@@ -190,11 +190,12 @@ func TestGetByID_Found_AllFields(t *testing.T) {
 
 func TestGetByID_NilOptionalFields(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
+	hls := "gs://bucket/videos/v2/index.m3u8" // HLS must be non-nil for a 'ready' video
 	expected := &repository.VideoDetail{
 		ID:                "video-id-2",
 		Title:             "No Optional Fields",
 		Description:       nil,
-		HLSManifestPath:   nil,
+		HLSManifestPath:   &hls,
 		ThumbnailURL:      nil,
 		CategoryID:        nil,
 		ViewCount:         0,
@@ -218,8 +219,8 @@ func TestGetByID_NilOptionalFields(t *testing.T) {
 	if got.Description != nil {
 		t.Errorf("expected nil Description, got %v", got.Description)
 	}
-	if got.HLSManifestPath != nil {
-		t.Errorf("expected nil HLSManifestPath, got %v", got.HLSManifestPath)
+	if got.HLSManifestPath == nil || *got.HLSManifestPath != hls {
+		t.Errorf("HLSManifestPath: got %v, want %q", got.HLSManifestPath, hls)
 	}
 	if got.ThumbnailURL != nil {
 		t.Errorf("expected nil ThumbnailURL, got %v", got.ThumbnailURL)
@@ -229,6 +230,37 @@ func TestGetByID_NilOptionalFields(t *testing.T) {
 	}
 	if got.UploaderAvatarURL != nil {
 		t.Errorf("expected nil UploaderAvatarURL, got %v", got.UploaderAvatarURL)
+	}
+}
+
+// Regression test for MYTUBE-321: GetByID must treat a 'ready' video with a
+// null hls_manifest_path as not found. The invariant is that a publicly visible
+// video must have a non-null HLS manifest.
+func TestGetByID_ReadyVideoWithNullHLSPath_ReturnsNil(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	// Simulate the DB returning a 'ready' row where hls_manifest_path IS NULL —
+	// the corrupted state that caused MYTUBE-321.
+	brokenVideo := &repository.VideoDetail{
+		ID:               "video-id-broken",
+		Title:            "Broken Ready Video",
+		HLSManifestPath:  nil, // null — the bug condition
+		Status:           "ready",
+		CreatedAt:        now,
+		UploaderUsername: "alice",
+	}
+
+	q := &videoDetailQuerier{t: t, video: brokenVideo}
+	repo := repository.NewVideoRepository(q)
+
+	got, err := repo.GetByID(context.Background(), "video-id-broken")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// A 'ready' video with null hls_manifest_path must be treated as not found
+	// so the watch page does not render "Video not available yet." in perpetuity.
+	if got != nil {
+		t.Errorf("expected nil for ready video with null HLS path, got video with title %q", got.Title)
 	}
 }
 

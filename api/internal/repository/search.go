@@ -95,6 +95,7 @@ func (r *SearchRepository) Search(ctx context.Context, p SearchParams) ([]Search
 	var qb queryBuilder
 
 	qb.add("v.status = 'ready'")
+	qb.add("v.hls_manifest_path IS NOT NULL")
 
 	if p.Query != "" {
 		// Match against title (full-text) OR video_tags.tag (exact).
@@ -170,6 +171,7 @@ SELECT v.id,
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
 ORDER BY v.created_at DESC
 LIMIT  $1`
 
@@ -199,6 +201,7 @@ SELECT v.id,
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
 ORDER BY v.view_count DESC
 LIMIT  $1`
 
@@ -262,6 +265,7 @@ SELECT v.id,
 FROM   videos v
 JOIN   users  u ON u.id = v.uploader_id
 WHERE  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
   AND  v.category_id = $1
 ORDER BY v.created_at DESC
 LIMIT  $2 OFFSET $3`
