@@ -10,6 +10,11 @@
 //	CDN_BASE_URL    — base URL for constructing the thumbnail_url written to the DB
 //	                  (e.g. https://cdn.example.com)
 //
+// Optional environment variables:
+//
+//	CLEANUP_ON_TRANSCODE_FAILURE — set to "false" to disable GCS cleanup on
+//	                               permanent transcoding failure (default: true)
+//
 // Database connection (same as api service, using Cloud SQL Unix socket):
 //
 //	INSTANCE_UNIX_SOCKET — Cloud SQL Unix socket path (when running on Cloud Run)
@@ -64,18 +69,20 @@ func run() error {
 
 	downloader := gcsStorage.NewDownloader(gcsStorage.NewGCSObjectReader(gcsClient))
 	uploader := gcsStorage.NewUploader(gcsStorage.NewGCSObjectWriter(gcsClient))
+	cleaner := gcsStorage.NewGCSPrefixDeleter(gcsClient)
 	ffmpegRunner := ffmpeg.NewRunner()
 
-	return transcode(ctx, cfg, downloader, uploader, ffmpegRunner, repo)
+	return transcode(ctx, cfg, downloader, uploader, cleaner, ffmpegRunner, repo)
 }
 
 // config holds the job configuration derived from environment variables.
 type config struct {
-	VideoID       string
-	RawBucket     string
-	RawObjectPath string
-	HLSBucket     string
-	CDNBaseURL    string
+	VideoID                   string
+	RawBucket                 string
+	RawObjectPath             string
+	HLSBucket                 string
+	CDNBaseURL                string
+	CleanupOnTranscodeFailure bool
 }
 
 // configFromEnv reads required environment variables into a config.
@@ -94,11 +101,12 @@ func configFromEnv() (config, error) {
 		}
 	}
 	return config{
-		VideoID:       *vars["VIDEO_ID"],
-		RawBucket:     *vars["RAW_BUCKET"],
-		RawObjectPath: *vars["RAW_OBJECT_PATH"],
-		HLSBucket:     *vars["HLS_BUCKET"],
-		CDNBaseURL:    *vars["CDN_BASE_URL"],
+		VideoID:                   *vars["VIDEO_ID"],
+		RawBucket:                 *vars["RAW_BUCKET"],
+		RawObjectPath:             *vars["RAW_OBJECT_PATH"],
+		HLSBucket:                 *vars["HLS_BUCKET"],
+		CDNBaseURL:                *vars["CDN_BASE_URL"],
+		CleanupOnTranscodeFailure: os.Getenv("CLEANUP_ON_TRANSCODE_FAILURE") != "false",
 	}, nil
 }
 
@@ -126,15 +134,23 @@ type VideoRepository interface {
 	MarkFailed(ctx context.Context, videoID string) error
 }
 
+// HLSCleaner deletes partial HLS output on permanent transcoding failure.
+// Satisfied by *storage.GCSPrefixDeleter and allows tests to inject a stub.
+type HLSCleaner interface {
+	DeletePrefix(ctx context.Context, bucket, prefix string) error
+}
+
 // transcode executes the full transcoding pipeline for one video.
 // The working directory is a temporary directory that is cleaned up on return.
 // On any failure, transcode makes a best-effort call to repo.MarkFailed before
-// returning the original error.
+// returning the original error. When cfg.CleanupOnTranscodeFailure is true,
+// partial HLS output under videos/<videoID>/ is also deleted from the HLS bucket.
 func transcode(
 	ctx context.Context,
 	cfg config,
 	dl FileDownloader,
 	ul DirUploader,
+	cleaner HLSCleaner,
 	tr Transcoder,
 	repo VideoRepository,
 ) error {
@@ -142,6 +158,14 @@ func transcode(
 	if err != nil {
 		if markErr := repo.MarkFailed(ctx, cfg.VideoID); markErr != nil {
 			log.Printf("warning: could not mark video %s as failed: %v", cfg.VideoID, markErr)
+		}
+		if cfg.CleanupOnTranscodeFailure {
+			hlsPrefix := fmt.Sprintf("videos/%s/", cfg.VideoID)
+			if cleanErr := cleaner.DeletePrefix(ctx, cfg.HLSBucket, hlsPrefix); cleanErr != nil {
+				log.Printf("warning: could not clean up HLS output for video %s: %v", cfg.VideoID, cleanErr)
+			} else {
+				log.Printf("cleanup: deleted partial HLS output gs://%s/%s", cfg.HLSBucket, hlsPrefix)
+			}
 		}
 	}
 	return err
