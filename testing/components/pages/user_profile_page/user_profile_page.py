@@ -117,6 +117,29 @@ class UserProfilePage:
         return all(pattern.match(href) for href in hrefs)
 
     # ------------------------------------------------------------------
+    # Error state queries
+    # ------------------------------------------------------------------
+
+    _ERROR_MESSAGE = "Could not load profile. Please try again later."
+    _ERROR_ROLE = "alert"
+
+    def is_error_visible(self, timeout: float = 15_000) -> bool:
+        """Return True when the profile-load-failure error message is visible."""
+        locator = self._page.get_by_role(self._ERROR_ROLE).first
+        try:
+            locator.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def get_error_message(self) -> str | None:
+        """Return the text content of the [role=alert] error element, or None."""
+        locator = self._page.get_by_role(self._ERROR_ROLE)
+        if locator.count() == 0:
+            return None
+        return (locator.first.text_content() or "").strip()
+
+    # ------------------------------------------------------------------
     # Event monitoring
     # ------------------------------------------------------------------
 
