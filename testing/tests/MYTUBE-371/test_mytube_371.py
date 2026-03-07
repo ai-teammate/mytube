@@ -79,10 +79,12 @@ _MIME_TYPE = "video/mp4"
 def _generate_minimal_mp4() -> bytes:
     """Return the bytes of a minimal valid silent MP4 file.
 
-    Tries ffmpeg first (produces a proper 1-second silent H.264/AAC clip).
-    Falls back to a hard-coded 32-byte ftyp/mdat binary blob that is just
-    valid enough for the GCS upload endpoint to accept (content-type only).
+    1. Tries ffmpeg (produces a proper 1-second silent H.264/AAC clip).
+    2. Downloads a real MP4 from a public CDN as a secondary fallback.
+    3. Skips the test if both options are unavailable — uploading an
+       unprocessable blob would cause a false pipeline failure.
     """
+    # 1. Try ffmpeg
     try:
         result = subprocess.run(
             [
@@ -99,18 +101,25 @@ def _generate_minimal_mp4() -> bytes:
             capture_output=True,
             timeout=30,
         )
-        if result.returncode == 0 and len(result.stdout) > 0:
+        if result.returncode == 0 and result.stdout:
             return result.stdout
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
-    # Minimal MP4 binary blob — a well-formed ftyp box followed by an empty
-    # mdat box.  Many upload endpoints only inspect the Content-Type header
-    # rather than the file body; this satisfies that check while keeping the
-    # fixture dependency-free.
-    return (
-        b"\x00\x00\x00\x1cftypmp42\x00\x00\x00\x00mp42mp41isom"
-        b"\x00\x00\x00\x08mdat"
+    # 2. Download a real MP4 from a public CDN
+    try:
+        with urllib.request.urlopen(
+            "https://www.w3schools.com/html/mov_bbb.mp4", timeout=30
+        ) as resp:
+            return resp.read()
+    except Exception:
+        pass
+
+    # 3. Skip rather than upload unprocessable garbage
+    pytest.skip(
+        "Cannot generate a valid silent MP4: ffmpeg is not installed and the "
+        "public fallback URL is unreachable. Set SILENT_VIDEO_PATH to a valid "
+        "silent .mp4 file to run this test."
     )
 
 
