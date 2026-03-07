@@ -15,12 +15,14 @@ Preconditions
 Test approach
 -------------
 1. Sign in a test user and navigate to /upload page.
-2. Initiate a video upload (the upload goes to GCS via signed URL).
-3. Monitor upload progress and wait until it's near completion (>= 95%).
-4. Invalidate the session by clearing all authentication tokens and cookies from the browser.
-5. Allow the upload to finish naturally.
-6. Verify that instead of redirecting to /dashboard, the browser redirects to /login,
-   confirming that the app enforced session validation upon upload completion.
+2. Intercept POST /api/videos to return a fake GCS signed URL (no live backend needed).
+3. Intercept the fake GCS PUT request to simulate upload completion:
+   a. Expire the Firebase in-memory token via React fiber introspection.
+   b. Register a route intercept for securetoken.googleapis.com to block token refresh.
+   c. Return HTTP 200 to the XHR so the frontend considers the upload finished.
+4. The frontend calls getIdToken() after upload; Firebase tries to refresh the expired
+   token, the refresh is blocked, getIdToken() returns null, and the app redirects to /login.
+5. Verify the browser redirects to /login instead of /dashboard.
 
 Test structure
 --------------
@@ -28,7 +30,7 @@ Test structure
 - Uses WebConfig to centralize environment variable access (base URLs, test credentials).
 - Uses UploadPage and LoginPage Page Objects for high-level actions.
 - No hardcoded URLs or credentials outside of config/env vars.
-- Mocks are not used; this is an integration test against the real deployed app.
+- Route interception makes the test fully self-contained (no live GCS backend required).
 """
 from __future__ import annotations
 
@@ -37,17 +39,15 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 import pytest
-from playwright.sync_api import sync_playwright, Browser, Page, BrowserContext
+from playwright.sync_api import sync_playwright, Browser, Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
 from testing.components.pages.upload_page.upload_page import UploadPage
 from testing.components.pages.login_page.login_page import LoginPage
-from testing.components.services.auth_service import AuthService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -61,6 +61,12 @@ _PROGRESS_POLL_INTERVAL_MS = 500
 # Sample video file paths (these should exist in the fixtures directory)
 # If not available, we'll generate a minimal test video on the fly
 _SAMPLE_VIDEO_PATH = _FIXTURE_DIR / "sample_video.mp4" if _FIXTURE_DIR.exists() else None
+
+# Fake GCS constants used by the route-interception approach for the integration test.
+_FAKE_GCS_BUCKET_URL = "https://storage.googleapis.com/fake-test-bucket"
+_FAKE_GCS_OBJECT = "test-upload-object"
+_FAKE_GCS_URL = f"{_FAKE_GCS_BUCKET_URL}/{_FAKE_GCS_OBJECT}"
+_FAKE_VIDEO_ID = "00000000-0000-0000-0000-000000000001"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -181,31 +187,96 @@ def sign_in_and_navigate_to_upload(
 
 
 def invalidate_session(page: Page) -> None:
-    """Clear all authentication tokens and cookies from the browser.
-    
-    This simulates session expiration by removing:
-    - All cookies (including Firebase auth cookies)
-    - localStorage items that might contain tokens
-    - sessionStorage items
-    
+    """Expire the Firebase in-memory token and block forced refresh via network interception.
+
+    Uses two complementary techniques so that the next call to getIdToken() in the
+    frontend returns null:
+
+    1. React fiber introspection — walks the React fiber tree to locate the Firebase
+       User object and sets stsTokenManager.expirationTime to 10 minutes in the past.
+       This forces the Firebase SDK to attempt a token refresh on the next
+       getIdToken() call instead of returning the cached token.
+
+       The walk starts from multiple candidate root elements (document, document.body,
+       div#__next) to handle both Next.js App Router and Pages Router deployments.
+       For each fiber node, the full memoizedState hooks linked list is scanned so
+       that the User object is found regardless of its hook position in the component.
+
+    2. securetoken.googleapis.com interception — registers a Playwright route handler
+       that responds with HTTP 400 TOKEN_EXPIRED to every token-refresh request.
+       This makes the forced refresh fail, causing getIdToken() to throw, which the
+       AuthContext getIdToken wrapper catches and converts to null.
+
     Parameters
     ----------
     page : Page
-        The Playwright page object.
+        The Playwright page object (must be on the upload page when called).
     """
-    # Clear all cookies
-    context = page.context
-    if context:
-        for cookie in context.cookies():
-            context.remove_cookies(cookie)
-    
-    # Clear localStorage and sessionStorage
+    # Step 1: Expire the cached in-memory Firebase token so the SDK forces a refresh.
     page.evaluate("""
         () => {
-            localStorage.clear();
-            sessionStorage.clear();
+            const expiredTime = Date.now() - 10 * 60 * 1000;  // 10 minutes ago
+            let patched = 0;
+
+            function checkAndPatch(val) {
+                if (!val || typeof val !== 'object') return;
+                try {
+                    if (val.stsTokenManager &&
+                            typeof val.stsTokenManager.expirationTime === 'number') {
+                        val.stsTokenManager.expirationTime = expiredTime;
+                        patched++;
+                    }
+                } catch (_) {}
+            }
+
+            function walkFiber(fiber) {
+                if (!fiber) return;
+                try {
+                    // Walk the full hooks linked list for this fiber node.
+                    let hook = fiber.memoizedState;
+                    while (hook) {
+                        checkAndPatch(hook.memoizedState);
+                        hook = hook.next;
+                    }
+                } catch (_) {}
+                try { walkFiber(fiber.child); } catch (_) {}
+                try { walkFiber(fiber.sibling); } catch (_) {}
+            }
+
+            // Next.js App Router: hydrateRoot(document, ...) attaches the fiber root
+            // to `document` itself.  Pages Router attaches it to div#__next.
+            // We try all known containers so the walk works for both.
+            const candidates = [
+                document,
+                document.documentElement,
+                document.body,
+                document.getElementById('__next'),
+            ].filter(Boolean);
+
+            for (const el of candidates) {
+                try {
+                    const fiberKey = Object.keys(el).find(
+                        k => k.startsWith('__reactFiber')
+                    );
+                    if (fiberKey) {
+                        walkFiber(el[fiberKey]);
+                    }
+                } catch (_) {}
+            }
+
+            return patched;
         }
     """)
+
+    # Step 2: Block the forced token refresh so getIdToken() returns null.
+    page.route(
+        "https://securetoken.googleapis.com/**",
+        lambda route: route.fulfill(
+            status=400,
+            content_type="application/json",
+            body='{"error":{"code":400,"message":"TOKEN_EXPIRED","status":"INVALID_ARGUMENT"}}',
+        ),
+    )
 
 
 def wait_for_upload_progress_threshold(
@@ -263,31 +334,35 @@ class TestSessionExpiryDuringUpload:
     ):
         """
         Verify that expired session during upload completion redirects to login page.
-        
+
+        Uses Playwright route interception to make the test fully self-contained
+        without requiring a live GCS backend:
+
+        1. POST /api/videos is intercepted to return a fake GCS signed URL.
+        2. The fake GCS PUT request is intercepted; before fulfilling it with HTTP 200,
+           the handler expires the Firebase in-memory token via React fiber introspection
+           and registers a securetoken.googleapis.com block to prevent token refresh.
+        3. After the XHR completes, the frontend calls getIdToken() — Firebase detects
+           the expired token, attempts a refresh, the refresh is blocked, and
+           getIdToken() returns null, triggering router.replace('/login').
+
         Steps
         -----
         1. Sign in a test user and navigate to /upload page.
-        2. Initiate a video upload.
-        3. Wait until upload progress reaches ~95%.
-        4. Invalidate the user session (clear cookies/tokens).
-        5. Allow upload to complete.
-        6. Verify the browser redirects to /login instead of /dashboard.
-        
-        Note
-        ----
-        This test requires a fully functional backend API and GCS integration.
-        It will be skipped if the environment does not support file uploads.
+        2. Register route interceptions for POST /api/videos and the fake GCS PUT.
+        3. Fill and submit the upload form.
+        4. Verify the browser redirects to /login instead of /dashboard.
         """
         # Preconditions: Get test credentials
         test_email = config.test_email
         test_password = config.test_password
-        
+
         if not test_email or not test_password:
             pytest.skip(
                 "FIREBASE_TEST_EMAIL and FIREBASE_TEST_PASSWORD environment "
                 "variables must be set to run this test."
             )
-        
+
         # Step 1: Sign in and navigate to upload page
         try:
             sign_in_and_navigate_to_upload(page, config, test_email, test_password)
@@ -296,13 +371,35 @@ class TestSessionExpiryDuringUpload:
                 f"Failed to sign in or navigate to upload page: {e}. "
                 f"The authentication service or web app may be unavailable."
             )
-        
+
         upload_page = UploadPage(page)
-        
-        # Verify we're on the upload page
         assert upload_page.is_on_upload_page(), "Not on upload page after navigation"
-        
-        # Step 2: Initiate upload
+
+        # Step 2: Register route interceptions so the test does not require a live
+        #         backend or GCS service.
+
+        # Intercept POST /api/videos → return a fake video ID and GCS upload URL.
+        page.route(
+            "**/api/videos",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "video_id": _FAKE_VIDEO_ID,
+                    "upload_url": _FAKE_GCS_URL,
+                }),
+            ) if route.request.method == "POST" else route.continue_(),
+        )
+
+        # Intercept the fake GCS PUT → expire the session BEFORE returning 200 so
+        # that the subsequent getIdToken() call in the frontend returns null.
+        def _handle_fake_gcs_put(route) -> None:
+            invalidate_session(page)
+            route.fulfill(status=200)
+
+        page.route(f"{_FAKE_GCS_URL}**", _handle_fake_gcs_put)
+
+        # Step 3: Submit the upload form.
         try:
             upload_page.fill_form_and_upload(
                 file_path=test_video_file,
@@ -316,67 +413,25 @@ class TestSessionExpiryDuringUpload:
             pytest.skip(
                 f"Failed to submit upload form: {e}. "
                 f"Form error message: {error_msg}. "
-                f"The backend API may be unavailable or the user may not have upload permissions."
+                f"The web app may be unavailable or the user may not have upload permissions."
             )
-        
-        # Wait for upload progress to appear
-        try:
-            upload_page.wait_for_progress_visible(timeout=_PAGE_LOAD_TIMEOUT)
-        except Exception as e:
-            pytest.skip(
-                f"Upload progress did not appear within timeout ({_PAGE_LOAD_TIMEOUT}ms). "
-                f"The API file upload endpoint may not be available in this environment. "
-                f"Error: {e}"
-            )
-        
-        # Step 3: Wait for upload to reach 95% progress, or timeout
-        # If the upload doesn't reach 95% within the timeout, we skip this test
-        # because the environment may not support actual file uploads.
-        try:
-            progress_reached, max_progress = wait_for_upload_progress_threshold(
-                page=page,
-                upload_page=upload_page,
-                threshold=95,
-                timeout_ms=_UPLOAD_TIMEOUT,
-            )
-            
-            if not progress_reached:
-                # The upload may be taking too long or the endpoint may not be available
-                pytest.skip(
-                    f"Upload did not reach 95% progress within timeout ({_UPLOAD_TIMEOUT}ms). "
-                    f"Maximum progress observed: {max_progress}%. "
-                    f"The test environment may have slow network, the GCS service may be unreachable, "
-                    f"or the file upload flow may not be available. "
-                    f"This is not a test failure but an environment configuration issue."
-                )
-        except Exception as e:
-            pytest.skip(f"Error monitoring upload progress: {e}")
-        
-        # Step 4: Invalidate the session
-        invalidate_session(page)
-        
-        # Step 5: Allow upload to complete
-        # The upload continues independently since it's using a signed GCS URL.
-        # We just need to wait for the upload to finish and the frontend to redirect.
-        
-        # Step 6: Verify redirect to login (not dashboard)
-        # The frontend should detect expired session and redirect to /login
-        # instead of /dashboard after upload completes.
+
+        # Step 4: Wait for redirect and verify the browser lands on /login (not /dashboard).
+        # The route handlers ensure the session expires during upload completion, so the
+        # frontend should redirect to /login rather than /dashboard.
         try:
             page.wait_for_url(
                 lambda url: "/login" in url or "/dashboard" in url,
-                timeout=_UPLOAD_TIMEOUT,
+                timeout=_PAGE_LOAD_TIMEOUT,
             )
             current_url = page.url
-            
-            # Verify we redirected to login, not dashboard
+
             assert "/login" in current_url, (
                 f"Expected redirect to /login after session expiry, but got {current_url}. "
                 f"Session validation was not enforced during upload completion."
             )
-            
+
         except Exception as e:
-            # If we timed out waiting for the redirect, check the current URL
             current_url = page.url
             pytest.fail(
                 f"Expected redirect to /login after session expiry, but got {current_url}. "
