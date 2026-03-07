@@ -96,15 +96,27 @@ func (s *stubVideoRepo) MarkFailed(_ context.Context, _ string) error {
 	return s.markFailErr
 }
 
+// stubCleaner implements HLSCleaner.
+type stubCleaner struct {
+	deletedPrefixes []string
+	err             error
+}
+
+func (s *stubCleaner) DeletePrefix(_ context.Context, bucket, prefix string) error {
+	s.deletedPrefixes = append(s.deletedPrefixes, bucket+"/"+prefix)
+	return s.err
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func newTestConfig() config {
 	return config{
-		VideoID:       "test-video-id",
-		RawBucket:     "raw-bucket",
-		RawObjectPath: "raw/test-video-id.mp4",
-		HLSBucket:     "hls-bucket",
-		CDNBaseURL:    "https://cdn.example.com",
+		VideoID:                   "test-video-id",
+		RawBucket:                 "raw-bucket",
+		RawObjectPath:             "raw/test-video-id.mp4",
+		HLSBucket:                 "hls-bucket",
+		CDNBaseURL:                "https://cdn.example.com",
+		CleanupOnTranscodeFailure: true,
 	}
 }
 
@@ -116,7 +128,7 @@ func TestTranscode_HappyPath_NoError(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	if err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo); err != nil {
+	if err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -127,7 +139,7 @@ func TestTranscode_HappyPath_CallsAllSteps(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 
 	if dl.downloadedTo == "" {
 		t.Error("Download was not called")
@@ -150,7 +162,7 @@ func TestTranscode_HappyPath_UpdatesDBWithCorrectPaths(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), cfg, dl, ul, tr, repo)
+	_ = transcode(context.Background(), cfg, dl, ul, &stubCleaner{}, tr, repo)
 
 	wantHLS := fmt.Sprintf("gs://%s/videos/%s/index.m3u8", cfg.HLSBucket, cfg.VideoID)
 	if repo.lastUpdate.HLSManifestPath != wantHLS {
@@ -168,7 +180,7 @@ func TestTranscode_HappyPath_UpdatesDBWithStatusReady(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 
 	if repo.lastUpdate.Status != video.StatusReady {
 		t.Errorf("status = %q, want %q", repo.lastUpdate.Status, video.StatusReady)
@@ -182,7 +194,7 @@ func TestTranscode_HappyPath_UploadsHLSAndThumbnail(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), cfg, dl, ul, tr, repo)
+	_ = transcode(context.Background(), cfg, dl, ul, &stubCleaner{}, tr, repo)
 
 	wantDir := fmt.Sprintf("videos/%s", cfg.VideoID)
 	if len(ul.uploadedDirs) == 0 || ul.uploadedDirs[0] != wantDir {
@@ -209,7 +221,7 @@ func TestTranscode_DownloadError_ReturnsError(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -221,7 +233,7 @@ func TestTranscode_DownloadError_MarksVideoFailed(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 
 	if !repo.markFailed {
 		t.Error("expected MarkFailed to be called after download error")
@@ -234,7 +246,7 @@ func TestTranscode_TranscodeHLSError_ReturnsError(t *testing.T) {
 	tr := &stubTranscoder{hlsErr: errors.New("ffmpeg error")}
 	repo := &stubVideoRepo{}
 
-	err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -246,7 +258,7 @@ func TestTranscode_TranscodeHLSError_MarksVideoFailed(t *testing.T) {
 	tr := &stubTranscoder{hlsErr: errors.New("codec error")}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 
 	if !repo.markFailed {
 		t.Error("expected MarkFailed to be called after transcode error")
@@ -259,7 +271,7 @@ func TestTranscode_ThumbnailError_ReturnsError(t *testing.T) {
 	tr := &stubTranscoder{thumbErr: errors.New("thumbnail error")}
 	repo := &stubVideoRepo{}
 
-	err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -271,7 +283,7 @@ func TestTranscode_UploadDirError_ReturnsError(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -283,7 +295,7 @@ func TestTranscode_UploadFileError_ReturnsError(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -295,7 +307,7 @@ func TestTranscode_UpdateVideoError_ReturnsError(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{updateErr: errors.New("db error")}
 
-	err := transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -307,7 +319,7 @@ func TestTranscode_UploadDirError_MarksVideoFailed(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 
 	if !repo.markFailed {
 		t.Error("expected MarkFailed to be called after upload dir error")
@@ -320,7 +332,7 @@ func TestTranscode_UpdateVideoError_MarksVideoFailed(t *testing.T) {
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{updateErr: errors.New("db error")}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, tr, repo)
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
 
 	if !repo.markFailed {
 		t.Error("expected MarkFailed to be called after UpdateVideo error")
@@ -367,6 +379,23 @@ func TestConfigFromEnv_AllVarsSet(t *testing.T) {
 	}
 	if cfg.CDNBaseURL != "https://cdn.example.com" {
 		t.Errorf("CDNBaseURL = %q, want %q", cfg.CDNBaseURL, "https://cdn.example.com")
+	}
+	// CleanupOnTranscodeFailure defaults to true when env var is not set.
+	if !cfg.CleanupOnTranscodeFailure {
+		t.Error("CleanupOnTranscodeFailure should default to true")
+	}
+}
+
+func TestConfigFromEnv_CleanupDisabled(t *testing.T) {
+	setEnvVars(t, fullEnv())
+	t.Setenv("CLEANUP_ON_TRANSCODE_FAILURE", "false")
+
+	cfg, err := configFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.CleanupOnTranscodeFailure {
+		t.Error("CleanupOnTranscodeFailure should be false when env var is 'false'")
 	}
 }
 
@@ -461,6 +490,75 @@ func TestSanitiseExt_UnknownExtension_DefaultsToMp4(t *testing.T) {
 		if got != ".mp4" {
 			t.Errorf("sanitiseExt(%q) = %q, want .mp4", input, got)
 		}
+	}
+}
+
+// ── HLS cleanup on failure ────────────────────────────────────────────────────
+
+func TestTranscode_Failure_CleansUpHLSPrefix(t *testing.T) {
+	cfg := newTestConfig()
+	dl := &stubDownloader{err: errors.New("download failed")}
+	ul := &stubUploader{}
+	cleaner := &stubCleaner{}
+	tr := &stubTranscoder{}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), cfg, dl, ul, cleaner, tr, repo)
+
+	wantPrefix := "hls-bucket/videos/test-video-id/"
+	if len(cleaner.deletedPrefixes) == 0 {
+		t.Error("expected HLS prefix to be cleaned up after failure")
+	} else if cleaner.deletedPrefixes[0] != wantPrefix {
+		t.Errorf("cleaned prefix = %q, want %q", cleaner.deletedPrefixes[0], wantPrefix)
+	}
+}
+
+func TestTranscode_FailureCleanupDisabled_DoesNotClean(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.CleanupOnTranscodeFailure = false
+	dl := &stubDownloader{err: errors.New("download failed")}
+	ul := &stubUploader{}
+	cleaner := &stubCleaner{}
+	tr := &stubTranscoder{}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), cfg, dl, ul, cleaner, tr, repo)
+
+	if len(cleaner.deletedPrefixes) != 0 {
+		t.Errorf("expected no cleanup when disabled, got %v", cleaner.deletedPrefixes)
+	}
+}
+
+func TestTranscode_FailureCleanupError_OriginalErrorReturned(t *testing.T) {
+	cfg := newTestConfig()
+	originalErr := errors.New("download failed")
+	dl := &stubDownloader{err: originalErr}
+	ul := &stubUploader{}
+	cleaner := &stubCleaner{err: errors.New("GCS cleanup failed")}
+	tr := &stubTranscoder{}
+	repo := &stubVideoRepo{}
+
+	err := transcode(context.Background(), cfg, dl, ul, cleaner, tr, repo)
+
+	// Cleanup error must not mask the original error.
+	if !errors.Is(err, originalErr) {
+		t.Errorf("expected original error %v, got %v", originalErr, err)
+	}
+}
+
+func TestTranscode_HappyPath_DoesNotCleanUp(t *testing.T) {
+	cfg := newTestConfig()
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	cleaner := &stubCleaner{}
+	tr := &stubTranscoder{}
+	repo := &stubVideoRepo{}
+
+	if err := transcode(context.Background(), cfg, dl, ul, cleaner, tr, repo); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cleaner.deletedPrefixes) != 0 {
+		t.Errorf("expected no cleanup on success, got %v", cleaner.deletedPrefixes)
 	}
 }
 
