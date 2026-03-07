@@ -20,6 +20,8 @@ export interface AuthContextValue {
   user: User | null;
   /** True while Firebase is resolving the initial auth state. */
   loading: boolean;
+  /** True when Firebase auth failed to initialise or returned an error. */
+  authError: boolean;
   /** Returns the current Firebase ID token (auto-refreshed). */
   getIdToken: () => Promise<string | null>;
   /** Signs out the current user and clears all auth state. */
@@ -31,6 +33,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
 
   useEffect(() => {
     let auth;
@@ -39,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Firebase failed to initialise (e.g. missing/invalid API key at build
       // time).  Treat the user as unauthenticated so public pages still render.
+      setAuthError(true);
       setLoading(false);
       return;
     }
@@ -52,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       () => {
         // Firebase auth error (e.g. auth/invalid-api-key due to missing env
         // vars at build time). Stop loading so the page can render.
+        setAuthError(true);
         setLoading(false);
       }
     );
@@ -75,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, getIdToken, signOut }}>
+    <AuthContext.Provider value={{ user, loading, authError, getIdToken, signOut }}>
       {children}
     </AuthContext.Provider>
   );
