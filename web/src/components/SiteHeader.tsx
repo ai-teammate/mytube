@@ -1,22 +1,45 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useState, useEffect, useRef, FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 
 /**
- * SiteHeader renders the global site header with a logo, search bar,
- * primary navigation links, and a responsive hamburger menu for mobile.
- * Auth-only links (Upload, My Videos, Playlists) are only shown to
- * authenticated users. Includes a Sign out button for authenticated users.
+ * SiteHeader renders the global site header with a search bar and auth-aware navigation.
+ * - Unauthenticated: shows a "Sign in" button.
+ * - Authenticated: shows a user menu with links to Upload, My Videos, Account Settings, and Sign out.
  */
 export default function SiteHeader() {
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const pathname = usePathname();
-  const { user, signOut } = useAuth();
+  const { user, loading, signOut } = useAuth();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [menuOpen]);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -26,162 +49,113 @@ export default function SiteHeader() {
     }
   }
 
-  function isActive(href: string) {
-    return pathname === href;
+  async function handleSignOut() {
+    setMenuOpen(false);
+    await signOut();
+    router.replace("/login");
   }
 
-  const navLinkClass = (href: string) =>
-    `text-sm font-medium transition-colors ${
-      isActive(href)
-        ? "text-red-600"
-        : "text-gray-700 hover:text-red-600"
-    }`;
+  const displayName = user?.displayName || user?.email || "Account";
 
   return (
-    <header className="bg-white border-b border-gray-200 px-4 py-3">
-      <div className="flex items-center gap-4">
-        {/* Logo */}
-        <Link href="/" className="text-xl font-bold text-red-600 shrink-0">
-          mytube
-        </Link>
+    <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4">
+      <Link href="/" className="text-xl font-bold text-red-600 shrink-0">
+        mytube
+      </Link>
 
-        {/* Search bar */}
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-1 max-w-xl"
-          role="search"
-          aria-label="Search videos"
-        >
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search videos…"
-            aria-label="Search query"
-            className="flex-1 border border-gray-300 rounded-l-full px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
-          />
-          <button
-            type="submit"
-            className="border border-l-0 border-gray-300 rounded-r-full px-4 py-2 bg-gray-50 hover:bg-gray-100 text-sm"
-            aria-label="Submit search"
-          >
-            Search
-          </button>
-        </form>
-
-        {/* Desktop nav — hidden on mobile */}
-        <nav aria-label="Primary navigation" className="hidden md:flex items-center gap-6">
-          <Link href="/" className={navLinkClass("/")}>Home</Link>
-          {user && (
-            <>
-              <Link href="/upload" className={navLinkClass("/upload")}>Upload</Link>
-              <Link href="/dashboard" className={navLinkClass("/dashboard")}>My Videos</Link>
-              <Link href="/dashboard" className={navLinkClass("/dashboard")}>Playlists</Link>
-            </>
-          )}
-        </nav>
-
-        {/* Sign out (desktop, auth only) */}
-        {user && (
-          <button
-            onClick={signOut}
-            className="hidden md:inline-flex text-sm font-medium text-gray-700 hover:text-red-600 transition-colors shrink-0"
-          >
-            Sign out
-          </button>
-        )}
-
-        {/* Hamburger button — visible on mobile only */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-1 max-w-xl"
+        role="search"
+        aria-label="Search videos"
+      >
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search videos…"
+          aria-label="Search query"
+          className="flex-1 border border-gray-300 rounded-l-full px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+        />
         <button
-          type="button"
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
-          aria-expanded={menuOpen}
-          aria-controls="mobile-menu"
-          onClick={() => setMenuOpen((prev) => !prev)}
-          className="md:hidden ml-auto p-2 rounded text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+          type="submit"
+          className="border border-l-0 border-gray-300 rounded-r-full px-4 py-2 bg-gray-50 hover:bg-gray-100 text-sm"
+          aria-label="Submit search"
         >
-          {menuOpen ? (
-            /* Close (X) icon */
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ) : (
-            /* Hamburger icon */
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path d="M3 12h18M3 6h18M3 18h18" />
-            </svg>
-          )}
+          Search
         </button>
-      </div>
+      </form>
 
-      {/* Mobile nav menu */}
-      {menuOpen && (
-        <nav
-          id="mobile-menu"
-          aria-label="Mobile navigation"
-          className="md:hidden mt-3 flex flex-col gap-3 pb-2"
-        >
+      <nav aria-label="User navigation" className="ml-auto shrink-0">
+        {loading ? null : user ? (
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+              aria-label="User menu"
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 rounded-full px-3 py-1.5 border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <span
+                className="h-7 w-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold select-none"
+                aria-hidden="true"
+              >
+                {displayName[0].toUpperCase()}
+              </span>
+              <span className="hidden sm:inline max-w-[120px] truncate">{displayName}</span>
+            </button>
+
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-gray-100 py-1 z-50"
+              >
+                <Link
+                  href="/upload"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Upload
+                </Link>
+                <Link
+                  href="/dashboard"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  My Videos
+                </Link>
+                <Link
+                  href="/settings"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Account Settings
+                </Link>
+                <hr className="my-1 border-gray-100" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleSignOut}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
           <Link
-            href="/"
-            className={navLinkClass("/")}
-            onClick={() => setMenuOpen(false)}
+            href="/login"
+            className="text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 rounded-full px-4 py-1.5 hover:bg-blue-50 transition-colors"
           >
-            Home
+            Sign in
           </Link>
-          {user && (
-            <>
-              <Link
-                href="/upload"
-                className={navLinkClass("/upload")}
-                onClick={() => setMenuOpen(false)}
-              >
-                Upload
-              </Link>
-              <Link
-                href="/dashboard"
-                className={navLinkClass("/dashboard")}
-                onClick={() => setMenuOpen(false)}
-              >
-                My Videos
-              </Link>
-              <Link
-                href="/dashboard"
-                className={navLinkClass("/dashboard")}
-                onClick={() => setMenuOpen(false)}
-              >
-                Playlists
-              </Link>
-              <button
-                onClick={() => {
-                  setMenuOpen(false);
-                  signOut();
-                }}
-                className="text-sm font-medium text-gray-700 hover:text-red-600 transition-colors text-left"
-              >
-                Sign out
-              </button>
-            </>
-          )}
-        </nav>
-      )}
+        )}
+      </nav>
     </header>
   );
 }
