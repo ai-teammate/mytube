@@ -675,12 +675,14 @@ func TestVideoCreate_NoTags_NoExecCalls(t *testing.T) {
 // softDeleteQuerier is a VideoQuerier stub for SoftDelete tests.
 // QueryRowContext simulates the owner-check SELECT; ExecContext simulates the UPDATE.
 type softDeleteQuerier struct {
-	t          *testing.T
-	ownerID    string // returned by owner-check; empty + notFound=true → no rows
-	notFound   bool   // if true, owner-check returns sql.ErrNoRows
-	ownerScanErr bool // if true, owner-check returns an unexpected scan error
-	execErr    error  // if non-nil, ExecContext returns this error
-	rowsAff    int64  // rows affected returned by ExecContext
+	t            *testing.T
+	ownerID      string // returned by owner-check; empty + notFound=true → no rows
+	gcsRawPath   *string
+	hlsManifest  *string
+	notFound     bool   // if true, owner-check returns sql.ErrNoRows
+	ownerScanErr bool   // if true, owner-check returns an unexpected scan error
+	execErr      error  // if non-nil, ExecContext returns this error
+	rowsAff      int64  // rows affected returned by ExecContext
 }
 
 func (q *softDeleteQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
@@ -688,11 +690,22 @@ func (q *softDeleteQuerier) QueryRowContext(_ context.Context, _ string, _ ...an
 		// Return an empty row so that Scan returns sql.ErrNoRows.
 		return emptyDB().QueryRowContext(context.Background(), "SELECT 1")
 	}
+	rawVal := driver.Value(nil)
+	if q.gcsRawPath != nil {
+		rawVal = *q.gcsRawPath
+	}
+	hlsVal := driver.Value(nil)
+	if q.hlsManifest != nil {
+		hlsVal = *q.hlsManifest
+	}
 	dsn := registerResults(q.t, []fakeQueryResult{
-		{columns: []string{"uploader_id"}, rows: [][]driver.Value{{q.ownerID}}},
+		{
+			columns: []string{"uploader_id", "gcs_raw_path", "hls_manifest_path"},
+			rows:    [][]driver.Value{{q.ownerID, rawVal, hlsVal}},
+		},
 	})
 	db, _ := sql.Open("fakedb", dsn)
-	return db.QueryRowContext(context.Background(), "SELECT uploader_id FROM videos")
+	return db.QueryRowContext(context.Background(), "SELECT uploader_id, gcs_raw_path, hls_manifest_path FROM videos")
 }
 
 func (q *softDeleteQuerier) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
@@ -714,7 +727,7 @@ func TestSoftDelete_VideoNotFound_ReturnsFalseNoError(t *testing.T) {
 	q := &softDeleteQuerier{t: t, notFound: true}
 	repo := repository.NewVideoRepository(q)
 
-	deleted, err := repo.SoftDelete(context.Background(), "nonexistent-id", "uploader-1")
+	deleted, paths, err := repo.SoftDelete(context.Background(), "nonexistent-id", "uploader-1")
 
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
@@ -722,19 +735,25 @@ func TestSoftDelete_VideoNotFound_ReturnsFalseNoError(t *testing.T) {
 	if deleted {
 		t.Errorf("expected deleted=false when video not found")
 	}
+	if paths != nil {
+		t.Errorf("expected nil paths when video not found")
+	}
 }
 
 func TestSoftDelete_NotOwner_ReturnsErrForbidden(t *testing.T) {
 	q := &softDeleteQuerier{t: t, ownerID: "actual-owner-id"}
 	repo := repository.NewVideoRepository(q)
 
-	deleted, err := repo.SoftDelete(context.Background(), "video-id-1", "different-user-id")
+	deleted, paths, err := repo.SoftDelete(context.Background(), "video-id-1", "different-user-id")
 
 	if !errors.Is(err, repository.ErrForbidden) {
 		t.Errorf("expected ErrForbidden, got: %v", err)
 	}
 	if deleted {
 		t.Errorf("expected deleted=false when not owner")
+	}
+	if paths != nil {
+		t.Errorf("expected nil paths on forbidden")
 	}
 }
 
@@ -744,12 +763,12 @@ func TestSoftDelete_OwnerCheckDBError_ReturnsError(t *testing.T) {
 	// is treated as not-found. The real-error path is exercised via ExecContext.
 	// Here we verify a QueryRowContext failure wraps the underlying error.
 	// Since the fakedb always yields sql.ErrNoRows on empty, we test that the
-	// not-found path returns (false, nil) — the DB-error branch is an internal
+	// not-found path returns (false, nil, nil) — the DB-error branch is an internal
 	// implementation detail guarded by production DB errors.
 	q := &softDeleteQuerier{t: t, notFound: true}
 	repo := repository.NewVideoRepository(q)
 
-	deleted, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
+	deleted, _, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
 
 	if err != nil {
 		t.Fatalf("expected nil error for not-found, got: %v", err)
@@ -764,7 +783,7 @@ func TestSoftDelete_ExecError_ReturnsError(t *testing.T) {
 	q := &softDeleteQuerier{t: t, ownerID: "uploader-1", execErr: dbErr}
 	repo := repository.NewVideoRepository(q)
 
-	deleted, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
+	deleted, _, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
 
 	if deleted {
 		t.Errorf("expected deleted=false on exec error")
@@ -778,13 +797,47 @@ func TestSoftDelete_Success_ReturnsTrueNoError(t *testing.T) {
 	q := &softDeleteQuerier{t: t, ownerID: "uploader-1", rowsAff: 1}
 	repo := repository.NewVideoRepository(q)
 
-	deleted, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
+	deleted, paths, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !deleted {
 		t.Errorf("expected deleted=true when owner and row updated")
+	}
+	if paths == nil {
+		t.Fatal("expected non-nil GCSPaths on success")
+	}
+}
+
+func TestSoftDelete_Success_ReturnsGCSPaths(t *testing.T) {
+	rawPath := "raw/user1/video1.mp4"
+	hlsPath := "gs://hls-bucket/videos/video1/index.m3u8"
+	q := &softDeleteQuerier{
+		t:           t,
+		ownerID:     "uploader-1",
+		rowsAff:     1,
+		gcsRawPath:  &rawPath,
+		hlsManifest: &hlsPath,
+	}
+	repo := repository.NewVideoRepository(q)
+
+	deleted, paths, err := repo.SoftDelete(context.Background(), "video-id-1", "uploader-1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !deleted {
+		t.Errorf("expected deleted=true")
+	}
+	if paths == nil {
+		t.Fatal("expected non-nil GCSPaths")
+	}
+	if paths.RawPath == nil || *paths.RawPath != rawPath {
+		t.Errorf("GCSPaths.RawPath = %v, want %q", paths.RawPath, rawPath)
+	}
+	if paths.HLSManifestPath == nil || *paths.HLSManifestPath != hlsPath {
+		t.Errorf("GCSPaths.HLSManifestPath = %v, want %q", paths.HLSManifestPath, hlsPath)
 	}
 }
 
