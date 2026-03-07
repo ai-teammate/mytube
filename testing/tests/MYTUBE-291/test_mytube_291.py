@@ -116,7 +116,7 @@ def category_page_state(page: Page, web_config: WebConfig):
 
 
 class TestDirectCategoryNavigation:
-    """MYTUBE-291: Direct navigation to /category/3/ must preserve the URL and load content."""
+    """MYTUBE-291: Direct navigation to /category/{_CATEGORY_ID}/ must preserve the URL and load content."""
 
     def test_url_is_not_redirected_to_placeholder(
         self,
