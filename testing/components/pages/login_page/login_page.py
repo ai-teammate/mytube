@@ -94,3 +94,78 @@ class LoginPage:
     def is_form_visible(self) -> bool:
         """Return True when the email input is present in the DOM."""
         return self._page.locator(self._EMAIL_INPUT).count() > 0
+
+    def wait_for_form(self, timeout: int = 30_000) -> None:
+        """Block until the email input is present in the DOM."""
+        self._page.wait_for_selector(self._EMAIL_INPUT, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Visibility / placeholder / text-colour checks
+    # ------------------------------------------------------------------
+
+    def is_email_input_visible(self) -> bool:
+        """Return True if the email input is visible on the login page."""
+        return self._page.locator(self._EMAIL_INPUT).is_visible()
+
+    def get_email_placeholder(self) -> str:
+        """Return the placeholder attribute of the email input, or empty string."""
+        return self._page.locator(self._EMAIL_INPUT).get_attribute("placeholder") or ""
+
+    def is_email_text_color_visible(self) -> bool:
+        """Return False if the email input's computed text colour is fully transparent."""
+        return self._is_text_color_visible(self._EMAIL_INPUT)
+
+    def is_password_input_visible(self) -> bool:
+        """Return True if the password input is visible on the login page."""
+        return self._page.locator(self._PASSWORD_INPUT).is_visible()
+
+    def get_password_placeholder(self) -> str:
+        """Return the placeholder attribute of the password input, or empty string."""
+        return self._page.locator(self._PASSWORD_INPUT).get_attribute("placeholder") or ""
+
+    def is_password_text_color_visible(self) -> bool:
+        """Return False if the password input's computed text colour is fully transparent."""
+        return self._is_text_color_visible(self._PASSWORD_INPUT)
+
+    def is_sign_in_button_visible(self) -> bool:
+        """Return True if the Sign In button is visible on the login page."""
+        return self._page.locator(self._SIGN_IN_BUTTON).is_visible()
+
+    def get_sign_in_button_label(self) -> str:
+        """Return the visible text / aria-label of the Sign In button."""
+        label: str = self._page.evaluate(
+            """(sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return '';
+                return (
+                    el.innerText ||
+                    el.textContent ||
+                    el.getAttribute('aria-label') ||
+                    ''
+                ).trim();
+            }""",
+            self._SIGN_IN_BUTTON,
+        )
+        return label or ""
+
+    def is_sign_in_button_text_color_visible(self) -> bool:
+        """Return False if the Sign In button's computed text colour is fully transparent."""
+        return self._is_text_color_visible(self._SIGN_IN_BUTTON)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _is_text_color_visible(self, selector: str) -> bool:
+        """Return False if the computed ``color`` CSS property is fully transparent."""
+        color: str | None = self._page.evaluate(
+            """(sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return null;
+                return window.getComputedStyle(el).color;
+            }""",
+            selector,
+        )
+        if color is None:
+            return False
+        return color != "rgba(0, 0, 0, 0)"
