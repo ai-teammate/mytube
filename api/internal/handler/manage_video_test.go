@@ -14,6 +14,7 @@ import (
 	"github.com/ai-teammate/mytube/api/internal/auth"
 	"github.com/ai-teammate/mytube/api/internal/handler"
 	"github.com/ai-teammate/mytube/api/internal/repository"
+	"github.com/ai-teammate/mytube/api/internal/storage"
 )
 
 // ─── stubs ────────────────────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ type stubVideoManager struct {
 	updateResult *repository.VideoDetail
 	updateErr    error
 	deleteResult bool
+	deletePaths  *repository.GCSPaths
 	deleteErr    error
 }
 
@@ -29,8 +31,26 @@ func (s *stubVideoManager) Update(_ context.Context, _ string, _ string, _ repos
 	return s.updateResult, s.updateErr
 }
 
-func (s *stubVideoManager) SoftDelete(_ context.Context, _ string, _ string) (bool, error) {
-	return s.deleteResult, s.deleteErr
+func (s *stubVideoManager) SoftDelete(_ context.Context, _ string, _ string) (bool, *repository.GCSPaths, error) {
+	return s.deleteResult, s.deletePaths, s.deleteErr
+}
+
+// stubObjectDeleter records calls to DeleteObject and DeletePrefix.
+type stubObjectDeleter struct {
+	deletedObjects []string
+	deletedPrefixes []string
+	deleteObjectErr error
+	deletePrefixErr error
+}
+
+func (s *stubObjectDeleter) DeleteObject(_ context.Context, bucket, object string) error {
+	s.deletedObjects = append(s.deletedObjects, bucket+"/"+object)
+	return s.deleteObjectErr
+}
+
+func (s *stubObjectDeleter) DeletePrefix(_ context.Context, bucket, prefix string) error {
+	s.deletedPrefixes = append(s.deletedPrefixes, bucket+"/"+prefix)
+	return s.deletePrefixErr
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -642,6 +662,131 @@ func TestDeleteVideo_Success_Returns204(t *testing.T) {
 	}
 	users := &stubUserIDProvider{user: makeOwnerUser()}
 	h := handler.NewManageVideoHandler(videoProvider, manager, users, "")
+
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", rec.Code)
+	}
+}
+
+// ─── GCS cleanup tests ────────────────────────────────────────────────────────
+
+func TestDeleteVideo_GCSCleanup_DeletesRawAndHLS(t *testing.T) {
+	t.Setenv("DELETE_ON_VIDEO_DELETE", "true")
+	t.Setenv("RAW_UPLOADS_BUCKET", "raw-bucket")
+
+	rawPath := "raw/user1/video1.mp4"
+	hlsPath := "gs://hls-bucket/videos/" + testManageVideoID + "/index.m3u8"
+	paths := &repository.GCSPaths{RawPath: &rawPath, HLSManifestPath: &hlsPath}
+
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{deleteResult: true, deletePaths: paths}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	deleter := &stubObjectDeleter{}
+	h := handler.NewManageVideoHandlerWithDeleter(videoProvider, manager, users, "", deleter)
+
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", rec.Code)
+	}
+	if len(deleter.deletedObjects) == 0 {
+		t.Error("expected raw object to be deleted")
+	} else if deleter.deletedObjects[0] != "raw-bucket/"+rawPath {
+		t.Errorf("deleted object = %q, want %q", deleter.deletedObjects[0], "raw-bucket/"+rawPath)
+	}
+	wantPrefix := "hls-bucket/videos/" + testManageVideoID + "/"
+	if len(deleter.deletedPrefixes) == 0 {
+		t.Error("expected HLS prefix to be deleted")
+	} else if deleter.deletedPrefixes[0] != wantPrefix {
+		t.Errorf("deleted prefix = %q, want %q", deleter.deletedPrefixes[0], wantPrefix)
+	}
+}
+
+func TestDeleteVideo_GCSCleanupDisabled_DoesNotDelete(t *testing.T) {
+	t.Setenv("DELETE_ON_VIDEO_DELETE", "false")
+	t.Setenv("RAW_UPLOADS_BUCKET", "raw-bucket")
+
+	rawPath := "raw/user1/video1.mp4"
+	hlsPath := "gs://hls-bucket/videos/" + testManageVideoID + "/index.m3u8"
+	paths := &repository.GCSPaths{RawPath: &rawPath, HLSManifestPath: &hlsPath}
+
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{deleteResult: true, deletePaths: paths}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	deleter := &stubObjectDeleter{}
+	h := handler.NewManageVideoHandlerWithDeleter(videoProvider, manager, users, "", deleter)
+
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", rec.Code)
+	}
+	if len(deleter.deletedObjects) != 0 {
+		t.Errorf("expected no GCS deletions when disabled, got %v", deleter.deletedObjects)
+	}
+	if len(deleter.deletedPrefixes) != 0 {
+		t.Errorf("expected no GCS prefix deletions when disabled, got %v", deleter.deletedPrefixes)
+	}
+}
+
+func TestDeleteVideo_GCSCleanupError_StillReturns204(t *testing.T) {
+	t.Setenv("DELETE_ON_VIDEO_DELETE", "true")
+	t.Setenv("RAW_UPLOADS_BUCKET", "raw-bucket")
+
+	rawPath := "raw/user1/video1.mp4"
+	hlsPath := "gs://hls-bucket/videos/" + testManageVideoID + "/index.m3u8"
+	paths := &repository.GCSPaths{RawPath: &rawPath, HLSManifestPath: &hlsPath}
+
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{deleteResult: true, deletePaths: paths}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	deleter := &stubObjectDeleter{
+		deleteObjectErr: errors.New("GCS delete failed"),
+	}
+	h := handler.NewManageVideoHandlerWithDeleter(videoProvider, manager, users, "", deleter)
+
+	claims := &auth.TokenClaims{UID: "firebase-owner"}
+	req := withClaims(
+		httptest.NewRequest(http.MethodDelete, "/api/videos/"+testManageVideoID, nil),
+		claims,
+	)
+	rec := serveManageVideo(h, req)
+
+	// GCS cleanup errors must not affect the HTTP response.
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 even on GCS error, got %d", rec.Code)
+	}
+}
+
+func TestDeleteVideo_NopDeleter_NoGCSCalls(t *testing.T) {
+	t.Setenv("DELETE_ON_VIDEO_DELETE", "true")
+	t.Setenv("RAW_UPLOADS_BUCKET", "raw-bucket")
+
+	rawPath := "raw/user1/video1.mp4"
+	paths := &repository.GCSPaths{RawPath: &rawPath}
+
+	videoProvider := &stubVideoProvider{}
+	manager := &stubVideoManager{deleteResult: true, deletePaths: paths}
+	users := &stubUserIDProvider{user: makeOwnerUser()}
+	// NopObjectDeleter silently ignores all calls.
+	h := handler.NewManageVideoHandlerWithDeleter(videoProvider, manager, users, "", storage.NewNopObjectDeleter())
 
 	claims := &auth.TokenClaims{UID: "firebase-owner"}
 	req := withClaims(
