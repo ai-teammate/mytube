@@ -1,0 +1,5 @@
+ticket: MYTUBE-293
+title: "Direct navigation to user profile on static deployment — username is recovered from sessionStorage and profile loads correctly"
+type: web
+framework: playwright
+test_file: test_mytube_293.py
