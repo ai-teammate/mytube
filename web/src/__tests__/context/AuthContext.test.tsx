@@ -4,7 +4,7 @@
 import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { AuthProvider, useAuth, HEARTBEAT_INTERVAL_MS } from "@/context/AuthContext";
 
 // ─── Mock Firebase ────────────────────────────────────────────────────────────
 
@@ -306,5 +306,163 @@ describe("AuthProvider — Firebase initialisation failure", () => {
     );
 
     consoleSpy.mockRestore();
+  });
+});
+
+// ─── Heartbeat / mid-session reachability tests (MYTUBE-381) ──────────────────
+
+describe("AuthProvider — mid-session reachability heartbeat", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    onAuthStateChangedCallback = null;
+    onAuthStateChangedErrorCallback = null;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("sets authError=true after HEARTBEAT_INTERVAL_MS when getIdToken(true) throws mid-session", async () => {
+    const mockGetIdToken = jest
+      .fn()
+      .mockRejectedValue(new Error("auth/network-request-failed"));
+
+    renderWithProvider();
+
+    // Simulate successful login
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+    expect(screen.getByTestId("auth-error")).toHaveTextContent("false");
+
+    // Advance time to trigger the heartbeat probe
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
+      // Allow the async probe to settle
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("auth-error")).toHaveTextContent("true")
+    );
+  });
+
+  it("does not set authError when getIdToken(true) succeeds", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("fresh-token");
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("auth-error")).toHaveTextContent("false");
+  });
+
+  it("calls getIdToken with forceRefresh=true during heartbeat", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("fresh-token");
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    expect(mockGetIdToken).toHaveBeenCalledWith(true);
+  });
+
+  it("does not start heartbeat when user is null (unauthenticated)", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("fresh-token");
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.(null);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 3);
+      await Promise.resolve();
+    });
+
+    expect(mockGetIdToken).not.toHaveBeenCalled();
+    expect(screen.getByTestId("auth-error")).toHaveTextContent("false");
+  });
+
+  it("stops heartbeat after authError is set (does not call getIdToken again)", async () => {
+    let callCount = 0;
+    const mockGetIdToken = jest.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.reject(new Error("network-failure"));
+    });
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+
+    // First interval fires — triggers failure and sets authError
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("auth-error")).toHaveTextContent("true")
+    );
+
+    const countAfterFirstError = callCount;
+
+    // Advance more — heartbeat should have stopped
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS * 3);
+      await Promise.resolve();
+    });
+
+    expect(callCount).toBe(countAfterFirstError);
   });
 });
