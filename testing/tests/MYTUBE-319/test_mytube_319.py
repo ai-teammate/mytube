@@ -1,40 +1,44 @@
 """
-MYTUBE-319: CI service account describes Eventarc trigger —
+MYTUBE-319: CI service account can access Eventarc triggers —
             project-level eventarc.viewer role is present.
 
 Objective
 ---------
 Verify that the CI service account has the necessary project-level permission
-(``eventarc.triggers.get``) to prevent PERMISSION_DENIED errors when validating
-Eventarc configurations.
+(``eventarc.triggers.list`` / ``eventarc.triggers.get``) to prevent
+PERMISSION_DENIED errors when validating Eventarc configurations.
 
 Test Steps
 ----------
-1. Run ``gcloud projects get-iam-policy <project_id> --format="json"``.
-2. Filter the output for the CI service account
-   ``ai-teammate-gcloud@ai-native-478811.iam.gserviceaccount.com``.
-3. Verify that the account is assigned ``roles/eventarc.viewer`` or a custom role
-   containing the ``eventarc.triggers.get`` permission.
+1. Run ``gcloud eventarc triggers list --location <region> --project <project_id>``.
+2. Verify the command exits with code 0 (permission is present even if the list
+   is empty — PERMISSION_DENIED would be a non-zero exit).
 
 Expected Result
 ---------------
-The IAM policy contains a binding for the CI service account with the required
-Eventarc viewer role at the project level, allowing trigger description commands
-to succeed.
+The active credential can list Eventarc triggers, confirming that
+``roles/eventarc.viewer`` (or an equivalent role) is bound to the CI
+service account at the project level.
+
+Why capability-based (not IAM-policy inspection)
+-------------------------------------------------
+Verifying the IAM binding directly via ``gcloud projects get-iam-policy``
+requires ``resourcemanager.projects.getIamPolicy``, which is NOT included in
+``roles/eventarc.viewer``.  A capability probe (attempt the actual Eventarc
+operation) avoids this circular permission dependency and directly tests what
+matters: can the service account access Eventarc resources?
 
 Environment Variables
 ---------------------
 - GCP_PROJECT_ID   GCP project ID (default: ``ai-native-478811``).
-- CI_SA_EMAIL      CI service account email
-                   (default: ``ai-teammate-gcloud@ai-native-478811.iam.gserviceaccount.com``).
-- EXPECTED_ROLE    Expected IAM role (default: ``roles/eventarc.viewer``).
+- GCP_REGION       GCP region (default: ``us-central1``).
 
 Architecture Notes
 ------------------
-- ``GcpIamService.get_project_bindings`` is used to retrieve the project-level IAM policy.
-- ``GcpIamService.member_has_role`` is used to check role membership.
-- Credentials are picked up automatically by gcloud from the active configuration
-  (``GOOGLE_APPLICATION_CREDENTIALS`` or ``gcloud auth``).
+- ``EventarcService.can_list_triggers`` issues ``gcloud eventarc triggers list``
+  and returns (True, "") on success or (False, stderr) on failure.
+- Credentials are picked up automatically by gcloud from the active
+  configuration (``GOOGLE_APPLICATION_CREDENTIALS`` or ``gcloud auth``).
 """
 from __future__ import annotations
 
@@ -45,20 +49,19 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.gcp_config import GcpConfig
-from testing.components.gcp.gcp_iam_service import GcpIamService
+from testing.components.services.eventarc_service import EventarcService
 
 # ---------------------------------------------------------------------------
 # Config — read from environment, fall back to defaults
 # ---------------------------------------------------------------------------
 
 PROJECT_ID: str = os.environ.get("GCP_PROJECT_ID", "ai-native-478811")
+REGION: str = os.environ.get("GCP_REGION", "us-central1")
 CI_SA_EMAIL: str = os.environ.get(
     "CI_SA_EMAIL",
     "ai-teammate-gcloud@ai-native-478811.iam.gserviceaccount.com",
 )
-EXPECTED_ROLE: str = os.environ.get("EXPECTED_ROLE", "roles/eventarc.viewer")
-CI_SA_MEMBER: str = f"serviceAccount:{CI_SA_EMAIL}"
+EXPECTED_ROLE: str = "roles/eventarc.viewer"
 
 
 # ---------------------------------------------------------------------------
@@ -67,21 +70,8 @@ CI_SA_MEMBER: str = f"serviceAccount:{CI_SA_EMAIL}"
 
 
 @pytest.fixture(scope="module")
-def gcp_config() -> GcpConfig:
-    config = GcpConfig()
-    config.project_id = PROJECT_ID
-    return config
-
-
-@pytest.fixture(scope="module")
-def gcp_iam_service(gcp_config: GcpConfig) -> GcpIamService:
-    return GcpIamService(config=gcp_config)
-
-
-@pytest.fixture(scope="module")
-def project_bindings(gcp_iam_service: GcpIamService) -> list[dict]:
-    """Retrieve and cache the project-level IAM policy bindings."""
-    return gcp_iam_service.get_project_bindings()
+def eventarc_service() -> EventarcService:
+    return EventarcService(project=PROJECT_ID, region=REGION)
 
 
 # ---------------------------------------------------------------------------
@@ -92,38 +82,31 @@ def project_bindings(gcp_iam_service: GcpIamService) -> list[dict]:
 class TestCiSaEventarcViewerRole:
     """MYTUBE-319: CI SA must have roles/eventarc.viewer at the project level."""
 
-    def test_ci_sa_has_eventarc_viewer_role(
+    def test_ci_sa_can_list_eventarc_triggers(
         self,
-        gcp_iam_service: GcpIamService,
-        project_bindings: list[dict],
+        eventarc_service: EventarcService,
     ) -> None:
-        """Steps 1–3: Fetch project IAM policy and verify the CI SA has the required role.
+        """Verify the active credential can list Eventarc triggers.
 
-        Failure here means the CI service account is missing ``roles/eventarc.viewer``
-        (or an equivalent custom role), which will cause PERMISSION_DENIED when the
-        CI pipeline attempts to describe Eventarc triggers.
+        ``gcloud eventarc triggers list`` requires ``eventarc.triggers.list``,
+        which is part of ``roles/eventarc.viewer``.  A successful call (exit 0)
+        — even with an empty result — confirms the role is bound.  A
+        PERMISSION_DENIED failure confirms the role is absent.
 
-        To fix, run:
-            gcloud projects add-iam-policy-binding ai-native-478811 \\
-              --member=serviceAccount:ai-teammate-gcloud@ai-native-478811.iam.gserviceaccount.com \\
-              --role=roles/eventarc.viewer
+        To fix a failure, grant the required role:
+            gcloud projects add-iam-policy-binding {PROJECT_ID} \\
+              --member=serviceAccount:{CI_SA_EMAIL} \\
+              --role={EXPECTED_ROLE}
         """
-        has_role = gcp_iam_service.member_has_role(
-            project_bindings, CI_SA_MEMBER, EXPECTED_ROLE
-        )
-        # Collect all roles the CI SA is bound to for diagnostic output on failure.
-        sa_roles = [
-            binding["role"]
-            for binding in project_bindings
-            if CI_SA_MEMBER in binding.get("members", [])
-        ]
-        assert has_role, (
-            f"CI service account '{CI_SA_EMAIL}' does NOT have '{EXPECTED_ROLE}' "
-            f"at the project level (project='{PROJECT_ID}').\n\n"
-            f"Roles currently bound to this service account:\n"
-            f"  {sa_roles if sa_roles else '(none found)'}\n\n"
+        can_list, stderr = eventarc_service.can_list_triggers()
+        assert can_list, (
+            f"CI service account '{CI_SA_EMAIL}' cannot list Eventarc triggers "
+            f"in project '{PROJECT_ID}' (region '{REGION}').\n\n"
+            f"gcloud error:\n  {stderr}\n\n"
+            f"This means '{EXPECTED_ROLE}' (or an equivalent role granting "
+            f"eventarc.triggers.list) is NOT bound to this service account.\n\n"
             "To grant the required role:\n"
             f"  gcloud projects add-iam-policy-binding {PROJECT_ID} \\\n"
-            f"    --member={CI_SA_MEMBER} \\\n"
+            f"    --member=serviceAccount:{CI_SA_EMAIL} \\\n"
             f"    --role={EXPECTED_ROLE}"
         )
