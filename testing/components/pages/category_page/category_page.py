@@ -35,6 +35,7 @@ class CategoryPage:
     _VIDEO_CARD_SELECTOR = "div.rounded-lg, [data-testid='video-card'], .video-card, article"
     _VIDEO_TITLE_SELECTOR = "[data-testid='video-title'], .video-title, h2, h3"
     _ERROR_SELECTOR = "[role='alert']"
+    _EMPTY_STATE_MESSAGES = ("No videos in this category yet", "No videos")
     _LOADING_TEXT = "Loading"
     _LOAD_TIMEOUT_MS = 30_000
     _CONTENT_TIMEOUT_MS = 15_000
@@ -98,18 +99,17 @@ class CategoryPage:
         return titles
 
     def has_error(self) -> bool:
-        """Return True if a non-empty error message is visible on the page.
+        """Return True if an error message with non-empty text is visible on the page.
 
-        An empty ``[role='alert']`` element (e.g. the Next.js route
-        announcer) is not counted as an error.
+        Next.js injects a visually-hidden [role="alert"] element for accessibility
+        on every page; this method ignores that empty element and only returns True
+        when the alert contains actual text.
         """
         try:
             el = self._page.query_selector(self._ERROR_SELECTOR)
-            return (
-                el is not None
-                and el.is_visible()
-                and bool(el.inner_text().strip())
-            )
+            if el and el.is_visible():
+                return bool(el.inner_text().strip())
+            return False
         except Exception:
             return False
 
@@ -141,6 +141,25 @@ class CategoryPage:
             error_text=self.get_error_text(),
             is_loading=self.is_loading(),
         )
+
+    def has_empty_state_message(self) -> bool:
+        """Return True if the page contains a user-friendly empty-state message."""
+        try:
+            content = self._page.content()
+            return any(msg in content for msg in self._EMPTY_STATE_MESSAGES)
+        except Exception:
+            return False
+
+    def get_empty_state_message(self) -> Optional[str]:
+        """Return the first matching empty-state message found in the page, or None."""
+        try:
+            content = self._page.content()
+            for msg in self._EMPTY_STATE_MESSAGES:
+                if msg in content:
+                    return msg
+        except Exception:
+            pass
+        return None
 
     def current_url(self) -> str:
         """Return the current browser URL."""

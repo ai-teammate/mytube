@@ -14,15 +14,15 @@ Preconditions
 Steps
 -----
 1. Open a browser and navigate directly to a specific category URL
-   (e.g., https://ai-teammate.github.io/mytube/category/3/).
+   (e.g., https://ai-teammate.github.io/mytube/category/1/).
 2. Observe the URL in the browser's address bar after the page loads.
 3. Verify the presence of the category heading (h1) containing the category
-   name (e.g., "Gaming").
+   name (e.g., "Education").
 4. Verify that the video grid is populated with video cards.
 
 Expected Result
 ---------------
-The browser stays on the correct URL (/category/3/) and does not redirect to
+The browser stays on the correct URL (/category/1/) and does not redirect to
 /category/_/. The page displays the correct category heading and the video
 grid for that category. No "Invalid category" error alert is shown.
 
@@ -100,7 +100,7 @@ def page(browser: Browser) -> Page:
 @pytest.fixture(scope="module")
 def category_page_state(page: Page, web_config: WebConfig):
     """
-    Navigate directly to /category/3/ and return the captured page state
+    Navigate directly to /category/{_CATEGORY_ID}/ and return the captured page state
     plus the final URL after any redirects.
     """
     cat_page = CategoryPage(page)
@@ -123,7 +123,7 @@ class TestDirectCategoryNavigation:
         category_page_state: tuple,
     ) -> None:
         """
-        The browser URL must remain /category/3/ and must NOT be redirected to
+        The browser URL must remain /category/{_CATEGORY_ID}/ and must NOT be redirected to
         /category/_/ (a known bug where the dynamic segment is replaced with
         a literal underscore in static deployments).
         """
