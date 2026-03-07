@@ -234,49 +234,12 @@ class TestGCSDeletionSafety:
             f"=== STDERR ===\n{result.stderr}"
         )
 
-        # Verify expected test names ran to confirm the right tests executed.
-        expected_tests: List[str] = [
-            "TestDeleteVideo_GCSCleanup_DeletesRawAndHLS",
-            "TestDeleteVideo_GCSCleanupDisabled_DoesNotDelete",
-        ]
-        for test_name in expected_tests:
-            assert test_name in result.stdout, (
-                f"Expected Go test '{test_name}' to appear in output but it was not found.\n"
-                f"stdout:\n{result.stdout}"
-            )
-
-    def test_go_unit_tests_verify_prefix_restriction(self, repo_root: Path):
-        """Go unit test output confirms the prefix is always videos/<videoID>/.
-
-        Parses the verbose test output to confirm that
-        TestDeleteVideo_GCSCleanup_DeletesRawAndHLS passed, which validates
-        the exact prefix ('hls-bucket/videos/00000000.../') is used rather
-        than an arbitrary value.
-        """
-        api_dir = repo_root / "api"
-
-        result = subprocess.run(
-            [
-                "go", "test",
-                "./internal/handler/...",
-                "-run", "TestDeleteVideo_GCSCleanup_DeletesRawAndHLS",
-                "-v",
-                "-count=1",
-            ],
-            capture_output=True,
-            text=True,
-            cwd=str(api_dir),
-            timeout=120,
-        )
-
-        assert result.returncode == 0, (
-            f"TestDeleteVideo_GCSCleanup_DeletesRawAndHLS FAILED "
-            f"(exit code {result.returncode}).\n\n"
-            f"=== STDOUT ===\n{result.stdout}\n\n"
-            f"=== STDERR ===\n{result.stderr}"
-        )
-
-        assert "PASS" in result.stdout, (
+        # Verify both tests ran and explicitly passed.
+        assert "--- PASS: TestDeleteVideo_GCSCleanup_DeletesRawAndHLS" in result.stdout, (
             "TestDeleteVideo_GCSCleanup_DeletesRawAndHLS did not report PASS.\n"
+            f"stdout:\n{result.stdout}"
+        )
+        assert "--- PASS: TestDeleteVideo_GCSCleanupDisabled_DoesNotDelete" in result.stdout, (
+            "TestDeleteVideo_GCSCleanupDisabled_DoesNotDelete did not report PASS.\n"
             f"stdout:\n{result.stdout}"
         )
