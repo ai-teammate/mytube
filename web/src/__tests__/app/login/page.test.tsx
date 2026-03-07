@@ -43,7 +43,8 @@ jest.mock("@/lib/firebase", () => ({
 
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 
-import LoginPage, { getSafeNextUrl } from "@/app/login/page";
+import LoginPage from "@/app/login/page";
+import { getSafeNextUrl } from "@/lib/urlUtils";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

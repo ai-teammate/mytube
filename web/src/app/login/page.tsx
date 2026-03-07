@@ -10,16 +10,7 @@ import {
 } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
-
-/**
- * Validates a `next` redirect URL.
- * Must be a relative path starting with "/" and not an absolute URL.
- */
-export function getSafeNextUrl(next: string | null): string {
-  if (!next) return "/";
-  if (next.startsWith("/") && !next.startsWith("//")) return next;
-  return "/";
-}
+import { getSafeNextUrl } from "@/lib/urlUtils";
 
 function LoginPageInner() {
   const router = useRouter();
