@@ -93,7 +93,16 @@ jobs:
             --member "serviceAccount:${TRANSCODER_SA_EMAIL}" \
             --role roles/run.invoker
 
-      # ── 5. Create Eventarc trigger (idempotent: delete-and-recreate) ───────
+      # ── 5. Grant CI SA roles/eventarc.viewer (read-only inspect for tests) ──
+      - name: Grant CI SA roles/eventarc.viewer
+        run: |
+          CI_SA_EMAIL="ai-teammate-gcloud@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud projects add-iam-policy-binding "${{ env.PROJECT_ID }}" \
+            --member="serviceAccount:${CI_SA_EMAIL}" \
+            --role="roles/eventarc.viewer" \
+            --condition=None
+
+      # ── 6. Create Eventarc trigger (idempotent: delete-and-recreate) ───────
       - name: Create or update Eventarc trigger mytube-gcs-finalize
         run: |
           TRANSCODER_SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
@@ -120,7 +129,7 @@ jobs:
             --service-account="${TRANSCODER_SA_EMAIL}" \
             --project=${{ env.PROJECT_ID }}
 
-      # ── 6. Summary ─────────────────────────────────────────────────────────
+      # ── 7. Summary ─────────────────────────────────────────────────────────
       - name: Print deployment summary
         run: |
           TRIGGER_URL=$(gcloud run services describe ${{ env.SERVICE }} \
