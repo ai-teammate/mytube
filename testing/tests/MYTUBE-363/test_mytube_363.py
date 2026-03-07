@@ -124,7 +124,8 @@ def _evaluate_contrast_for_locator(page: Page, locator_obj) -> Optional[dict]:
         if handle is None:
             return None
         return handle.evaluate(_CONTRAST_ELEMENT_JS)
-    except Exception:
+    except Exception as exc:
+        print(f"[contrast] evaluation failed: {exc}")
         return None
 
 
