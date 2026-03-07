@@ -99,6 +99,26 @@ class WatchPage:
     # Wait helpers
     # ------------------------------------------------------------------
 
+    def wait_for_controls(self, timeout: int = _PLAYER_INIT_TIMEOUT) -> None:
+        """Wait until the Video.js control bar is visible."""
+        self._page.wait_for_selector(self._VJS_CONTROL_BAR, state="visible", timeout=timeout)
+
+    def wait_for_big_play_button(self, timeout: int = _PLAYER_INIT_TIMEOUT) -> None:
+        """Wait until the big-play-button overlay is visible."""
+        self._page.wait_for_selector(self._VJS_BIG_PLAY_BUTTON, state="visible", timeout=timeout)
+
+    def is_homepage_grid_visible(self) -> bool:
+        """Return True if any homepage discovery section is still rendered."""
+        recently_uploaded = self._page.locator(
+            "section[aria-labelledby='recently-uploaded-heading']"
+        )
+        most_viewed = self._page.locator(
+            "section[aria-labelledby='most-viewed-heading']"
+        )
+        ru_visible = recently_uploaded.count() > 0 and recently_uploaded.is_visible()
+        mv_visible = most_viewed.count() > 0 and most_viewed.is_visible()
+        return ru_visible or mv_visible
+
     def wait_for_metadata(self, timeout: float = _DEFAULT_LOAD_TIMEOUT) -> None:
         """Wait until the loading indicator disappears and the h1 title is visible."""
         # Wait for the loading spinner to go away

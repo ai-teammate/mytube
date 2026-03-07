@@ -228,3 +228,29 @@ class HomePage:
 
     def current_url(self) -> str:
         return self._page.url
+
+    def click_first_video_card_title(self) -> str:
+        """Click the title link of the first video card on the page.
+
+        Searches both homepage sections for the first available card title
+        link and clicks it.  Returns the title text for later assertion.
+
+        Raises ``AssertionError`` if no video cards are found.
+        """
+        title_link = self._page.locator("a.text-sm.font-medium").first
+        assert title_link.count() > 0 or title_link.is_visible(), (
+            "No video card title links found on the homepage. "
+            "Ensure at least one video with 'ready' status is available."
+        )
+        title_text = title_link.inner_text().strip()
+        title_link.click()
+        return title_text
+
+    def has_video_cards(self) -> bool:
+        """Return True if at least one video card title link is present."""
+        return self._page.locator("a.text-sm.font-medium").count() > 0
+
+    def wait_for_navigation_to_watch(self, timeout: int = 30_000) -> None:
+        """Wait until the browser URL contains a /v/<uuid> segment."""
+        import re
+        self._page.wait_for_url(re.compile(r"/v/[^/]+"), timeout=timeout)
