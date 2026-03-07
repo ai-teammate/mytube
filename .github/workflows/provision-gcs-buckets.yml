@@ -36,7 +36,10 @@ jobs:
         run: |
           if gcloud storage buckets describe "gs://${{ env.RAW_BUCKET }}" \
               --project="${{ env.PROJECT_ID }}" &>/dev/null; then
-            echo "gs://${{ env.RAW_BUCKET }} already exists — skipping."
+            echo "gs://${{ env.RAW_BUCKET }} already exists — enforcing public-access-prevention..."
+            gcloud storage buckets update "gs://${{ env.RAW_BUCKET }}" \
+              --public-access-prevention \
+              --project="${{ env.PROJECT_ID }}"
           else
             gcloud storage buckets create "gs://${{ env.RAW_BUCKET }}" \
               --location="${{ env.REGION }}" \
