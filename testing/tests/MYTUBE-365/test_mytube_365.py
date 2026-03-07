@@ -152,6 +152,14 @@ def mobile_page(browser: Browser) -> Page:
 class TestMobileInputVisibility:
     """MYTUBE-365: Input text must remain visible in mobile viewport and on focus."""
 
+    def _navigate_and_get_search_input(self, page: Page, url: str):
+        """Navigate to *url* and return a visible search input locator."""
+        page.goto(url)
+        page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT_MS)
+        search_input = page.get_by_label(_SEARCH_INPUT_LABEL)
+        search_input.wait_for(state="visible", timeout=_PAGE_LOAD_TIMEOUT_MS)
+        return search_input
+
     def test_search_input_visible_on_mobile(
         self, mobile_page: Page, web_config: WebConfig
     ) -> None:
@@ -178,15 +186,11 @@ class TestMobileInputVisibility:
         """Text typed into the focused search input must have sufficient contrast.
 
         After focusing the search input and typing, the computed text color and
-        background color must yield a WCAG contrast ratio > 1.0 (i.e., text is
-        not invisible). The test also asserts that the alpha channel of the text
+        background color must yield a WCAG contrast ratio > 3.0:1 (WCAG AA Large
+        Text minimum). The test also asserts that the alpha channel of the text
         color is not zero (transparent text).
         """
-        mobile_page.goto(web_config.home_url())
-        mobile_page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT_MS)
-
-        search_input = mobile_page.get_by_label(_SEARCH_INPUT_LABEL)
-        search_input.wait_for(state="visible", timeout=_PAGE_LOAD_TIMEOUT_MS)
+        search_input = self._navigate_and_get_search_input(mobile_page, web_config.home_url())
 
         # Focus and type text to trigger focus-state CSS
         search_input.click()
@@ -239,14 +243,13 @@ class TestMobileInputVisibility:
         bg_lum = _relative_luminance(br_val, bg_val, bb_val)
         ratio = _contrast_ratio(text_lum, bg_lum)
 
-        # WCAG AA requires 4.5:1 for normal text; we assert > 1.0 (bare minimum:
-        # text and background are not the same color) so the test is not overly
-        # strict about design choices while still catching invisible-text bugs.
-        assert ratio > 1.0, (
+        # WCAG AA Large Text minimum is 3.0:1; we assert > 3.0 to ensure text is
+        # clearly readable and to guard against near-invisible text bugs.
+        assert ratio > 3.0, (
             f"The focused search input has a contrast ratio of {ratio:.2f}:1, "
-            f"which means the typed text is effectively invisible. "
+            f"which is below the 3.0:1 minimum — text may be very hard to read. "
             f"Text color: {text_color_css!r}, Background: {bg_color_css!r}. "
-            f"Expected contrast ratio > 1.0 (text must differ from background)."
+            f"Expected contrast ratio > 3.0."
         )
 
     def test_focus_does_not_hide_text_color(
@@ -258,11 +261,7 @@ class TestMobileInputVisibility:
         after focus + typing to detect any CSS :focus rule that zeroes out the
         text alpha or matches the background color.
         """
-        mobile_page.goto(web_config.home_url())
-        mobile_page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT_MS)
-
-        search_input = mobile_page.get_by_label(_SEARCH_INPUT_LABEL)
-        search_input.wait_for(state="visible", timeout=_PAGE_LOAD_TIMEOUT_MS)
+        search_input = self._navigate_and_get_search_input(mobile_page, web_config.home_url())
 
         # Capture pre-focus color (blur the element explicitly)
         mobile_page.evaluate("() => { document.activeElement && document.activeElement.blur(); }")
@@ -312,9 +311,9 @@ class TestMobileInputVisibility:
         bg_lum = _relative_luminance(*effective_bg)
         ratio = _contrast_ratio(text_lum, bg_lum)
 
-        assert ratio > 1.0, (
-            f"After focus the search input has contrast ratio {ratio:.2f}:1 — "
-            f"text is effectively invisible. "
+        assert ratio > 3.0, (
+            f"After focus the search input has contrast ratio {ratio:.2f}:1, "
+            f"which is below the 3.0:1 minimum — text may be very hard to read. "
             f"Pre-focus: color={pre_focus_data['color']!r}, bg={pre_focus_data['backgroundColor']!r}. "
             f"Post-focus: color={post_focus_data['color']!r}, bg={post_focus_data['backgroundColor']!r}."
         )
