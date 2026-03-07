@@ -33,6 +33,7 @@ flowchart LR
   GitHubActions["GitHub Actions"] -->|"deploy"| API
   GitHubActions -->|"deploy"| Trigger
   GitHubActions -->|"deploy"| Pages["GitHub Pages"]
+  GitHubActions -->|"deploy"| Transcoder
 ```
 
 ---
@@ -60,6 +61,7 @@ graph TB
   GHActions --> GCR
   GHActions --> CloudRunAPI
   GHActions --> CloudRunTrigger
+  GHActions --> CloudRunJob
   GHActions --> Pages
   CloudRunAPI --> CloudSQL
   CloudRunAPI --> GCS_RAW
