@@ -8,7 +8,7 @@ const allowedOrigin = "https://ai-teammate.github.io"
 // Sharing headers to every response so that the frontend served from
 // https://ai-teammate.github.io can call the API.
 //
-// Preflight OPTIONS requests are answered immediately with 204 No Content and
+// Preflight OPTIONS requests are answered immediately with 200 OK and
 // the appropriate Access-Control-Allow-* headers; the next handler is not
 // called for those requests.
 func CORS(next http.Handler) http.Handler {
@@ -18,7 +18,7 @@ func CORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 
