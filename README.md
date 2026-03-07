@@ -61,6 +61,9 @@ graph TB
   GHActions --> CloudRunAPI
   GHActions --> CloudRunTrigger
   GHActions --> Pages
+  GCR -->|"image pull"| CloudRunAPI
+  GCR -->|"image pull"| CloudRunTrigger
+  GCR -->|"image pull"| CloudRunJob
   CloudRunAPI --> CloudSQL
   CloudRunAPI --> GCS_RAW
   CloudRunAPI --> GCS_HLS
