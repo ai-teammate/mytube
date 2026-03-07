@@ -79,7 +79,7 @@ export default function SiteHeader() {
         />
         <button
           type="submit"
-          className="border border-l-0 border-gray-300 rounded-r-full px-4 py-2 bg-gray-50 hover:bg-gray-100 text-sm"
+          className="border border-l-0 border-gray-300 rounded-r-full px-4 py-2 bg-gray-50 hover:bg-gray-100 text-sm text-gray-700"
           aria-label="Submit search"
         >
           Search
