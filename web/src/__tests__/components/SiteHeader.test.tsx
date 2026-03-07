@@ -31,10 +31,11 @@ jest.mock("next/link", () => {
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
 let mockUser: { email: string; displayName: string | null } | null = null;
 let mockLoading = false;
+let mockAuthError = false;
 const mockSignOut = jest.fn().mockResolvedValue(undefined);
 
 jest.mock("@/context/AuthContext", () => ({
-  useAuth: () => ({ user: mockUser, loading: mockLoading, signOut: mockSignOut }),
+  useAuth: () => ({ user: mockUser, loading: mockLoading, authError: mockAuthError, signOut: mockSignOut }),
 }));
 
 import SiteHeader from "@/components/SiteHeader";
@@ -43,6 +44,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = null;
   mockLoading = false;
+  mockAuthError = false;
 });
 
 describe("SiteHeader — search", () => {
@@ -114,6 +116,29 @@ describe("SiteHeader — unauthenticated", () => {
     mockLoading = true;
     render(<SiteHeader />);
     expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /user menu/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("SiteHeader — auth error", () => {
+  beforeEach(() => {
+    mockAuthError = true;
+  });
+
+  it("shows auth unavailability message when authError is true", () => {
+    render(<SiteHeader />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Authentication services are currently unavailable"
+    );
+  });
+
+  it("does not show Sign in link when authError is true", () => {
+    render(<SiteHeader />);
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show user menu button when authError is true", () => {
+    render(<SiteHeader />);
     expect(screen.queryByRole("button", { name: /user menu/i })).not.toBeInTheDocument();
   });
 });
