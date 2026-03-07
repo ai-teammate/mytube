@@ -322,16 +322,6 @@ def _detect_live_mode(page: Page, base_url: str, username: str) -> bool:
         return False
 
 
-def _wait_for_profile_ready(
-    page: Page,
-    username: str,
-    timeout: int = 20_000,
-) -> None:
-    """Wait until the <h1> heading and at least one video card are visible."""
-    page.locator("h1").wait_for(state="visible", timeout=timeout)
-    page.locator("a[href^='/v/']").first.wait_for(state="visible", timeout=timeout)
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -432,8 +422,8 @@ class TestProfilePageRefresh:
 
     def test_url_after_initial_load(self, test_context: dict) -> None:
         """After initial navigation the URL must be corrected to /u/tester/ (not /u/_/)."""
-        page: Page = test_context["page"]
-        current = page.url
+        profile_page: UserProfilePage = test_context["profile_page"]
+        current = profile_page.current_url()
 
         assert "/u/_/" not in current, (
             f"URL still contains '/u/_/' after initial load: {current!r}. "
@@ -478,8 +468,8 @@ class TestProfilePageRefresh:
 
     def test_url_preserved_after_refresh(self, test_context: dict) -> None:
         """The URL must remain /u/tester after refresh — not revert to /u/_/."""
-        page: Page = test_context["page"]
-        current = page.url
+        profile_page: UserProfilePage = test_context["profile_page"]
+        current = profile_page.current_url()
 
         assert "/u/_/" not in current, (
             f"After browser refresh, URL reverted to '/u/_/': {current!r}. "
