@@ -176,3 +176,51 @@ class SearchPage:
         """Return True if an error alert is currently visible."""
         el = self._page.query_selector(self._ERROR_ALERT)
         return bool(el and el.is_visible())
+
+    # ------------------------------------------------------------------
+    # Search input state queries (used by MYTUBE-362 tests)
+    # ------------------------------------------------------------------
+
+    def get_search_input_placeholder(self) -> str:
+        """Return the placeholder attribute of the search input."""
+        el = self._page.locator(self._SEARCH_INPUT).first
+        return (el.get_attribute("placeholder") or "").strip()
+
+    def is_search_input_visible(self) -> bool:
+        """Return True if the search input is currently visible."""
+        return self._page.locator(self._SEARCH_INPUT).first.is_visible()
+
+    def get_search_input_value(self) -> str:
+        """Return the current value of the search input."""
+        return self._page.locator(self._SEARCH_INPUT).first.input_value()
+
+    def get_search_input_background_color(self) -> str:
+        """Return the computed background-color of the search input."""
+        return self._page.evaluate(
+            """() => {
+                const el = document.querySelector('input[type="search"]');
+                if (!el) return 'not-found';
+                return window.getComputedStyle(el).backgroundColor;
+            }"""
+        )
+
+    def get_search_input_text_color_rgb(self) -> str:
+        """Return the computed text colour normalised to rgb(r,g,b) via canvas."""
+        return self._page.evaluate(
+            """() => {
+                const el = document.querySelector('input[type="search"]');
+                if (!el) return 'not-found';
+                const raw = window.getComputedStyle(el).color;
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 1; canvas.height = 1;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = raw;
+                    ctx.fillRect(0, 0, 1, 1);
+                    const d = ctx.getImageData(0, 0, 1, 1).data;
+                    return 'rgb(' + d[0] + ', ' + d[1] + ', ' + d[2] + ')';
+                } catch (e) {
+                    return raw;
+                }
+            }"""
+        )
