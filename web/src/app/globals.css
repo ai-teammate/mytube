@@ -24,3 +24,19 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+  Tailwind v4 preflight resets input/textarea/select/button to
+  `background-color: transparent; color: inherit`.  The app uses hardcoded
+  light containers (bg-white / bg-gray-50) everywhere, so when a user's OS is
+  in dark mode the inherited body colour (#ededed) becomes invisible against
+  those white backgrounds.  Pin form-element text to an explicit dark token so
+  typed text, placeholders and button labels are always legible.
+*/
+@layer base {
+  input,
+  textarea,
+  select {
+    color: var(--color-gray-900);
+  }
+}
