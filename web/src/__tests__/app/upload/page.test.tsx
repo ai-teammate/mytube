@@ -11,6 +11,7 @@ const mockRouterReplace = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
   usePathname: () => "/upload",
+  useSearchParams: () => null,
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────

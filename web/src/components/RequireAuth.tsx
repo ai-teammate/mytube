@@ -1,7 +1,7 @@
 "use client";
 
 import React, { ReactNode, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
 interface RequireAuthProps {
@@ -11,20 +11,23 @@ interface RequireAuthProps {
 /**
  * RequireAuth wraps protected pages.
  * - While Firebase auth state is resolving: renders a full-page spinner.
- * - When unauthenticated: redirects to /login?next=<current_pathname>.
+ * - When unauthenticated: redirects to /login?next=<current_path_and_query>.
  * - When authenticated: renders children.
  */
 export default function RequireAuth({ children }: RequireAuthProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (!loading && !user) {
-      const next = encodeURIComponent(pathname ?? "/");
+      const qs = searchParams?.toString();
+      const fullPath = qs ? `${pathname}?${qs}` : (pathname ?? "/");
+      const next = encodeURIComponent(fullPath);
       router.replace(`/login?next=${next}`);
     }
-  }, [user, loading, router, pathname]);
+  }, [user, loading, router, pathname, searchParams]);
 
   if (loading) {
     return (
