@@ -26,6 +26,8 @@ import { render, waitFor } from "@testing-library/react";
 const mockRouterReplace = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
+  usePathname: () => "/settings",
+  useSearchParams: () => ({ toString: () => "" }),
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ describe("MYTUBE-110 — /settings redirect for unauthenticated user", () => {
     // application detects the unauthenticated state via React Context and
     // redirects the user to the login page.
     await waitFor(() => {
-      expect(mockRouterReplace).toHaveBeenCalledWith("/login");
+      expect(mockRouterReplace).toHaveBeenCalledWith("/login?next=%2Fsettings");
     });
   });
 
@@ -98,7 +100,7 @@ describe("MYTUBE-110 — /settings redirect for unauthenticated user", () => {
 
     // Allow any async effects to settle.
     await waitFor(() => {
-      expect(mockRouterReplace).not.toHaveBeenCalledWith("/login");
+      expect(mockRouterReplace).not.toHaveBeenCalledWith("/login?next=%2Fsettings");
     });
   });
 });

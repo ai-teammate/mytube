@@ -15,7 +15,7 @@ export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, authError } = useAuth();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -79,7 +79,7 @@ export default function SiteHeader() {
         />
         <button
           type="submit"
-          className="border border-l-0 border-gray-300 rounded-r-full px-4 py-2 bg-gray-50 hover:bg-gray-100 text-sm"
+          className="border border-l-0 border-gray-300 rounded-r-full px-4 py-2 bg-gray-50 hover:bg-gray-100 text-sm text-gray-700"
           aria-label="Submit search"
         >
           Search
@@ -87,7 +87,14 @@ export default function SiteHeader() {
       </form>
 
       <nav aria-label="User navigation" className="ml-auto shrink-0">
-        {loading ? null : user ? (
+        {loading ? null : authError ? (
+          <span
+            role="alert"
+            className="text-sm font-medium text-red-600"
+          >
+            Authentication services are currently unavailable
+          </span>
+        ) : user ? (
           <div className="relative" ref={menuRef}>
             <button
               type="button"
