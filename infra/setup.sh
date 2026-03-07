@@ -118,6 +118,13 @@ gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
   --project="${PROJECT}"
 
 echo ""
+echo "==> Granting ${CI_SA_EMAIL} objectViewer on ${RAW_BUCKET} (CI/testing download access)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/storage.objectViewer" \
+  --project="${PROJECT}"
+
+echo ""
 echo "==> Granting ${CI_SA_EMAIL} objectCreator on ${RAW_BUCKET} (CI/testing upload access for test fixtures)..."
 gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
   --member="serviceAccount:${CI_SA_EMAIL}" \
