@@ -170,10 +170,9 @@ class TestMyVideosPageAuthenticatedAccess:
             f"The /my-videos route may be missing from the Next.js app router."
         )
 
-        # Must not visibly render a 404 error page — check using DOM text visibility
-        # rather than raw HTML (Next.js bundles include a 404 component in its JSON
-        # payload even on valid pages, which would cause false positives).
-        assert not _has_visible_404_error(authenticated_page), (
+        # Must not visibly render a 404 error page — check via DashboardPage which
+        # uses DOM-based locators to avoid Next.js RSC JSON false positives.
+        assert not dashboard_page.is_404_page(), (
             f"The /my-videos page visibly displays a 404 not-found error to the user. "
             f"Current URL: {current_url!r}. "
             f"Ensure the route 'web/src/app/my-videos/page.tsx' is deployed and "
@@ -215,17 +214,3 @@ def _is_home_page(current_url: str, base_url: str) -> bool:
     stripped_current = current_url.rstrip("/")
     stripped_base = base_url.rstrip("/")
     return stripped_current == stripped_base
-
-
-def _has_visible_404_error(page: Page) -> bool:
-    """Return True if the page visibly displays a 404 error to the user.
-
-    Uses Playwright's DOM-based locator rather than scanning raw HTML.
-    Next.js embeds a 404 component in its RSC JSON payload on every page,
-    so checking ``page.content()`` gives false positives on valid pages.
-    """
-    # Check for visible text matching "404" as a standalone element
-    # (e.g. an <h1>404</h1> or paragraph like "404: this page could not be found")
-    four_oh_four = page.locator("text=404").count()
-    not_found = page.locator("text=page could not be found").count()
-    return four_oh_four > 0 or not_found > 0
