@@ -12,6 +12,8 @@ import {
 export default function MyVideosPage() {
   return (
     <RequireAuth>
+      {/* Inner Suspense: satisfies Next.js static-export requirement for
+          useSearchParams() called inside DashboardContent */}
       <Suspense>
         <DashboardContent
           dashboardRepo={defaultDashboardRepo}

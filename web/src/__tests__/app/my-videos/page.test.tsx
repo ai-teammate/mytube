@@ -13,7 +13,7 @@ const mockPathname = "/my-videos";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
-  useSearchParams: () => ({ get: jest.fn().mockReturnValue(null) }),
+  useSearchParams: () => ({ get: jest.fn().mockReturnValue(null), toString: () => "" }),
   usePathname: () => mockPathname,
 }));
 
