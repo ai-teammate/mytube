@@ -7,30 +7,27 @@ This test suite verifies that the MyTube application enforces session validation
 ## Test Cases
 
 ### 1. test_session_expires_during_upload_completion_redirects_to_login (INTEGRATION)
-**Status**: ⏭️ SKIPPED (Environment Limitation)
+**Status**: ✅ PASSED
 
 **Objective**: Verify that when a user's session expires during upload completion, the application redirects them to the login page instead of the dashboard.
 
 **Preconditions**:
 - User is authenticated and on the /upload page
-- A video upload is in progress
-- Backend API and GCS file upload service are available
+- Firebase credentials are available via environment variables
+- Web application is deployed and accessible
 
 **Steps**:
 1. Sign in a test user and navigate to /upload page
-2. Initiate a video upload with a test video file
-3. Monitor upload progress and wait until it reaches 95% completion
-4. Invalidate the user session by clearing all authentication tokens and cookies
-5. Allow the upload to complete
-6. Verify the browser redirects to /login instead of /dashboard
+2. Register Playwright route intercepts for `POST /api/videos` (fake GCS URL) and the fake GCS `PUT` request
+3. Fill and submit the upload form
+4. Inside the fake GCS PUT handler — before fulfilling with HTTP 200 — expire the Firebase in-memory token via React fiber introspection and register a `securetoken.googleapis.com` block
+5. After the XHR completes, the frontend calls `getIdToken()`: Firebase detects the expired token, attempts a refresh, the refresh is blocked, and `getIdToken()` returns `null`
+6. Verify the browser redirects to `/login` instead of `/dashboard`
 
-**Why Skipped**: 
-The test environment does not have access to a functioning GCS file upload endpoint. The upload progress never advanced beyond 0%, indicating that either:
-- The backend API's `/api/videos/initiate` endpoint is not available or unreachable
-- The GCS signed URL generation is not working
-- The file upload service is not accessible in this environment
-
-This is an **environment configuration issue**, not a test failure. The test is correctly written and would pass in an environment with the full backend and GCS integration.
+**Approach**: The test uses three complementary techniques to reliably simulate session expiry without a live GCS backend:
+1. **Route interception for `POST /api/videos`** — returns a fake `{ video_id, upload_url }` so no real backend is needed.
+2. **React fiber introspection** — sets `stsTokenManager.expirationTime` to 10 minutes in the past, forcing the Firebase SDK to refresh the token on the next `getIdToken()` call.
+3. **`securetoken.googleapis.com` interception** — returns HTTP 400 `TOKEN_EXPIRED` to block the forced refresh, causing `getIdToken()` to return `null` and triggering the `/login` redirect.
 
 ### 2. test_upload_page_redirects_unauthenticated_users_to_login (SMOKE TEST)
 **Status**: ✅ PASSED
@@ -53,6 +50,7 @@ The unauthenticated user was correctly redirected to the login page, confirming 
 - **Framework**: Playwright (sync API)
 - **Page Objects Used**: UploadPage, LoginPage
 - **Isolated Testing**: Each test creates a fresh browser context to ensure test isolation
+- **Route Interception**: `POST /api/videos` and the fake GCS `PUT` are intercepted so the test runs without a live backend or GCS service
 - **Environment Variables**:
   - `WEB_BASE_URL`: Base URL of the deployed web application (default: https://ai-teammate.github.io/mytube)
   - `FIREBASE_TEST_EMAIL`: Test user email
@@ -79,4 +77,4 @@ The application's upload page (`web/src/app/upload/page.tsx`) implements the fol
 
 ## Known Issues
 
-None. The test correctly identifies that the environment does not support full file upload testing. The smoke test passes, confirming the access control mechanism works.
+None. Both tests pass. The integration test is fully self-contained thanks to Playwright route interception and does not require a live GCS backend.
