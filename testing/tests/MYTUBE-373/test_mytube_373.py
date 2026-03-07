@@ -346,10 +346,14 @@ def auth_service(api_server) -> AuthService:
 @pytest.fixture(scope="module")
 def video_api_service(api_server) -> VideoApiService:
     from testing.core.config.api_config import APIConfig
-    cfg = APIConfig.__new__(APIConfig)
-    cfg.base_url = f"http://127.0.0.1:{_PORT}"
-    cfg.health_token = ""
-    return VideoApiService(cfg)
+    old = os.environ.get("API_BASE_URL")
+    os.environ["API_BASE_URL"] = f"http://127.0.0.1:{_PORT}"
+    svc = VideoApiService(APIConfig())
+    if old is None:
+        os.environ.pop("API_BASE_URL", None)
+    else:
+        os.environ["API_BASE_URL"] = old
+    return svc
 
 
 @pytest.fixture(scope="module")
