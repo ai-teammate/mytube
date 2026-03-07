@@ -29,20 +29,38 @@ func (s *stubRunner) Run(_ context.Context, name string, args ...string) error {
 // ── stub ProbeRunner ──────────────────────────────────────────────────────────
 
 // stubProbeRunner simulates ffprobe/ffmpeg output for audio stream detection.
+// It is name-aware: ffprobeOutput is returned for "ffprobe" calls and
+// ffmpegOutput is returned for all other calls (e.g. "ffmpeg" fallback).
 type stubProbeRunner struct {
-	// output is returned by every Output() call.
-	output []byte
+	ffprobeOutput []byte
+	ffmpegOutput  []byte
 }
 
-func (s *stubProbeRunner) Output(_ context.Context, _ string, _ ...string) []byte {
-	return s.output
+func (s *stubProbeRunner) Output(_ context.Context, name string, _ ...string) []byte {
+	if name == "ffprobe" {
+		return s.ffprobeOutput
+	}
+	return s.ffmpegOutput
 }
 
-// withAudio returns a ProbeRunner that reports one audio stream present.
-func withAudio() *stubProbeRunner { return &stubProbeRunner{output: []byte("audio\n")} }
+// withAudio returns a ProbeRunner where ffprobe reports one audio stream present.
+func withAudio() *stubProbeRunner {
+	return &stubProbeRunner{ffprobeOutput: []byte("audio\n"), ffmpegOutput: []byte("")}
+}
 
-// withoutAudio returns a ProbeRunner that reports no audio streams.
-func withoutAudio() *stubProbeRunner { return &stubProbeRunner{output: []byte("")} }
+// withoutAudio returns a ProbeRunner that reports no audio streams on either probe.
+func withoutAudio() *stubProbeRunner {
+	return &stubProbeRunner{ffprobeOutput: []byte(""), ffmpegOutput: []byte("")}
+}
+
+// withAudioViaFallback returns a ProbeRunner where ffprobe returns empty (simulating
+// ffprobe unavailable) but the ffmpeg fallback correctly detects an audio stream.
+func withAudioViaFallback() *stubProbeRunner {
+	return &stubProbeRunner{
+		ffprobeOutput: []byte(""),
+		ffmpegOutput:  []byte("Stream #0:1: Audio: aac"),
+	}
+}
 
 
 func TestDefaultRenditions_Count(t *testing.T) {
@@ -363,6 +381,27 @@ func TestTranscodeHLS_WithAudio_StreamMapHasAudio(t *testing.T) {
 	}
 	if !strings.Contains(streamMap, ",a:") {
 		t.Errorf("-var_stream_map must contain audio entries for video with audio, got: %q", streamMap)
+	}
+}
+
+// TestTranscodeHLS_FallbackAudioDetection verifies that when ffprobe returns empty
+// output (simulating ffprobe unavailable) but the ffmpeg -i fallback contains
+// "Audio:", HasAudioStream correctly returns true and audio mapping flags are present.
+func TestTranscodeHLS_FallbackAudioDetection(t *testing.T) {
+	stub := &stubRunner{}
+	r := &ffmpeg.Runner{Cmd: stub, Probe: withAudioViaFallback()}
+
+	err := r.TranscodeHLS(context.Background(), "with_audio.mp4", "/out", ffmpeg.DefaultRenditions())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	argsStr := strings.Join(stub.calls[0].args, " ")
+	if !strings.Contains(argsStr, "0:a:0") {
+		t.Errorf("fallback detection: args must contain '0:a:0' when ffmpeg fallback detects audio, got: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "-c:a:0") {
+		t.Errorf("fallback detection: args must contain '-c:a:0' when ffmpeg fallback detects audio, got: %s", argsStr)
 	}
 }
 

@@ -82,11 +82,17 @@ func NewRunner() *Runner {
 
 // HasAudioStream reports whether the media file at inputPath contains at least one
 // audio stream. It uses ffprobe (bundled with the ffmpeg Alpine package) to query
-// stream metadata. When no audio stream is present, FFmpeg audio-mapping flags must
-// be omitted to avoid a fatal "Invalid argument" error.
-func (r *Runner) HasAudioStream(ctx context.Context, inputPath string) (bool, error) {
+// stream metadata; falls back to parsing ffmpeg -i stderr when ffprobe is unavailable.
+// Probing is best-effort: if both probes return empty output the function returns false
+// (video-only assumption) and logs a warning. When no audio stream is present, FFmpeg
+// audio-mapping flags must be omitted to avoid a fatal "Invalid argument" error.
+func (r *Runner) HasAudioStream(ctx context.Context, inputPath string) bool {
+	probe := r.Probe
+	if probe == nil {
+		probe = ExecProbeRunner{}
+	}
 	// ffprobe -select_streams a lists only audio streams; empty output means none.
-	out := r.Probe.Output(ctx, "ffprobe",
+	out := probe.Output(ctx, "ffprobe",
 		"-v", "error",
 		"-select_streams", "a",
 		"-show_entries", "stream=codec_type",
@@ -94,11 +100,14 @@ func (r *Runner) HasAudioStream(ctx context.Context, inputPath string) (bool, er
 		inputPath,
 	)
 	if strings.TrimSpace(string(out)) != "" {
-		return true, nil
+		return true
 	}
 	// Fallback: parse ffmpeg -i stderr (ffmpeg always exits non-zero here).
-	out2 := r.Probe.Output(ctx, "ffmpeg", "-hide_banner", "-i", inputPath)
-	return strings.Contains(string(out2), "Audio:"), nil
+	out2 := probe.Output(ctx, "ffmpeg", "-hide_banner", "-i", inputPath)
+	if len(out2) == 0 {
+		log.Printf("audio probe returned no output for %q: assuming video-only", inputPath)
+	}
+	return strings.Contains(string(out2), "Audio:")
 }
 
 // TranscodeHLS runs FFmpeg to produce an adaptive HLS output from inputPath.
@@ -111,10 +120,7 @@ func (r *Runner) TranscodeHLS(ctx context.Context, inputPath, outputDir string, 
 		return fmt.Errorf("at least one rendition is required")
 	}
 
-	hasAudio, err := r.HasAudioStream(ctx, inputPath)
-	if err != nil {
-		return fmt.Errorf("probe audio streams: %w", err)
-	}
+	hasAudio := r.HasAudioStream(ctx, inputPath)
 	if !hasAudio {
 		log.Printf("no audio stream detected in %s — transcoding video-only (audio mapping skipped)", inputPath)
 	}
