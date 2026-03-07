@@ -13,11 +13,12 @@ User is not authenticated (unauthenticated state).
 Steps
 -----
 1. Load the application homepage.
-2. Inspect the primary navigation menu in the header.
+2. Inspect the user navigation menu in the header.
 
 Expected Result
 ---------------
-The "Upload" link is not displayed in the navigation links.
+The "Upload" link is not displayed in the header navigation.
+The "Sign in" link is visible, confirming the unauthenticated state rendered.
 
 Architecture
 ------------
@@ -26,8 +27,8 @@ Architecture
 - Uses WebConfig from testing/core/config/web_config.py for environment
   configuration.
 - No Page Object needed: the assertion is a single, focused locator check on
-  the primary navigation element defined in SiteHeader.tsx
-  (<nav aria-label="Primary navigation">).
+  the user navigation element defined in SiteHeader.tsx
+  (<nav aria-label="User navigation">).
 
 Environment Variables
 ---------------------
@@ -52,14 +53,16 @@ from testing.core.config.web_config import WebConfig
 # Constants
 # ---------------------------------------------------------------------------
 
-# SiteHeader.tsx: <nav aria-label="Primary navigation"> is the desktop nav.
-# It is hidden on mobile (className="hidden md:flex …") — force a desktop
-# viewport so the element is in the rendered layout.
+# SiteHeader.tsx: <nav aria-label="User navigation"> is the auth-aware nav.
 _VIEWPORT = {"width": 1280, "height": 800}
 
 # Selectors derived from SiteHeader.tsx
-_PRIMARY_NAV = "nav[aria-label='Primary navigation']"
-_UPLOAD_LINK = f"{_PRIMARY_NAV} a[href*='/upload']"
+_USER_NAV = "nav[aria-label='User navigation']"
+# For unauthenticated users the upload link is only inside the authenticated
+# dropdown — so we scope to the entire header to verify it is absent.
+_UPLOAD_LINK = "header a[href*='/upload']"
+# The "Sign in" link is shown in the nav for unauthenticated users.
+_SIGN_IN_LINK = f"{_USER_NAV} a[href*='/login']"
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 
@@ -102,8 +105,8 @@ def homepage(page: Page, web_config: WebConfig) -> Page:
     Returns the same Page object for use in test assertions.
     """
     page.goto(web_config.home_url(), timeout=_PAGE_LOAD_TIMEOUT)
-    # Wait for the primary navigation to be attached to the DOM before asserting.
-    page.wait_for_selector(_PRIMARY_NAV, state="attached", timeout=_PAGE_LOAD_TIMEOUT)
+    # Wait for the user navigation to be attached to the DOM before asserting.
+    page.wait_for_selector(_USER_NAV, state="attached", timeout=_PAGE_LOAD_TIMEOUT)
     return page
 
 
@@ -113,43 +116,40 @@ def homepage(page: Page, web_config: WebConfig) -> Page:
 
 
 class TestUploadLinkHiddenForUnauthenticatedUser:
-    """The Upload link must not be visible in the primary nav for anonymous visitors."""
+    """The Upload link must not be visible in the header for anonymous visitors."""
 
-    def test_primary_navigation_is_present(self, homepage: Page) -> None:
-        """The primary navigation element must exist in the DOM."""
-        nav = homepage.locator(_PRIMARY_NAV)
+    def test_user_navigation_is_present(self, homepage: Page) -> None:
+        """The user navigation element must exist in the DOM."""
+        nav = homepage.locator(_USER_NAV)
         expect(nav).to_be_attached(), (
-            "Expected the primary navigation element "
-            f"({_PRIMARY_NAV!r}) to be present in the DOM."
+            "Expected the user navigation element "
+            f"({_USER_NAV!r}) to be present in the DOM."
         )
 
     def test_upload_link_not_in_navigation(self, homepage: Page) -> None:
-        """No Upload anchor must appear inside the primary navigation.
+        """No Upload anchor must appear in the header for unauthenticated users.
 
-        SiteHeader.tsx only renders the Upload link when {user && ...} — the
-        element must be completely absent from the DOM for unauthenticated
-        visitors.
+        SiteHeader.tsx only renders the Upload link inside the authenticated
+        dropdown (when user is non-null) — the element must be completely
+        absent from the header for unauthenticated visitors.
         """
         upload_locator = homepage.locator(_UPLOAD_LINK)
         assert upload_locator.count() == 0, (
-            f"Expected 0 Upload links inside the primary navigation, "
+            f"Expected 0 Upload links inside the header, "
             f"but found {upload_locator.count()}. "
             "This means the Upload link is visible to unauthenticated users, "
             "which violates the auth-gated nav requirement."
         )
 
-    def test_home_link_is_present(self, homepage: Page) -> None:
-        """The 'Home' link must still be visible in the primary nav (sanity check).
+    def test_sign_in_link_is_present(self, homepage: Page) -> None:
+        """The 'Sign in' link must be visible in the user nav (sanity check).
 
         This confirms the navigation rendered correctly for unauthenticated
         users — the absence of Upload is intentional, not a rendering failure.
         """
-        home_link = homepage.locator(f"{_PRIMARY_NAV} a[href='/']")
-        # Also accept href ending with '/' in case base-path is included
-        if home_link.count() == 0:
-            home_link = homepage.locator(f"{_PRIMARY_NAV} a").filter(has_text="Home")
-        assert home_link.count() > 0, (
-            "Expected a 'Home' link inside the primary navigation for "
+        sign_in_link = homepage.locator(_SIGN_IN_LINK)
+        assert sign_in_link.count() > 0, (
+            "Expected a 'Sign in' link inside the user navigation for "
             "unauthenticated users, but found none. The navigation may not "
             "have rendered at all — check that the page loaded correctly."
         )

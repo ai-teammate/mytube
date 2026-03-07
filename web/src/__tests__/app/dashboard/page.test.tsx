@@ -17,10 +17,12 @@ import type { PlaylistRepository, PlaylistSummary } from "@/domain/playlist";
 
 const mockRouterReplace = jest.fn();
 let mockSearchParamsGet = jest.fn().mockReturnValue(null);
+const mockPathname = "/dashboard";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
   useSearchParams: () => ({ get: mockSearchParamsGet }),
+  usePathname: () => mockPathname,
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
@@ -169,7 +171,7 @@ describe("DashboardPage", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("returns null and redirects to /login when not authenticated", async () => {
+  it("redirects to /login when not authenticated", async () => {
     mockUser = null;
     mockLoading = false;
     const { container } = renderDashboard();
