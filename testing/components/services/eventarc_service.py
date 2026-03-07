@@ -159,6 +159,31 @@ class EventarcService:
         except subprocess.CalledProcessError:
             return False
 
+    def can_list_triggers(self) -> tuple[bool, str]:
+        """Probe whether the active credential has eventarc.triggers.list permission.
+
+        Runs ``gcloud eventarc triggers list`` and inspects the exit code.
+        An empty trigger list (exit 0) still means the permission is present.
+
+        Returns:
+            (True, "")            — permission is present
+            (False, stderr_text)  — permission is absent; stderr contains the
+                                    gcloud error message (PERMISSION_DENIED etc.)
+        """
+        result = subprocess.run(
+            [
+                "gcloud", "eventarc", "triggers", "list",
+                "--location", self._region,
+                "--project", self._project,
+                "--format", "json",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return True, ""
+        return False, result.stderr.strip()
+
     # ------------------------------------------------------------------
     # Cloud Run Job Executions
     # ------------------------------------------------------------------
