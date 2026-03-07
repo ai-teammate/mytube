@@ -2,9 +2,11 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/iterator"
 )
 
 // GCSObjectReader implements ObjectReader using the real GCS client.
@@ -42,4 +44,33 @@ func (g *GCSObjectWriter) NewWriter(ctx context.Context, bucket, object string, 
 		wc.ContentType = attrs.ContentType
 	}
 	return wc
+}
+
+// GCSPrefixDeleter implements PrefixDeleter using the real GCS client.
+type GCSPrefixDeleter struct {
+	client *storage.Client
+}
+
+// NewGCSPrefixDeleter wraps a *storage.Client as a PrefixDeleter.
+func NewGCSPrefixDeleter(client *storage.Client) *GCSPrefixDeleter {
+	return &GCSPrefixDeleter{client: client}
+}
+
+// DeletePrefix deletes all GCS objects whose name starts with prefix in bucket.
+// Not-found errors on individual objects are silently ignored.
+func (g *GCSPrefixDeleter) DeletePrefix(ctx context.Context, bucket, prefix string) error {
+	it := g.client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: prefix})
+	for {
+		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("list objects under gs://%s/%s: %w", bucket, prefix, err)
+		}
+		if delErr := g.client.Bucket(bucket).Object(attrs.Name).Delete(ctx); delErr != nil && delErr != storage.ErrObjectNotExist {
+			return fmt.Errorf("delete gs://%s/%s: %w", bucket, attrs.Name, delErr)
+		}
+	}
+	return nil
 }

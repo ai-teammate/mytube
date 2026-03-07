@@ -60,6 +60,7 @@ func main() {
 	searchRepo := repository.NewSearchRepository(db)
 	playlistRepo := repository.NewPlaylistRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
+	gcsDeleter := storage.NewGCSObjectDeleter(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
 	cdnBaseURL := os.Getenv("CDN_BASE_URL")
@@ -101,7 +102,7 @@ func main() {
 	// the generic /api/videos/ prefix handler so they are matched first.
 	mux.Handle("/api/videos/recent", handler.NewRecentVideosHandler(searchRepo))
 	mux.Handle("/api/videos/popular", handler.NewPopularVideosHandler(searchRepo))
-	mux.Handle("/api/videos/", optionalAuthMiddleware(handler.NewManageVideoHandler(videoRepo, videoRepo, userRepo, cdnBaseURL)))
+	mux.Handle("/api/videos/", optionalAuthMiddleware(handler.NewManageVideoHandlerWithDeleter(videoRepo, videoRepo, userRepo, cdnBaseURL, gcsDeleter)))
 	mux.Handle("/api/videos", videosHandler)
 	mux.Handle("/api/search", handler.NewSearchHandler(searchRepo))
 	mux.Handle("/api/categories", handler.NewCategoriesHandler(searchRepo))
