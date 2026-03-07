@@ -1,0 +1,4 @@
+name: MYTUBE-336
+description: CI service account missing roles/eventarc.viewer — PERMISSION_DENIED on project IAM policy retrieval
+type: unit
+requires_gcp: false

@@ -138,6 +138,15 @@ gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
   --role="roles/storage.legacyBucketReader" \
   --project="${PROJECT}"
 
+# Grant the CI SA project-level eventarc.viewer so it can read the project IAM
+# policy and inspect Eventarc trigger configurations without PERMISSION_DENIED.
+echo ""
+echo "==> Granting ${CI_SA_EMAIL} roles/eventarc.viewer at the project level (CI inspection)..."
+gcloud projects add-iam-policy-binding "${PROJECT}" \
+  --member="serviceAccount:${CI_SA_EMAIL}" \
+  --role="roles/eventarc.viewer" \
+  --condition=None
+
 # ── 5. Allow trigger service to invoke Cloud Run Jobs ─────────────────────────
 # The trigger Cloud Run Service needs run.jobs.run permission.
 echo ""
