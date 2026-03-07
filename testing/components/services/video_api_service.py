@@ -75,6 +75,62 @@ class VideoApiService:
 
         return None
 
+    def get_video_detail(self, video_id: str) -> tuple[int, dict | None]:
+        """GET /api/videos/:id and return (status_code, body_dict).
+
+        Returns (200, dict) on success.
+        Returns (status_code, None) when the response is not a JSON object.
+        Returns (0, None) when the host is unreachable.
+        """
+        url = f"{self._base_url}/api/videos/{video_id}"
+        req = urllib.request.Request(url)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                body = resp.read().decode()
+                data = json.loads(body)
+                return resp.status, data if isinstance(data, dict) else None
+        except urllib.error.HTTPError as exc:
+            return exc.code, None
+        except Exception:
+            return 0, None
+
+    def find_video_without_category(self) -> str | None:
+        """Return the ID of the first video whose category_id is null, or None.
+
+        Strategy:
+        1. Fetch recent videos (up to 50) and retrieve full detail for each to
+           inspect category_id.
+        2. Fall back to iterating known CI usernames if no suitable video is
+           found in recent results.
+
+        The caller is responsible for calling pytest.skip() when this returns None.
+        """
+        # Try recent videos first
+        _, recent = self.get_recent_videos(limit=50)
+        if recent:
+            for item in recent:
+                vid_id = item.get("id") or item.get("video_id")
+                if not vid_id:
+                    continue
+                _status, detail = self.get_video_detail(vid_id)
+                if detail is not None and detail.get("category_id") is None:
+                    return vid_id
+
+        # Fallback: iterate known CI usernames
+        for username in self._CANDIDATE_USERNAMES:
+            user = self.get_user(username)
+            if not user:
+                continue
+            for v in user.get("videos", []):
+                vid_id = v.get("id") or v.get("video_id")
+                if not vid_id:
+                    continue
+                _status, detail = self.get_video_detail(vid_id)
+                if detail is not None and detail.get("category_id") is None:
+                    return vid_id
+
+        return None
+
     def get_recent_videos(self, limit: int = 20) -> tuple[int, list[dict] | None]:
         """GET /api/videos/recent?limit=*limit* and return (status_code, videos).
 
