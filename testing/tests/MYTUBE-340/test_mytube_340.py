@@ -45,12 +45,15 @@ Architecture
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
 
 import pytest
 from playwright.sync_api import sync_playwright, Browser, Page, expect
+
+_logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -114,8 +117,8 @@ def _navigate_and_wait(page: Page, url: str) -> None:
     page.goto(url)
     try:
         page.wait_for_load_state("domcontentloaded", timeout=_PAGE_LOAD_TIMEOUT)
-    except Exception:
-        pass  # tolerate slow pages; page is still usable
+    except Exception as exc:
+        _logger.warning("wait_for_load_state timed out (%s); continuing anyway.", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +180,8 @@ class TestLogoRedirectToHomepage:
                 re.compile(re.escape(base_url.rstrip("/")) + r"/?$"),
                 timeout=_NAVIGATION_TIMEOUT,
             )
-        except Exception:
-            pass  # check URL anyway below
+        except Exception as exc:
+            _logger.warning("wait_for_url timed out (%s); checking URL directly.", exc)
 
         final_url = page.url
         assert _url_is_homepage(final_url, base_url), (
@@ -218,8 +221,8 @@ class TestLogoRedirectToHomepage:
                 re.compile(re.escape(base_url.rstrip("/")) + r"/?$"),
                 timeout=_NAVIGATION_TIMEOUT,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.warning("wait_for_url timed out (%s); checking URL directly.", exc)
 
         # Assert URL
         assert _url_is_homepage(page.url, base_url), (
@@ -227,23 +230,9 @@ class TestLogoRedirectToHomepage:
         )
 
         # Assert homepage content — at least one discovery section must be visible.
-        # The HomePage page object handles loading waits internally.
+        # Use HomePage's public assertion API; it encapsulates the loading wait.
         home = HomePage(page)
-        home._wait_for_content()
-
-        recently_uploaded = page.locator(
-            "section[aria-labelledby='recently-uploaded-heading']"
-        )
-        most_viewed = page.locator(
-            "section[aria-labelledby='most-viewed-heading']"
-        )
-
-        recently_visible = recently_uploaded.is_visible()
-        most_viewed_visible = most_viewed.is_visible()
-
-        assert recently_visible or most_viewed_visible, (
-            "After clicking the logo and landing on the homepage, neither the "
-            "'Recently Uploaded' nor the 'Most Viewed' section is visible. "
-            f"Current URL: {page.url!r}. "
-            "The homepage may not have rendered its content sections correctly."
-        )
+        try:
+            home.assert_recently_uploaded_section_visible()
+        except AssertionError:
+            home.assert_most_viewed_section_visible()
