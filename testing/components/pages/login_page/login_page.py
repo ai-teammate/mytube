@@ -19,7 +19,10 @@ class LoginPage:
     # Selectors
     _EMAIL_INPUT = 'input[id="email"]'
     _PASSWORD_INPUT = 'input[id="password"]'
-    _SIGN_IN_BUTTON = 'button[type="submit"]'
+    # Exclude the site-header search submit (aria-label="Submit search") so that
+    # this selector targets only the sign-in form button even when the full
+    # AppShell header is rendered on the login page.
+    _SIGN_IN_BUTTON = 'button[type="submit"]:not([aria-label="Submit search"])'
     _ERROR_ALERT = '[role="alert"]'
 
     def __init__(self, page: Page) -> None:
