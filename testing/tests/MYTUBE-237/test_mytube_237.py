@@ -30,7 +30,7 @@ Test approach
    - Insert one private playlist (is_private = TRUE).
    If the ``is_private`` column does not exist the INSERT raises an exception
    and the test is skipped — indicating the feature has not yet been deployed.
-2. Call GET /api/users/:username/playlists (unauthenticated public endpoint).
+2. Call GET /api/users/:username/playlists via PlaylistApiService (unauthenticated).
 3. Assert:
    - HTTP 200 is returned.
    - The public playlist appears in the response.
@@ -54,28 +54,32 @@ API_BASE_URL              : Deployed API base URL
 
 Architecture
 ------------
+- APIConfig (testing/core/config/api_config.py) provides the API base URL.
+- HealthService (testing/components/services/health_service.py) checks reachability.
+- PlaylistApiService (testing/components/services/playlist_api_service.py)
+  encapsulates GET /api/users/:username/playlists HTTP calls.
 - Cloud SQL Python connector provides the direct database connection for seeding.
-- Standard library ``urllib.request`` is used for the HTTP assertion (no extra deps).
 - No hardcoded credentials — only well-known CI defaults are referenced.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
-import urllib.error
-import urllib.request
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+from testing.core.config.api_config import APIConfig
+from testing.components.services.health_service import HealthService
+from testing.components.services.playlist_api_service import PlaylistApiService
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_DEPLOYED_API_URL = "https://mytube-api-80693608388.us-central1.run.app"
-_API_BASE_URL = os.getenv("API_BASE_URL", _DEPLOYED_API_URL)
+_cfg = APIConfig()
+_API_BASE_URL = _cfg.base_url
 
 _CI_USER_FIREBASE_UID = os.getenv("FIREBASE_TEST_UID", "ci-test-user-001")
 _CI_USER_USERNAME = "testuser_237_owner"
@@ -116,32 +120,6 @@ def _cloud_sql_connect():
     return conn, connector
 
 
-def _api_is_reachable(base_url: str) -> bool:
-    """Return True if the API /health endpoint responds with a non-5xx status."""
-    try:
-        resp = urllib.request.urlopen(f"{base_url}/health", timeout=5)
-        return resp.status < 500
-    except Exception:
-        return False
-
-
-def _get_user_playlists(api_base_url: str, username: str) -> tuple[int, list]:
-    """Call GET /api/users/:username/playlists and return (status_code, list).
-
-    Returns (status_code, []) on any HTTP or network error.
-    """
-    url = f"{api_base_url.rstrip('/')}/api/users/{username}/playlists"
-    req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            return resp.status, data if isinstance(data, list) else []
-    except urllib.error.HTTPError as exc:
-        return exc.code, []
-    except Exception:
-        return 0, []
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -150,7 +128,15 @@ def _get_user_playlists(api_base_url: str, username: str) -> tuple[int, list]:
 @pytest.fixture(scope="module", autouse=True)
 def require_api():
     """Skip the entire module when the deployed API is not reachable."""
-    if not _api_is_reachable(_API_BASE_URL):
+    health = HealthService(_cfg)
+    try:
+        resp = health.get_health()
+        if resp.status_code >= 500:
+            pytest.skip(
+                f"API at {_API_BASE_URL} returned HTTP {resp.status_code} — "
+                "skipping MYTUBE-237 integration test."
+            )
+    except Exception:
         pytest.skip(
             f"API at {_API_BASE_URL} is not reachable — "
             "skipping MYTUBE-237 integration test."
@@ -259,8 +245,9 @@ def seeded_data(db_conn):
 
 @pytest.fixture(scope="module")
 def playlists_response(seeded_data: dict) -> tuple[int, list]:
-    """Fetch GET /api/users/:username/playlists and return (status, list)."""
-    return _get_user_playlists(_API_BASE_URL, seeded_data["username"])
+    """Fetch GET /api/users/:username/playlists via PlaylistApiService and return (status, list)."""
+    svc = PlaylistApiService(base_url=_API_BASE_URL)
+    return svc.get_user_playlists(seeded_data["username"])
 
 
 # ---------------------------------------------------------------------------
