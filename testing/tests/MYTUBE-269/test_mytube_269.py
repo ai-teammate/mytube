@@ -58,7 +58,6 @@ from testing.components.pages.category_page.category_page import CategoryPage
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT_MS = 30_000
-_EXPECTED_LIMIT = 20
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -229,10 +228,8 @@ class TestEmptyCategoryState:
         cat_page = CategoryPage(page)
         cat_page.navigate(web_config.base_url, empty_category_id)
 
-        # Check the page content contains the expected empty state message
-        page_content = page.content()
-        assert "No videos in this category yet" in page_content or "No videos" in page_content, (
+        assert cat_page.has_empty_state_message(), (
             f"Expected an empty state message such as 'No videos in this category yet', "
-            f"but the page content does not contain this text. "
-            f"Page content snippet: {page_content[500:1000]}"
+            f"but the page does not contain this text. "
+            f"Empty state message found: {cat_page.get_empty_state_message()!r}"
         )
