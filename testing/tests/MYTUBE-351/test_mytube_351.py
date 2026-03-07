@@ -50,10 +50,9 @@ from __future__ import annotations
 import os
 import re
 import sys
-import time
 
 import pytest
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from playwright.sync_api import sync_playwright, Browser, Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -126,20 +125,6 @@ def browser(web_config: WebConfig):
         )
         yield br
         br.close()
-
-
-def _make_blocked_context(browser: Browser, web_config: WebConfig) -> BrowserContext:
-    """Create a new browser context with all Firebase auth requests aborted."""
-    context = browser.new_context()
-    page = context.new_page()
-    page.set_default_timeout(30_000)
-
-    # Abort every request matching a Firebase auth pattern.
-    for pattern in _FIREBASE_AUTH_PATTERNS:
-        context.route(pattern, lambda route, _p=pattern: route.abort())
-
-    context.close()  # close the probe page; the context itself stays open
-    return context
 
 
 @pytest.fixture(scope="function")
@@ -228,8 +213,17 @@ class TestFirebaseAuthErrorState:
         except Exception:
             pass
 
-        # Give the app a moment to render any error state.
-        time.sleep(2)
+        # Poll until an error alert with non-empty text appears, or timeout elapses.
+        try:
+            blocked_page.wait_for_function(
+                """() => {
+                    const alerts = document.querySelectorAll('[role="alert"]');
+                    return Array.from(alerts).some(el => el.innerText.trim().length > 0);
+                }""",
+                timeout=_ERROR_VISIBILITY_TIMEOUT_MS,
+            )
+        except Exception:
+            pass
 
         # Check all role="alert" elements for non-empty auth-related content.
         alert_locator = blocked_page.locator("[role='alert']")
