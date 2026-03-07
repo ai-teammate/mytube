@@ -298,9 +298,9 @@ def seeded_video(api_server, db_conn):
 @pytest.fixture(scope="module")
 def video_response(api_server, seeded_video) -> dict:
     """GET /api/videos/:id for the seeded video; return parsed JSON body."""
-    api_config = APIConfig.__new__(APIConfig)
-    api_config.base_url = f"http://127.0.0.1:{_PORT}"
-    api_config.health_token = ""
+    os.environ["API_BASE_URL"] = f"http://127.0.0.1:{_PORT}"
+    os.environ["HEALTH_TOKEN"] = ""
+    api_config = APIConfig()
 
     svc = VideoApiService(api_config)
     video_id = seeded_video["video_id"]
