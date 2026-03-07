@@ -124,8 +124,8 @@ def error_page(
     pg: Page = ctx.new_page()
     pg.set_default_timeout(_PAGE_LOAD_TIMEOUT)
 
-    js_errors: List[str] = []
-    pg.on("pageerror", lambda err: js_errors.append(str(err)))
+    profile_page = UserProfilePage(pg)
+    js_errors = profile_page.listen_for_js_errors()
 
     # Intercept the profile fetch: GET /api/users/<username> → 500.
     # The single-star wildcard (*) in Playwright does NOT match '/', so this
@@ -138,8 +138,6 @@ def error_page(
             body='{"error": "Internal Server Error — simulated Firestore failure"}',
         ),
     )
-
-    profile_page = UserProfilePage(pg)
 
     try:
         # Navigate via the SPA fallback flow (404.html → /u/_/ → React reads
