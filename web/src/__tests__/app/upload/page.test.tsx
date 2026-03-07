@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 const mockRouterReplace = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mockRouterReplace }),
+  usePathname: () => "/upload",
 }));
 
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
@@ -135,12 +136,12 @@ describe("UploadPage", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
-  it("redirects to /login when not authenticated and not loading", async () => {
+  it("redirects to /login?next=/upload when not authenticated and not loading", async () => {
     mockUser = null;
     mockLoading = false;
     render(<UploadPage />);
     await waitFor(() => {
-      expect(mockRouterReplace).toHaveBeenCalledWith("/login");
+      expect(mockRouterReplace).toHaveBeenCalledWith("/login?next=%2Fupload");
     });
   });
 

@@ -2,28 +2,39 @@
  * Unit tests for src/components/SiteHeader.tsx
  */
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // ─── Mock next/navigation ─────────────────────────────────────────────────────
 const mockPush = jest.fn();
-let mockPathname = "/";
+const mockReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: mockPush,
+    replace: mockReplace,
   }),
-  usePathname: () => mockPathname,
 }));
 
+// ─── Mock next/link ───────────────────────────────────────────────────────────
+jest.mock("next/link", () => {
+  const Link = ({ href, children, onClick, ...rest }: {
+    href: string;
+    children: React.ReactNode;
+    onClick?: () => void;
+    [key: string]: unknown;
+  }) => <a href={href} onClick={onClick} {...rest}>{children}</a>;
+  Link.displayName = "Link";
+  return Link;
+});
+
 // ─── Mock AuthContext ─────────────────────────────────────────────────────────
-let mockUser: { email: string } | null = null;
-const mockSignOut = jest.fn();
+let mockUser: { email: string; displayName: string | null } | null = null;
+let mockLoading = false;
+const mockSignOut = jest.fn().mockResolvedValue(undefined);
 
 jest.mock("@/context/AuthContext", () => ({
-  useAuth: () => ({
-    user: mockUser,
-    signOut: mockSignOut,
-  }),
+  useAuth: () => ({ user: mockUser, loading: mockLoading, signOut: mockSignOut }),
 }));
 
 import SiteHeader from "@/components/SiteHeader";
@@ -31,19 +42,15 @@ import SiteHeader from "@/components/SiteHeader";
 beforeEach(() => {
   jest.clearAllMocks();
   mockUser = null;
-  mockPathname = "/";
+  mockLoading = false;
 });
 
-describe("SiteHeader", () => {
-  // ── Logo ────────────────────────────────────────────────────────────────────
-
+describe("SiteHeader — search", () => {
   it("renders the brand link", () => {
     render(<SiteHeader />);
     const link = screen.getByRole("link", { name: /mytube/i });
     expect(link).toHaveAttribute("href", "/");
   });
-
-  // ── Search form ─────────────────────────────────────────────────────────────
 
   it("renders the search input", () => {
     render(<SiteHeader />);
@@ -87,171 +94,130 @@ describe("SiteHeader", () => {
     fireEvent.submit(screen.getByRole("search"));
     expect(mockPush).toHaveBeenCalledWith("/search?q=hello%20world");
   });
+});
 
-  // ── Unauthenticated nav ──────────────────────────────────────────────────────
-
-  it("shows Home nav link when unauthenticated", () => {
+describe("SiteHeader — unauthenticated", () => {
+  it("shows Sign in link when not loading and no user", () => {
     render(<SiteHeader />);
-    // Home appears in desktop nav (and not in the mobile menu since it's closed)
-    const homeLinks = screen.getAllByRole("link", { name: /^home$/i });
-    expect(homeLinks.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
+      "href",
+      "/login"
+    );
   });
 
-  it("does not show Upload link when unauthenticated", () => {
+  it("does not show user menu button when unauthenticated", () => {
     render(<SiteHeader />);
-    expect(screen.queryByRole("link", { name: /^upload$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /user menu/i })).not.toBeInTheDocument();
   });
 
-  it("does not show My Videos link when unauthenticated", () => {
+  it("renders nothing for nav when loading", () => {
+    mockLoading = true;
     render(<SiteHeader />);
-    expect(screen.queryByRole("link", { name: /my videos/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /user menu/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("SiteHeader — authenticated", () => {
+  beforeEach(() => {
+    mockUser = { email: "alice@example.com", displayName: "Alice" };
   });
 
-  it("does not show Playlists link when unauthenticated", () => {
+  it("shows the user menu button when authenticated", () => {
     render(<SiteHeader />);
-    expect(screen.queryByRole("link", { name: /playlists/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /user menu/i })).toBeInTheDocument();
   });
 
-  it("does not show Sign out button when unauthenticated", () => {
+  it("does not show Sign in link when authenticated", () => {
     render(<SiteHeader />);
-    expect(screen.queryByRole("button", { name: /sign out/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
   });
 
-  // ── Authenticated nav ────────────────────────────────────────────────────────
-
-  it("shows Upload link when authenticated", () => {
-    mockUser = { email: "alice@example.com" };
+  it("shows displayName in avatar button", () => {
     render(<SiteHeader />);
-    expect(screen.getAllByRole("link", { name: /^upload$/i }).length).toBeGreaterThanOrEqual(1);
+    const btn = screen.getByRole("button", { name: /user menu/i });
+    // First letter of displayName
+    expect(btn.textContent).toContain("A");
   });
 
-  it("Upload link points to /upload", () => {
-    mockUser = { email: "alice@example.com" };
+  it("falls back to email when displayName is null", () => {
+    mockUser = { email: "bob@example.com", displayName: null };
     render(<SiteHeader />);
-    const links = screen.getAllByRole("link", { name: /^upload$/i });
-    expect(links[0]).toHaveAttribute("href", "/upload");
+    const btn = screen.getByRole("button", { name: /user menu/i });
+    expect(btn.textContent).toContain("b");
   });
 
-  it("shows My Videos link when authenticated", () => {
-    mockUser = { email: "alice@example.com" };
+  it("opens dropdown menu when user menu button is clicked", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    expect(screen.getAllByRole("link", { name: /my videos/i }).length).toBeGreaterThanOrEqual(1);
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
   });
 
-  it("My Videos link points to /dashboard", () => {
-    mockUser = { email: "alice@example.com" };
+  it("dropdown contains Upload, My Videos, Account Settings links", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    const links = screen.getAllByRole("link", { name: /my videos/i });
-    expect(links[0]).toHaveAttribute("href", "/dashboard");
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menuitem", { name: /upload/i })).toHaveAttribute("href", "/upload");
+    expect(screen.getByRole("menuitem", { name: /my videos/i })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("menuitem", { name: /account settings/i })).toHaveAttribute("href", "/settings");
   });
 
-  it("shows Playlists link when authenticated", () => {
-    mockUser = { email: "alice@example.com" };
+  it("dropdown contains Sign out button", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    expect(screen.getAllByRole("link", { name: /playlists/i }).length).toBeGreaterThanOrEqual(1);
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
   });
 
-  it("Playlists link points to /dashboard", () => {
-    mockUser = { email: "alice@example.com" };
+  it("closes dropdown when a menu link is clicked", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    const links = screen.getAllByRole("link", { name: /playlists/i });
-    expect(links[0]).toHaveAttribute("href", "/dashboard");
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    await user.click(screen.getByRole("menuitem", { name: /upload/i }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("shows Sign out button when authenticated", () => {
-    mockUser = { email: "alice@example.com" };
+  it("calls signOut and redirects to /login on sign-out click", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    expect(screen.getAllByRole("button", { name: /sign out/i }).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("calls signOut when Sign out button is clicked (desktop)", () => {
-    mockUser = { email: "alice@example.com" };
-    render(<SiteHeader />);
-    // The desktop sign out button is the first one
-    const buttons = screen.getAllByRole("button", { name: /sign out/i });
-    fireEvent.click(buttons[0]);
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    await user.click(screen.getByRole("menuitem", { name: /sign out/i }));
     expect(mockSignOut).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/login");
+    });
   });
 
-  // ── Hamburger menu ───────────────────────────────────────────────────────────
-
-  it("renders the hamburger button", () => {
+  it("menu is not visible before user menu button is clicked", () => {
     render(<SiteHeader />);
-    expect(screen.getByRole("button", { name: /open menu/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("mobile menu is not visible by default", () => {
+  it("toggles menu closed when button clicked again", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    expect(screen.queryByRole("navigation", { name: /mobile navigation/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("opens mobile menu when hamburger is clicked", () => {
+  it("closes dropdown when clicking outside the menu container", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    expect(screen.getByRole("navigation", { name: /mobile navigation/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("shows close button after menu is opened", () => {
+  it("closes dropdown when Escape key is pressed", async () => {
+    const user = userEvent.setup();
     render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    expect(screen.getByRole("button", { name: /close menu/i })).toBeInTheDocument();
-  });
-
-  it("closes mobile menu when close button is clicked", () => {
-    render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    fireEvent.click(screen.getByRole("button", { name: /close menu/i }));
-    expect(screen.queryByRole("navigation", { name: /mobile navigation/i })).not.toBeInTheDocument();
-  });
-
-  it("mobile menu shows Home link for unauthenticated users", () => {
-    render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    const nav = screen.getByRole("navigation", { name: /mobile navigation/i });
-    expect(nav.querySelector('a[href="/"]')).toBeInTheDocument();
-  });
-
-  it("mobile menu shows auth links when authenticated", () => {
-    mockUser = { email: "alice@example.com" };
-    render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    const nav = screen.getByRole("navigation", { name: /mobile navigation/i });
-    expect(nav.querySelector('a[href="/upload"]')).toBeInTheDocument();
-    expect(nav.querySelector('a[href="/dashboard"]')).toBeInTheDocument();
-  });
-
-  it("mobile menu does not show auth links when unauthenticated", () => {
-    render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    const nav = screen.getByRole("navigation", { name: /mobile navigation/i });
-    expect(nav.querySelector('a[href="/upload"]')).not.toBeInTheDocument();
-  });
-
-  it("mobile menu Sign out button calls signOut and closes menu", () => {
-    mockUser = { email: "alice@example.com" };
-    render(<SiteHeader />);
-    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-    const nav = screen.getByRole("navigation", { name: /mobile navigation/i });
-    const signOutBtn = nav.querySelector("button");
-    fireEvent.click(signOutBtn!);
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("navigation", { name: /mobile navigation/i })).not.toBeInTheDocument();
-  });
-
-  // ── Active link highlight ────────────────────────────────────────────────────
-
-  it("Home link has active styling when on /", () => {
-    mockPathname = "/";
-    render(<SiteHeader />);
-    const homeLinks = screen.getAllByRole("link", { name: /^home$/i });
-    expect(homeLinks[0].className).toContain("text-red-600");
-  });
-
-  it("Upload link has active styling when on /upload", () => {
-    mockPathname = "/upload";
-    mockUser = { email: "alice@example.com" };
-    render(<SiteHeader />);
-    const uploadLinks = screen.getAllByRole("link", { name: /^upload$/i });
-    expect(uploadLinks[0].className).toContain("text-red-600");
+    await user.click(screen.getByRole("button", { name: /user menu/i }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });
