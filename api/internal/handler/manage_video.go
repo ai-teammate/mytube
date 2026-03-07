@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/ai-teammate/mytube/api/internal/middleware"
 	"github.com/ai-teammate/mytube/api/internal/repository"
+	"github.com/ai-teammate/mytube/api/internal/storage"
 )
 
 // VideoManager is the data-access interface used by PUT /api/videos/:id and
@@ -19,7 +21,7 @@ import (
 // Satisfied by *repository.VideoRepository and allows tests to inject a stub.
 type VideoManager interface {
 	Update(ctx context.Context, videoID string, uploaderID string, p repository.UpdateVideoParams) (*repository.VideoDetail, error)
-	SoftDelete(ctx context.Context, videoID string, uploaderID string) (bool, error)
+	SoftDelete(ctx context.Context, videoID string, uploaderID string) (bool, *repository.GCSPaths, error)
 }
 
 // UpdateVideoRequest is the JSON body accepted by PUT /api/videos/:id.
@@ -47,7 +49,28 @@ type UpdateVideoResponse struct {
 // It dispatches to putVideoHandler or deleteVideoHandler based on the HTTP method.
 // The GET method is delegated to the provided VideoProvider (existing watch handler logic).
 // cdnBaseURL is forwarded to the GET handler for CDN URL rewriting.
+// deleter is used to remove GCS objects when a video is deleted; it may be nil
+// (in which case GCS cleanup is skipped regardless of env vars).
 func NewManageVideoHandler(videos VideoProvider, manager VideoManager, users UserIDProvider, cdnBaseURL string) http.Handler {
+	deleter := storage.NewNopObjectDeleter()
+	return newManageVideoHandlerWithDeleter(videos, manager, users, cdnBaseURL, deleter)
+}
+
+// NewManageVideoHandlerWithDeleter is like NewManageVideoHandler but accepts an
+// explicit ObjectDeleter for GCS cleanup on video deletion. Use this in main.go
+// when a real GCS client is available.
+func NewManageVideoHandlerWithDeleter(videos VideoProvider, manager VideoManager, users UserIDProvider, cdnBaseURL string, deleter storage.ObjectDeleter) http.Handler {
+	return newManageVideoHandlerWithDeleter(videos, manager, users, cdnBaseURL, deleter)
+}
+
+// newManageVideoHandlerWithDeleter is the injectable constructor used in tests
+// and by NewManageVideoHandlerWithDeleter.
+func newManageVideoHandlerWithDeleter(videos VideoProvider, manager VideoManager, users UserIDProvider, cdnBaseURL string, deleter storage.ObjectDeleter) http.Handler {
+	deleteEnabled := os.Getenv("DELETE_ON_VIDEO_DELETE") != "false"
+	rawBucket := os.Getenv("RAW_UPLOADS_BUCKET")
+	if deleteEnabled && rawBucket == "" {
+		log.Printf("warning: DELETE_ON_VIDEO_DELETE=true but RAW_UPLOADS_BUCKET is not set; raw-file cleanup will be skipped")
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -56,7 +79,7 @@ func NewManageVideoHandler(videos VideoProvider, manager VideoManager, users Use
 		case http.MethodPut:
 			putVideoHandler(manager, users, w, r)
 		case http.MethodDelete:
-			deleteVideoHandler(manager, users, w, r)
+			deleteVideoHandler(manager, users, deleter, rawBucket, deleteEnabled, w, r)
 		default:
 			w.Header().Set("Allow", "GET, PUT, DELETE")
 			writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -163,7 +186,7 @@ func putVideoHandler(manager VideoManager, users UserIDProvider, w http.Response
 }
 
 // deleteVideoHandler handles DELETE /api/videos/:id.
-func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.ResponseWriter, r *http.Request) {
+func deleteVideoHandler(manager VideoManager, users UserIDProvider, deleter storage.ObjectDeleter, rawBucket string, deleteEnabled bool, w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
 		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
@@ -189,7 +212,7 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 		return
 	}
 
-	deleted, err := manager.SoftDelete(r.Context(), videoID, user.ID)
+	deleted, paths, err := manager.SoftDelete(r.Context(), videoID, user.ID)
 	if errors.Is(err, repository.ErrForbidden) {
 		writeJSONError(w, "forbidden", http.StatusForbidden)
 		return
@@ -204,5 +227,66 @@ func deleteVideoHandler(manager VideoManager, users UserIDProvider, w http.Respo
 		return
 	}
 
+	// Best-effort GCS cleanup; errors are logged but do not affect the HTTP response.
+	if deleteEnabled && paths != nil {
+		cleanupVideoGCSObjects(r.Context(), deleter, videoID, rawBucket, paths)
+	}
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// cleanupVideoGCSObjects deletes GCS objects associated with a soft-deleted video.
+// It logs errors but does not return them — cleanup is best-effort and must not
+// affect the HTTP response after the DB record is already marked deleted.
+//
+// Safety: raw object deletion is only attempted when rawBucket is non-empty and
+// the raw path does not start with "videos/" (i.e., it's an expected raw upload
+// path). HLS objects are only deleted under the "videos/<videoID>/" prefix to
+// prevent accidental deletion of unrelated objects.
+func cleanupVideoGCSObjects(ctx context.Context, deleter storage.ObjectDeleter, videoID, rawBucket string, paths *repository.GCSPaths) {
+	// Delete raw upload.
+	if rawBucket != "" && paths.RawPath != nil && *paths.RawPath != "" {
+		rawPath := *paths.RawPath
+		if strings.HasPrefix(rawPath, "videos/") {
+			log.Printf("cleanup: skipping raw path %q — looks like an HLS path, refusing to delete from raw bucket", rawPath)
+		} else {
+			if err := deleter.DeleteObject(ctx, rawBucket, rawPath); err != nil {
+				log.Printf("cleanup: delete raw gs://%s/%s: %v", rawBucket, rawPath, err)
+			} else {
+				log.Printf("cleanup: deleted raw gs://%s/%s", rawBucket, rawPath)
+			}
+		}
+	}
+
+	// Delete HLS output: parse bucket and prefix from gs:// URL.
+	if paths.HLSManifestPath != nil && *paths.HLSManifestPath != "" {
+		hlsBucket, hlsPrefix, ok := parseGCSPrefix(*paths.HLSManifestPath, videoID)
+		if ok {
+			if err := deleter.DeletePrefix(ctx, hlsBucket, hlsPrefix); err != nil {
+				log.Printf("cleanup: delete HLS gs://%s/%s: %v", hlsBucket, hlsPrefix, err)
+			} else {
+				log.Printf("cleanup: deleted HLS prefix gs://%s/%s", hlsBucket, hlsPrefix)
+			}
+		}
+	}
+}
+
+// parseGCSPrefix extracts the bucket name and safe object prefix from a GCS
+// manifest URL of the form gs://<bucket>/videos/<videoID>/index.m3u8.
+// The prefix is always restricted to "videos/<videoID>/" to prevent
+// unintended deletions. Returns (bucket, prefix, true) on success.
+func parseGCSPrefix(manifestURL, videoID string) (bucket, prefix string, ok bool) {
+	s := strings.TrimPrefix(manifestURL, "gs://")
+	if s == manifestURL {
+		return "", "", false // not a gs:// URL
+	}
+	idx := strings.Index(s, "/")
+	if idx < 0 {
+		return "", "", false
+	}
+	bucket = s[:idx]
+	// Regardless of what the stored path contains, only delete under the
+	// expected prefix to guard against corrupt or crafted DB values.
+	expectedPrefix := fmt.Sprintf("videos/%s/", videoID)
+	return bucket, expectedPrefix, bucket != ""
 }
