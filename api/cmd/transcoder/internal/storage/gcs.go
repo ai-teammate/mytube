@@ -51,6 +51,13 @@ type ObjectWriter interface {
 	NewWriter(ctx context.Context, bucket, object string, attrs WriteAttrs) io.WriteCloser
 }
 
+// PrefixDeleter abstracts GCS prefix deletion so tests can inject a stub.
+// Used by the transcoder to clean up partial HLS output on permanent failure.
+type PrefixDeleter interface {
+	// DeletePrefix deletes all objects in bucket whose name starts with prefix.
+	DeletePrefix(ctx context.Context, bucket, prefix string) error
+}
+
 // Downloader downloads a raw GCS object to the local filesystem.
 type Downloader struct {
 	Reader ObjectReader

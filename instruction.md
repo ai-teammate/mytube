@@ -183,3 +183,5 @@ All environment-specific values live in `dmtools.env` (gitignored) and are provi
 | `CODEMIE_BASE_URL` | Codemie endpoint |
 | `CODEMIE_MODEL` | Codemie model name |
 | `CODEMIE_MAX_TURNS` | Codemie max turns |
+| `DELETE_ON_VIDEO_DELETE` | Set to `false` to disable GCS object cleanup on video delete (default: `true`) |
+| `CLEANUP_ON_TRANSCODE_FAILURE` | Set to `false` to disable HLS cleanup on transcoding failure (default: `true`) |

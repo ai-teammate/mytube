@@ -381,25 +381,38 @@ ON CONFLICT DO NOTHING`
 	return r.GetByIDForOwner(ctx, videoID)
 }
 
+// GCSPaths holds the GCS object paths associated with a video, returned by
+// SoftDelete so callers can clean up cloud storage after a successful deletion.
+type GCSPaths struct {
+	// RawPath is the gcs_raw_path stored in the videos table (object path only,
+	// no gs:// prefix). May be nil if the upload never completed.
+	RawPath *string
+	// HLSManifestPath is the full gs:// URL of the HLS manifest, e.g.
+	// gs://bucket/videos/{id}/index.m3u8. May be nil if transcoding never ran.
+	HLSManifestPath *string
+}
+
 // SoftDelete sets the status of the video with the given ID to 'deleted'.
 // Ownership is checked explicitly before the update so callers can distinguish
 // between "video not found" and "caller is not the owner":
-//   - Returns (false, nil)          when the video does not exist or is already deleted.
-//   - Returns (false, ErrForbidden) when the video exists but uploaderID is not the owner.
-//   - Returns (true,  nil)          on successful soft-deletion.
-func (r *VideoRepository) SoftDelete(ctx context.Context, videoID string, uploaderID string) (bool, error) {
-	// Check existence and ownership before attempting the update.
-	const ownerSQL = `SELECT uploader_id FROM videos WHERE id = $1 AND status != 'deleted'`
+//   - Returns (false, nil, nil)          when the video does not exist or is already deleted.
+//   - Returns (false, nil, ErrForbidden) when the video exists but uploaderID is not the owner.
+//   - Returns (true,  *GCSPaths, nil)    on successful soft-deletion; GCSPaths contains
+//     the raw and HLS paths so the caller can clean up GCS objects.
+func (r *VideoRepository) SoftDelete(ctx context.Context, videoID string, uploaderID string) (bool, *GCSPaths, error) {
+	// Check existence, ownership, and fetch GCS paths in a single query.
+	const ownerSQL = `SELECT uploader_id, gcs_raw_path, hls_manifest_path FROM videos WHERE id = $1 AND status != 'deleted'`
 	row := r.db.QueryRowContext(ctx, ownerSQL, videoID)
 	var ownerID string
-	if err := row.Scan(&ownerID); err != nil {
+	var paths GCSPaths
+	if err := row.Scan(&ownerID, &paths.RawPath, &paths.HLSManifestPath); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil // video not found or already deleted
+			return false, nil, nil // video not found or already deleted
 		}
-		return false, fmt.Errorf("check video owner: %w", err)
+		return false, nil, fmt.Errorf("check video owner: %w", err)
 	}
 	if ownerID != uploaderID {
-		return false, ErrForbidden
+		return false, nil, ErrForbidden
 	}
 
 	const updateSQL = `
@@ -411,14 +424,14 @@ WHERE  id          = $1
 
 	result, err := r.db.ExecContext(ctx, updateSQL, videoID, uploaderID)
 	if err != nil {
-		return false, fmt.Errorf("soft delete video: %w", err)
+		return false, nil, fmt.Errorf("soft delete video: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("soft delete video rows affected: %w", err)
+		return false, nil, fmt.Errorf("soft delete video rows affected: %w", err)
 	}
-	return rows > 0, nil
+	return rows > 0, &paths, nil
 }
 
 // Create inserts a new video row with status=processing and the given GCS raw path,
