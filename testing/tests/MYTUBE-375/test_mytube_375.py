@@ -78,6 +78,7 @@ from testing.core.config.db_config import DBConfig
 from testing.core.config.gcs_config import GCSConfig
 from testing.components.services.api_process_service import ApiProcessService
 from testing.components.services.auth_service import AuthService
+from testing.components.services.gcs_service import GCSService
 from testing.components.services.video_service import VideoService
 
 # ---------------------------------------------------------------------------
@@ -304,12 +305,8 @@ def gcs_test_object(gcs_config: GCSConfig):
         return
 
     try:
-        from google.cloud import storage as gcs_storage
-        client = gcs_storage.Client()
-        object_name = f"{_GCS_TEST_PREFIX}test_video_{uuid.uuid4().hex[:8]}.mp4"
-        bucket = client.bucket(gcs_config.raw_uploads_bucket)
-        blob = bucket.blob(object_name)
-        blob.upload_from_string(b"fake-video-content-for-mytube-375", content_type="video/mp4")
+        gcs_svc = GCSService(gcs_config)
+        object_name = gcs_svc.upload_test_object(gcs_config.raw_uploads_bucket)
         yield object_name
     except Exception as exc:
         # GCS upload failed; skip GCS assertions but continue DB tests.
@@ -317,7 +314,7 @@ def gcs_test_object(gcs_config: GCSConfig):
         return
 
     try:
-        blob.delete()
+        gcs_svc.delete_object(gcs_config.raw_uploads_bucket, object_name)
     except Exception:
         pass  # Best-effort cleanup; object may already be gone.
 
@@ -432,18 +429,15 @@ class TestDeleteVideoGCSCleanupDisabledIntegration:
         reflect the deletion even when GCS cleanup is disabled.
         """
         video_id = seeded_video["video_id"]
-        with db_conn.cursor() as cur:
-            cur.execute("SELECT status FROM videos WHERE id = %s", (video_id,))
-            row = cur.fetchone()
-
-        assert row is not None, (
+        video_svc = VideoService(db_conn)
+        video_data = video_svc.get_video_by_id(video_id)
+        assert video_data is not None, (
             f"Video row for id={video_id!r} not found in DB after DELETE. "
             "Expected a soft-deleted row with status='deleted'."
         )
-        actual_status = row[0]
-        assert actual_status == "deleted", (
+        assert video_data["status"] == "deleted", (
             f"Expected video status='deleted' after DELETE /api/videos/{video_id}, "
-            f"but got status={actual_status!r}. "
+            f"but got status={video_data['status']!r}. "
             "The API soft-delete should update the status column to 'deleted'."
         )
 
@@ -470,14 +464,11 @@ class TestDeleteVideoGCSCleanupDisabledIntegration:
             )
 
         try:
-            from google.cloud import storage as gcs_storage
-            client = gcs_storage.Client()
+            gcs_svc = GCSService(gcs_config)
         except Exception as exc:
-            pytest.skip(f"google-cloud-storage not available: {exc}")
+            pytest.skip(f"GCSService unavailable: {exc}")
 
-        bucket = client.bucket(gcs_config.raw_uploads_bucket)
-        blob = bucket.blob(gcs_object)
-        exists = blob.exists()
+        exists = gcs_svc.blob_exists(gcs_config.raw_uploads_bucket, gcs_object)
 
         assert exists, (
             f"GCS object gs://{gcs_config.raw_uploads_bucket}/{gcs_object} was deleted "
