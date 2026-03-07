@@ -57,17 +57,18 @@ func TestCORS_SetsAllowHeadersHeader(t *testing.T) {
 	}
 }
 
-func TestCORS_PreflightReturns204(t *testing.T) {
+func TestCORS_PreflightReturns200(t *testing.T) {
 	h := middleware.CORS(okHandler)
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/videos/recent", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/me/videos", nil)
 	req.Header.Set("Origin", "https://ai-teammate.github.io")
 	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "authorization")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("OPTIONS preflight: expected 204, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("OPTIONS preflight: expected 200, got %d", rec.Code)
 	}
 }
 
