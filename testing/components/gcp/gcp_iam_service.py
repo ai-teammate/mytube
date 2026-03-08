@@ -53,6 +53,42 @@ class GcpIamService:
         policy = json.loads(result.stdout)
         return policy.get("bindings", [])
 
+    def get_cloud_run_service_sa(self, service_name: str) -> str:
+        """Return the full service account email attached to a Cloud Run Service.
+
+        Falls back to constructing the email from the short name if no '@' is present.
+        Raises RuntimeError if gcloud returns a non-zero exit code or the key is absent.
+        """
+        result = self._run_gcloud(
+            "run", "services", "describe", service_name,
+            "--region", self._config.region,
+            "--project", self._config.project_id,
+            "--format", "json",
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to describe Cloud Run Service '{service_name}'.\n"
+                f"stderr: {result.stderr.strip()}"
+            )
+        service_config = json.loads(result.stdout)
+        try:
+            sa = (
+                service_config.get("spec", {})
+                .get("template", {})
+                .get("spec", {})
+                .get("serviceAccountName", "")
+            )
+        except (KeyError, AttributeError):
+            sa = ""
+        if not sa:
+            raise RuntimeError(
+                f"Could not find serviceAccountName in Cloud Run Service spec.\n"
+                f"Service config keys: {list(service_config.keys())}"
+            )
+        if "@" not in sa:
+            sa = f"{sa}@{self._config.project_id}.iam.gserviceaccount.com"
+        return sa
+
     def get_cloud_run_job_sa(self, job_name: str) -> str:
         """Return the full service account email attached to a Cloud Run Job.
 
@@ -71,13 +107,22 @@ class GcpIamService:
                 f"stderr: {result.stderr.strip()}"
             )
         job_config = json.loads(result.stdout)
+        # Cloud Run Jobs v1 API nests the task spec two levels deep:
+        # spec.template.spec.template.spec.serviceAccountName
         try:
-            sa = job_config["spec"]["template"]["spec"]["serviceAccountName"]
-        except KeyError:
-            raise RuntimeError(
-                f"Could not find serviceAccountName in Cloud Run Job spec.\n"
-                f"Job config keys: {list(job_config.keys())}"
+            sa = (
+                job_config["spec"]["template"]["spec"]
+                ["template"]["spec"]["serviceAccountName"]
             )
+        except KeyError:
+            # Fallback: try the shallower path used by some API versions.
+            try:
+                sa = job_config["spec"]["template"]["spec"]["serviceAccountName"]
+            except KeyError:
+                raise RuntimeError(
+                    f"Could not find serviceAccountName in Cloud Run Job spec.\n"
+                    f"Job config keys: {list(job_config.keys())}"
+                )
         if "@" not in sa:
             sa = f"{sa}@{self._config.project_id}.iam.gserviceaccount.com"
         return sa
