@@ -39,6 +39,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from testing.core.config.api_config import APIConfig
 from testing.core.config.db_config import DBConfig
 from testing.components.services.auth_service import AuthService
+from testing.components.services.user_db_service import UserDbService
 
 # ---------------------------------------------------------------------------
 # Constants / environment
@@ -48,54 +49,6 @@ _FIREBASE_TOKEN: str = os.getenv("FIREBASE_TEST_TOKEN", "")
 _FIREBASE_TEST_UID: str = os.getenv("FIREBASE_TEST_UID", "")
 
 _TEST_TITLE = "MYTUBE-385 auto-provision test"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _try_connect_db(db_config: DBConfig):
-    """Return a live psycopg2 connection or None if DB is unreachable."""
-    try:
-        import psycopg2  # noqa: PLC0415
-        return psycopg2.connect(db_config.dsn())
-    except Exception:
-        return None
-
-
-def _delete_test_user(db_config: DBConfig, firebase_uid: str) -> None:
-    """Delete the test user row (and their videos) to simulate first-time user.
-
-    Silently skips if psycopg2 is not installed, DB is unreachable, or
-    firebase_uid is empty.
-    """
-    if not firebase_uid:
-        return
-
-    conn = _try_connect_db(db_config)
-    if conn is None:
-        return
-
-    try:
-        with conn:
-            with conn.cursor() as cur:
-                # Delete videos owned by this user first to avoid FK constraint.
-                cur.execute(
-                    "DELETE FROM videos WHERE user_id = (SELECT id FROM users WHERE firebase_uid = %s)",
-                    (firebase_uid,),
-                )
-                # Delete the user row.
-                cur.execute(
-                    "DELETE FROM users WHERE firebase_uid = %s",
-                    (firebase_uid,),
-                )
-    except Exception:
-        # If FK cascade or schema differs, fall through — the HTTP assertion
-        # is the primary check and is still performed.
-        pass
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -130,9 +83,20 @@ def auth_service(api_config: APIConfig, firebase_token: str) -> AuthService:
 
 
 @pytest.fixture(scope="module")
+def user_db_service(db_config: DBConfig):
+    """Open a UserDbService connection; yields None if DB is unreachable."""
+    svc = UserDbService(db_config)
+    if not svc.connect():
+        yield None
+        return
+    yield svc
+    svc.close()
+
+
+@pytest.fixture(scope="module")
 def post_video_response(
     auth_service: AuthService,
-    db_config: DBConfig,
+    user_db_service,
     firebase_token: str,  # noqa: ARG001  — ensures token guard fires first
 ) -> dict:
     """Perform the DELETE → POST flow; return a dict with the results.
@@ -146,7 +110,11 @@ def post_video_response(
         }
     """
     # Delete the test user from the DB so auto-provisioning is always exercised.
-    _delete_test_user(db_config, _FIREBASE_TEST_UID)
+    if user_db_service is not None and _FIREBASE_TEST_UID:
+        try:
+            user_db_service.delete_user_by_firebase_uid(_FIREBASE_TEST_UID)
+        except Exception:
+            pass
 
     status_code, body = auth_service.post(
         "/api/videos",
@@ -224,36 +192,19 @@ class TestNewUserAutoProvisioning:
         )
 
     def test_user_provisioned_in_db(
-        self, post_video_response: dict, db_config: DBConfig
+        self, post_video_response: dict, user_db_service
     ) -> None:
         """A row for the Firebase UID must exist in the ``users`` table after the call.
 
-        Skipped when psycopg2 is not installed or the DB is not reachable.
+        Skipped when the DB is not reachable.
         """
         if not _FIREBASE_TEST_UID:
             pytest.skip("FIREBASE_TEST_UID is not set — skipping DB assertion.")
 
-        try:
-            import psycopg2  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("psycopg2 is not installed — skipping DB assertion.")
+        if user_db_service is None:
+            pytest.skip("Database is not reachable — skipping DB assertion.")
 
-        conn = _try_connect_db(db_config)
-        if conn is None:
-            pytest.skip(
-                f"Database is not reachable at {db_config.host}:{db_config.port} — "
-                "skipping DB assertion."
-            )
-
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, firebase_uid FROM users WHERE firebase_uid = %s",
-                    (_FIREBASE_TEST_UID,),
-                )
-                row = cur.fetchone()
-        finally:
-            conn.close()
+        row = user_db_service.get_user_by_firebase_uid(_FIREBASE_TEST_UID)
 
         assert row is not None, (
             f"No row found in the 'users' table for firebase_uid={_FIREBASE_TEST_UID!r} "
@@ -262,7 +213,7 @@ class TestNewUserAutoProvisioning:
         )
 
     def test_video_saved_for_provisioned_user(
-        self, post_video_response: dict, db_config: DBConfig
+        self, post_video_response: dict, user_db_service
     ) -> None:
         """A video row must exist in the ``videos`` table for the newly created video.
 
@@ -276,27 +227,10 @@ class TestNewUserAutoProvisioning:
         if not video_id:
             pytest.skip("No video_id in response body — skipping DB assertion.")
 
-        try:
-            import psycopg2  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("psycopg2 is not installed — skipping DB assertion.")
+        if user_db_service is None:
+            pytest.skip("Database is not reachable — skipping DB assertion.")
 
-        conn = _try_connect_db(db_config)
-        if conn is None:
-            pytest.skip(
-                f"Database is not reachable at {db_config.host}:{db_config.port} — "
-                "skipping DB assertion."
-            )
-
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, title FROM videos WHERE id = %s",
-                    (video_id,),
-                )
-                row = cur.fetchone()
-        finally:
-            conn.close()
+        row = user_db_service.get_video_by_id(video_id)
 
         assert row is not None, (
             f"No row found in the 'videos' table for id={video_id!r} "
