@@ -67,27 +67,36 @@ type CreateVideoResponse struct {
 
 // UserIDProvider retrieves the internal user ID for the authenticated caller.
 // Satisfied by *repository.UserRepository and allows tests to inject a stub.
+// Used by ManageVideoHandler and MeVideosHandler (lookup only, no provisioning).
 type UserIDProvider interface {
 	GetByFirebaseUID(ctx context.Context, firebaseUID string) (*repository.User, error)
+}
+
+// UserProvisioner auto-provisions and retrieves the user for the authenticated
+// caller on first access.  Satisfied by *repository.UserRepository.
+// Used by VideosHandler so that a Firebase-authenticated user is created in the
+// users table on their first upload request without requiring manual seeding.
+type UserProvisioner interface {
+	Upsert(ctx context.Context, firebaseUID, email, pictureURL string) (*repository.User, error)
 }
 
 // VideosHandler handles requests to /api/videos.
 type VideosHandler struct {
 	videos   VideoCreator
-	users    UserIDProvider
+	users    UserProvisioner
 	signer   storage.Signer
 	bucket   string
 }
 
 // NewVideosHandler constructs a VideosHandler.
 // bucket is the GCS raw-uploads bucket name (from RAW_UPLOADS_BUCKET env var).
-func NewVideosHandler(videos VideoCreator, users UserIDProvider, signer storage.Signer) http.Handler {
+func NewVideosHandler(videos VideoCreator, users UserProvisioner, signer storage.Signer) http.Handler {
 	bucket := os.Getenv("RAW_UPLOADS_BUCKET")
 	return newVideosHandlerWithBucket(videos, users, signer, bucket)
 }
 
 // newVideosHandlerWithBucket is the injectable constructor used in tests.
-func newVideosHandlerWithBucket(videos VideoCreator, users UserIDProvider, signer storage.Signer, bucket string) http.Handler {
+func newVideosHandlerWithBucket(videos VideoCreator, users UserProvisioner, signer storage.Signer, bucket string) http.Handler {
 	h := &VideosHandler{
 		videos: videos,
 		users:  users,
@@ -141,15 +150,18 @@ func (h *VideosHandler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the internal user ID from the Firebase UID in the token.
-	user, err := h.users.GetByFirebaseUID(r.Context(), claims.UID)
+	// Auto-provision the users row on first upload (idempotent on subsequent calls).
+	// Upsert creates the row when it doesn't exist and returns the current row otherwise,
+	// so a fresh Firebase-authenticated user never hits a 404 here.
+	user, err := h.users.Upsert(r.Context(), claims.UID, claims.Email, claims.Picture)
 	if err != nil {
-		log.Printf("POST /api/videos: get user %s: %v", claims.UID, err)
+		log.Printf("POST /api/videos: upsert user %s: %v", claims.UID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if user == nil {
-		writeJSONError(w, "user not found", http.StatusNotFound)
+		log.Printf("POST /api/videos: upsert returned nil for uid %s", claims.UID)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
