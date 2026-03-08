@@ -230,12 +230,15 @@ func doTranscode(
 	thumbPath := filepath.Join(workDir, "thumbnail.jpg")
 	log.Printf("extracting thumbnail from %s → %s", rawPath, thumbPath)
 	thumbReady := false
+	// 5-second seek offset: may produce no output for video-only clips shorter
+	// than 5 s or for some containers without a combined audio/video stream.
+	// thumbReady is checked below before the upload step is attempted.
 	if err := tr.ExtractThumbnail(ctx, rawPath, thumbPath, 5); err != nil {
 		log.Printf("warning: thumbnail extraction failed, continuing without thumbnail: %v", err)
 	} else if fi, statErr := os.Stat(thumbPath); statErr == nil && fi.Size() > 0 {
 		thumbReady = true
 	} else {
-		log.Printf("warning: thumbnail file not written after extraction (video-only or short clip?), continuing without thumbnail")
+		log.Printf("warning: thumbnail file not written after extraction (video-only or short clip shorter than seek offset?), continuing without thumbnail")
 	}
 
 	// ── Step 4: Upload HLS output ─────────────────────────────────────────────
