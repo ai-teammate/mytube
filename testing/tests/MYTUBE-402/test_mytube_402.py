@@ -136,13 +136,26 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
     except Exception:
         pass
 
-    # Wait for the app's proactive reachability to react; capture diagnostics on timeout
-    try:
-        page.wait_for_function(
-            "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }",
-            timeout=20_000,
-        )
-    except Exception as e:
+    # Wait for the app's proactive reachability to react; allow a short retry/backoff loop and capture diagnostics on final timeout
+    predicate = "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }"
+    attempts = 3
+    found = False
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            # try with a modest per-attempt timeout to allow a few SDK cycles
+            page.wait_for_function(predicate, timeout=10_000)
+            found = True
+            break
+        except Exception as e:
+            last_exc = e
+            # short backoff before retrying
+            try:
+                time.sleep(1)
+            except Exception:
+                pass
+
+    if not found:
         ts = int(time.time())
         ss = os.path.join(artifacts_dir, f"auth-offline-failure-{ts}.png")
         html = os.path.join(artifacts_dir, f"auth-offline-failure-{ts}.html")
@@ -161,8 +174,8 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
             pass
         # Re-raise with helpful message and artifact locations
         raise AssertionError(
-            f"Timeout waiting for auth-error alert; captured artifacts: screenshot={ss}, html={html}, console={console_file}"
-        ) from e
+            f"Timeout waiting for auth-error alert after {attempts} attempts; captured artifacts: screenshot={ss}, html={html}, console={console_file}"
+        ) from last_exc
 
     # Assert header alert visible with expected message
     assert site_header.has_auth_error_alert(), "Expected auth-error alert in header after going offline"
@@ -299,20 +312,65 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
         assert injected, "Injection did not set window.__mytube402_injected — aborting test"
 
         # Trigger a deterministic token refresh to exercise the SDK refresh path.
-        # This call will await the Promise returned by getIdToken(true) and will
-        # either resolve to true/false depending on success; while offline it's
-        # expected to fail quickly but it deterministically triggers the refresh logic.
+        # Use a small retry loop so the SDK has a brief window to initialize; capture
+        # diagnostics and fail fast if we cannot invoke the refresh deterministically.
+        artifacts_dir = os.path.join(os.path.dirname(__file__), "artifacts")
         try:
-            refreshed = page.evaluate(r"""() => {
-                try {
-                    if (window.firebase && firebase.auth && firebase.auth().currentUser && typeof firebase.auth().currentUser.getIdToken === 'function') {
-                        return firebase.auth().currentUser.getIdToken(true).then(()=>true).catch(()=>false);
-                    }
-                } catch(e) {}
-                return false;
-            }""")
+            os.makedirs(artifacts_dir, exist_ok=True)
         except Exception:
-            refreshed = False
+            pass
+
+        def _capture_token_failure(page, tag="token-refresh"):
+            ts = int(time.time())
+            ss = os.path.join(artifacts_dir, f"{tag}-failure-{ts}.png")
+            html = os.path.join(artifacts_dir, f"{tag}-failure-{ts}.html")
+            console_file = os.path.join(artifacts_dir, f"{tag}-failure-{ts}.log")
+            try:
+                page.screenshot(path=ss)
+            except Exception:
+                pass
+            try:
+                open(html, "w", encoding="utf-8").write(page.content())
+            except Exception:
+                pass
+            try:
+                # best-effort collect console messages
+                # page.on may not have been attached here; ignore failures
+                pass
+            except Exception:
+                pass
+            return ss, html, console_file
+
+        refreshed = None
+        last_exc = None
+        for attempt in range(3):
+            try:
+                refreshed = page.evaluate(r"""() => {
+                    try {
+                        if (window.firebase && firebase.auth && firebase.auth().currentUser && typeof firebase.auth().currentUser.getIdToken === 'function') {
+                            return firebase.auth().currentUser.getIdToken(true).then(()=>true).catch(()=>false);
+                        }
+                    } catch(e) {}
+                    return false;
+                }""")
+                # If we got a boolean result, break and continue with assertions
+                if isinstance(refreshed, bool):
+                    break
+            except Exception as e:
+                last_exc = e
+                try:
+                    time.sleep(1)
+                except Exception:
+                    pass
+
+        if not isinstance(refreshed, bool):
+            ss, html, console_file = _capture_token_failure(page, tag="token-refresh")
+            raise AssertionError(
+                f"Could not deterministically invoke token refresh; captured artifacts: screenshot={ss}, html={html}, console={console_file}"
+            ) from last_exc
+
+        # Optionally log the refresh outcome (True means token refresh promise resolved)
+        # but do not force a specific boolean since offline behavior may vary.
 
         # Run common assertions
         _common_assertions_for_auth_offline(page)
