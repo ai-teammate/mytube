@@ -398,9 +398,9 @@ def heartbeat_blocked_page(browser: Browser, web_config: WebConfig) -> Page:
             # Intercept key 'hg' may have changed; attempt direct heartbeat
             # simulation via page.evaluate as a last resort.  The test body
             # will detect this and handle it.
-            pg._mytube394_intercept_failed = True  # type: ignore[attr-defined]
+            pg.evaluate("window.__mytube394_intercept_failed = true")
         else:
-            pg._mytube394_intercept_failed = False  # type: ignore[attr-defined]
+            pg.evaluate("window.__mytube394_intercept_failed = false")
 
     # Block Firebase auth domains (works for both modes after this point).
     _block_firebase_routes(pg)
@@ -450,7 +450,9 @@ class TestProactiveFirebaseHeartbeat:
 
         # If the 'hg' intercept failed in simulation mode, attempt a direct
         # heartbeat simulation via evaluate so the test is still meaningful.
-        intercept_failed = getattr(page, "_mytube394_intercept_failed", False)
+        intercept_failed = page.evaluate(
+            "typeof window.__mytube394_intercept_failed !== 'undefined' && window.__mytube394_intercept_failed === true"
+        )
         if intercept_failed:
             # Directly set authError via a global React DevTools hook or
             # dispatch a custom event the app can listen for.  Since we cannot
