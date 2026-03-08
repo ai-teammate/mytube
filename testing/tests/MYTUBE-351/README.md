@@ -3,7 +3,7 @@
 ## Objective
 
 Verify that the application displays a visible error state when the Firebase SDK fails to resolve
-authentication status (e.g. due to a network outage blocking Firebase auth domains).
+authentication status (e.g. due to a Firebase initialization failure).
 
 ## Preconditions
 
@@ -20,10 +20,12 @@ authentication status (e.g. due to a network outage blocking Firebase auth domai
 
 ## Test Steps
 
-1. **Block Firebase auth domains** — Playwright's `context.route()` intercepts and aborts all
-   requests to `identitytoolkit.googleapis.com`, `securetoken.googleapis.com`,
-   `*.firebaseapp.com`, and `firebase.googleapis.com`, simulating an SDK initialization failure.
-2. **Navigate to the home page** — `GET /` is loaded in the blocked context.
+1. **Inject Firebase failure simulation** — `context.add_init_script` injects a script before any
+   page scripts run. The script intercepts `Object.defineProperty` to detect when webpack module
+   9997 exports `hg` (`onAuthStateChanged`) and replaces the getter with a factory that returns a
+   fake `onAuthStateChanged` that always calls the error callback after 100 ms, directly triggering
+   `authError = true` in `AuthContext`.
+2. **Navigate to the home page** — `GET /` is loaded in the intercepted context.
 3. **Verify loading state resolves** — The "Loading…" spinner must disappear within 15 seconds;
    the app must not remain permanently in a loading state.
 4. **Verify auth error message is displayed** — At least one visible element with non-empty text
@@ -35,6 +37,14 @@ authentication status (e.g. due to a network outage blocking Firebase auth domai
 The application renders a clear, user-visible error message indicating that authentication
 services are unavailable. It must **not** silently degrade to an unauthenticated session
 (showing only a "Sign in" link without any explanation).
+
+## Why not network blocking?
+
+Previous runs used `context.route()` to abort requests to Firebase auth domains. That approach
+failed three times because for unauthenticated users with no cached session the Firebase SDK
+resolves `onAuthStateChanged` with `null` **synchronously from `localStorage`/IndexedDB** without
+making any network calls, so the error callback was never triggered and `authError` remained
+`false`. The webpack module interception approach correctly triggers the auth error path.
 
 ## Test Files
 
