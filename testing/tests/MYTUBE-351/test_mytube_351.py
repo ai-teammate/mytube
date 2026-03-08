@@ -73,6 +73,22 @@ from testing.core.config.web_config import WebConfig
 # "hg" (onAuthStateChanged) and replaces it with a fake that always calls the
 # error callback after 100 ms, directly triggering authError = true in
 # AuthContext without relying on any network calls.
+#
+# IMPORTANT — minification-dependent export key "hg":
+# The key "hg" is assigned by webpack's minifier at build time and will change
+# with any webpack config change, Firebase JS SDK version bump, or minification
+# seed change.  If the intercept silently stops working (tests timeout with
+# "element not found" instead of asserting the auth-error alert), re-discover
+# the current key by running the following in DevTools after loading the app:
+#
+#   Object.entries(window.__webpack_modules__ ?? {})
+#     .find(([, m]) => m?.toString().includes('onAuthStateChanged'))
+#
+# Update the prop === 'hg' check below with the new key.
+#
+# The script sets window.__authInterceptActivated = true when it matches the
+# property.  The blocked_page fixture asserts this flag after page load to
+# detect silently-broken intercepts early.
 _FIREBASE_INTERCEPT_SCRIPT = """
 (function () {
     var _origDefProp = Object.defineProperty;
@@ -82,6 +98,7 @@ _FIREBASE_INTERCEPT_SCRIPT = """
             descriptor &&
             typeof descriptor.get === 'function'
         ) {
+            window.__authInterceptActivated = true;
             return _origDefProp(target, prop, {
                 enumerable: descriptor.enumerable,
                 configurable: true,
@@ -173,7 +190,7 @@ def browser(web_config: WebConfig):
 
 @pytest.fixture(scope="function")
 def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
-    """Open a fresh browser context with Firebase auth intercepted via init script.
+    """Yield a Page already navigated to home_url with the Firebase intercept active.
 
     The init script overrides Object.defineProperty to replace the webpack
     'hg' export (onAuthStateChanged) with a fake that always calls the error
@@ -181,6 +198,11 @@ def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
 
     Each test function gets its own context so the init script injection does
     not bleed between tests.
+
+    NOTE: The page is pre-navigated to home_url before it is yielded.
+    Tests MUST NOT call ``pg.goto()`` again — doing so causes a redundant
+    double-navigation (the intercept does re-activate, but it doubles wall-clock
+    time for every test in this suite).
     """
     context = browser.new_context()
     context.set_default_timeout(30_000)
@@ -190,6 +212,20 @@ def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
 
     pg = context.new_page()
     pg.set_default_timeout(30_000)
+
+    # Navigate and assert that the intercept actually activated.
+    # window.__authInterceptActivated is set by the script when it matches the
+    # 'hg' property.  If False, the minified export key has changed and the
+    # script needs updating — see the comment above _FIREBASE_INTERCEPT_SCRIPT.
+    pg.goto(web_config.home_url())
+    activated = pg.evaluate("typeof window.__authInterceptActivated !== 'undefined' && window.__authInterceptActivated === true")
+    assert activated, (
+        "Firebase intercept script did NOT activate (window.__authInterceptActivated is not true). "
+        "The minified webpack export key 'hg' may have changed. "
+        "Re-discover the current key with: "
+        "Object.entries(window.__webpack_modules__ ?? {}).find(([, m]) => m?.toString().includes('onAuthStateChanged'))"
+    )
+
     yield pg
     context.close()
 
@@ -211,9 +247,9 @@ class TestFirebaseAuthErrorState:
         the "Loading…" spinner must disappear within _LOADING_DISMISS_TIMEOUT_MS.
         A permanent loading state would prevent users from receiving any
         feedback.
-        """
-        blocked_page.goto(web_config.home_url())
 
+        Note: blocked_page is pre-navigated to home_url by the fixture.
+        """
         loading = blocked_page.locator(_LOADING_TEXT_SELECTOR)
         try:
             loading.wait_for(state="visible", timeout=5_000)
@@ -250,9 +286,9 @@ class TestFirebaseAuthErrorState:
 
         A role="alert" element with empty text (e.g. the Next.js
         RouteAnnouncer) does NOT satisfy this requirement.
-        """
-        blocked_page.goto(web_config.home_url())
 
+        Note: blocked_page is pre-navigated to home_url by the fixture.
+        """
         # Wait for any loading state to clear first.
         loading = blocked_page.locator(_LOADING_TEXT_SELECTOR)
         try:
