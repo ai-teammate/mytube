@@ -15,6 +15,17 @@ import {
 } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
 
+/** How often the heartbeat probes Firebase auth reachability (ms). */
+export const HEARTBEAT_INTERVAL_MS = 120_000;
+
+/**
+ * Maximum time (ms) the heartbeat probe waits for getIdToken to settle.
+ * On a degraded-but-reachable network the OS TCP timeout can hold the
+ * request open for 30–60 s; this cap bounds worst-case detection latency
+ * to HEARTBEAT_INTERVAL_MS + HEARTBEAT_PROBE_TIMEOUT_MS (≈ 2 min 10 s).
+ */
+export const HEARTBEAT_PROBE_TIMEOUT_MS = 10_000;
+
 export interface AuthContextValue {
   /** The currently authenticated Firebase user, or null if not signed in. */
   user: User | null;
@@ -63,6 +74,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return unsubscribe;
   }, []);
+
+  // Mid-session reachability heartbeat: periodically force-refresh the token
+  // while the user is authenticated.  The Firebase SDK v12 does NOT fire the
+  // onAuthStateChanged error callback when auth domains become unreachable
+  // after initialisation, so this probe is the only way to detect the failure.
+  useEffect(() => {
+    if (!user || authError) return;
+
+    const probe = async () => {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("heartbeat-timeout")), HEARTBEAT_PROBE_TIMEOUT_MS)
+      );
+      try {
+        await Promise.race([user.getIdToken(/* forceRefresh */ true), timeoutPromise]);
+      } catch (err) {
+        // Intentionally not re-throwing — treat any failure as auth unreachable.
+        console.error("[AuthContext] Heartbeat probe failed:", err);
+        setAuthError(true);
+      }
+    };
+
+    const id = setInterval(probe, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [user, authError]);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
     if (!user) return null;
