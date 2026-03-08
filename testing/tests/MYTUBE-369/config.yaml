@@ -1,5 +1,14 @@
 test_id: MYTUBE-369
 type: api
-framework: google-cloud-storage
+framework: cloud-run
 platform: gcp
-dependencies: []
+dependencies:
+  - ffmpeg
+  - google-cloud-storage
+env:
+  - GCP_PROJECT_ID
+  - GCP_REGION
+  - GCP_RAW_BUCKET
+  - GCP_HLS_BUCKET
+  - GCP_TRANSCODER_JOB
+  - GOOGLE_APPLICATION_CREDENTIALS
