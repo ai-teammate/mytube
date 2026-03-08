@@ -21,6 +21,8 @@ TRANSCODER_SA="mytube-transcoder"
 TRANSCODER_SA_EMAIL="${TRANSCODER_SA}@${PROJECT}.iam.gserviceaccount.com"
 CI_SA="ai-teammate-gcloud"
 CI_SA_EMAIL="${CI_SA}@${PROJECT}.iam.gserviceaccount.com"
+API_SERVICE="${API_SERVICE:-mytube-api}"
+API_SA_EMAIL=""
 TRIGGER_SERVICE="mytube-transcoder-trigger"
 JOB_NAME="mytube-transcoder"
 
@@ -97,17 +99,17 @@ fi
 
 # ── 4. Grant IAM on buckets ───────────────────────────────────────────────────
 echo ""
-echo "==> Granting ${TRANSCODER_SA_EMAIL} objectViewer on ${RAW_BUCKET}..."
+echo "==> Granting ${TRANSCODER_SA_EMAIL} objectUser on ${RAW_BUCKET}..."
 gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
   --member="serviceAccount:${TRANSCODER_SA_EMAIL}" \
-  --role="roles/storage.objectViewer" \
+  --role="roles/storage.objectUser" \
   --project="${PROJECT}"
 
 echo ""
-echo "==> Granting ${TRANSCODER_SA_EMAIL} objectCreator on ${HLS_BUCKET}..."
+echo "==> Granting ${TRANSCODER_SA_EMAIL} objectUser on ${HLS_BUCKET}..."
 gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
   --member="serviceAccount:${TRANSCODER_SA_EMAIL}" \
-  --role="roles/storage.objectCreator" \
+  --role="roles/storage.objectUser" \
   --project="${PROJECT}"
 
 echo ""
@@ -146,6 +148,44 @@ gcloud projects add-iam-policy-binding "${PROJECT}" \
   --member="serviceAccount:${CI_SA_EMAIL}" \
   --role="roles/eventarc.viewer" \
   --condition=None
+
+# ── 4a. Grant IAM on buckets to API server SA ─────────────────────────────────
+# Resolve the API server SA from the live Cloud Run service, or derive it from the
+# default Compute Engine SA format when the service is not yet deployed.
+echo ""
+echo "==> Resolving API server SA for service: ${API_SERVICE}..."
+if gcloud run services describe "${API_SERVICE}" \
+    --region="${REGION}" --project="${PROJECT}" &>/dev/null; then
+  API_SA_EMAIL=$(gcloud run services describe "${API_SERVICE}" \
+    --region="${REGION}" \
+    --project="${PROJECT}" \
+    --format="value(spec.template.spec.serviceAccountName)")
+  if [ -n "${API_SA_EMAIL}" ] && [[ "${API_SA_EMAIL}" != *"@"* ]]; then
+    API_SA_EMAIL="${API_SA_EMAIL}@${PROJECT}.iam.gserviceaccount.com"
+  fi
+fi
+if [ -z "${API_SA_EMAIL}" ]; then
+  # Fall back to the default Compute Engine SA (project number based).
+  PROJECT_NUMBER=$(gcloud projects describe "${PROJECT}" --format="value(projectNumber)")
+  API_SA_EMAIL="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+  echo "    mytube-api not found — using default Compute SA: ${API_SA_EMAIL}"
+else
+  echo "    Resolved API SA: ${API_SA_EMAIL}"
+fi
+
+echo ""
+echo "==> Granting ${API_SA_EMAIL} objectUser on ${RAW_BUCKET} (API server raw-uploads delete)..."
+gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
+  --member="serviceAccount:${API_SA_EMAIL}" \
+  --role="roles/storage.objectUser" \
+  --project="${PROJECT}"
+
+echo ""
+echo "==> Granting ${API_SA_EMAIL} objectUser on ${HLS_BUCKET} (API server HLS cleanup delete)..."
+gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
+  --member="serviceAccount:${API_SA_EMAIL}" \
+  --role="roles/storage.objectUser" \
+  --project="${PROJECT}"
 
 # ── 5. Allow trigger service to invoke Cloud Run Jobs ─────────────────────────
 # The trigger Cloud Run Service needs run.jobs.run permission.
