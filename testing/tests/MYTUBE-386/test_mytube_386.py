@@ -180,26 +180,17 @@ class TestVideosHandler_GoUnit:
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
-    def test_unseeded_user_auto_provisions_returns_201(self):
-        """Regression test: unseeded user is auto-provisioned, yielding 201.
+    def test_unseeded_user_returns_403(self):
+        """POST /api/videos for a Firebase-authenticated user with no DB row must return 403.
 
-        MYTUBE-383 introduced auto-provisioning via Upsert so that a
-        Firebase-authenticated user without a DB row is created on the fly
-        instead of receiving a 404 or any other error.
-
-        This test documents the CURRENT behaviour: the handler returns 201
-        (Created), NOT 403 or 422, when the user is missing from the database.
-
-        If MYTUBE-386 requires 403/422 instead, the Upsert logic must be
-        replaced with a non-provisioning lookup (GetByFirebaseUID) and a new
-        Go unit test added to verify the error response.
+        MYTUBE-388 replaced the Upsert auto-provisioning path with GetByFirebaseUID,
+        so the handler now rejects unregistered users with 403 Forbidden.
+        Wraps TestNewVideosHandler_POST_UserNotSeeded_Returns403.
         """
-        result = _run_go_test(
-            "TestNewVideosHandler_POST_UserNotSeeded_AutoProvisions_Returns201"
-        )
+        result = _run_go_test("TestNewVideosHandler_POST_UserNotSeeded_Returns403")
         assert result.returncode == 0, (
-            f"TestNewVideosHandler_POST_UserNotSeeded_AutoProvisions_Returns201 "
-            f"failed.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"TestNewVideosHandler_POST_UserNotSeeded_Returns403 failed.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
     def test_missing_title_returns_422(self):
