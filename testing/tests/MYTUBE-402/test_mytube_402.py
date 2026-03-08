@@ -98,137 +98,157 @@ def browser_instance(web_config: WebConfig) -> Browser:
 
 
 # ---------------------------------------------------------------------------
-# Test
+# Tests
 # ---------------------------------------------------------------------------
 
 
-def test_offline_shows_auth_error(browser_instance: Browser, web_config: WebConfig) -> None:
-    """Authenticate (real or fake), toggle offline and assert header alert."""
-    # Create a fresh context for test isolation
+def _common_assertions_for_auth_offline(page: Page) -> None:
+    site_header = SiteHeader(page)
+    # Ensure we appear authenticated (Sign in link should NOT be visible)
+    assert not site_header.has_sign_in_link(), "Precondition failed: user appears unauthenticated"
+    # Accelerate long intervals so the app's heartbeat/probe runs quickly
+    try:
+        page.evaluate("() => { var _orig = window.setInterval; window.setInterval = function(fn, delay){ var rest = Array.prototype.slice.call(arguments,2); var newDelay = (typeof delay === 'number' && delay >= 10000) ? 100 : delay; return _orig.apply(window, [fn, newDelay].concat(rest)); }; }")
+    except Exception:
+        pass
+    # Wait for the app's proactive reachability to react
+    try:
+        page.wait_for_function(
+            "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }",
+            timeout=12_000,
+        )
+    except Exception:
+        pass
+    # Assert header alert visible with expected message
+    assert site_header.has_auth_error_alert(), "Expected auth-error alert in header after going offline"
+    alert_text = site_header.auth_error_alert_text()
+    assert _EXPECTED_ERROR_TEXT in alert_text, f"Alert text did not match expected (got: {alert_text!r})"
+
+
+def test_offline_shows_auth_error_with_ui_login(browser_instance: Browser, web_config: WebConfig) -> None:
+    """UI-login flow: log in through the UI, then toggle offline and assert header alert."""
     context = browser_instance.new_context()
     page = context.new_page()
     page.set_default_timeout(30_000)
 
     try:
-        # Mode 1: if credentials available, perform UI login
-        if web_config.test_email and web_config.test_password:
-            login = LoginPage(page)
-            login.navigate(web_config.login_url())
-            login.login_as(web_config.test_email, web_config.test_password)
-            # Wait for header to reflect authenticated state (no "Sign in" link).
-            try:
-                page.wait_for_function(
-                    "() => { const links = Array.from(document.querySelectorAll('header a') || []); return !links.some(a => (a.innerText||'').trim().toLowerCase().includes('sign in')); }",
-                    timeout=15_000,
-                )
-            except Exception:
-                # If login did not reach authenticated state in time, skip to avoid false failures.
-                pytest.skip("UI login did not reach authenticated state within timeout")
-        else:
-            # Mode 2: Discover API key and inject an EXPIRED session token, then
-            # toggle the browser to offline before the app initializes so that
-            # Firebase attempts a refresh while offline and triggers authError.
-            page.goto(web_config.home_url(), wait_until="domcontentloaded")
-            api_key = _extract_firebase_api_key(page)
-            if not api_key:
-                pytest.skip("Could not discover Firebase API key to inject fake session")
-            # Build an expired session object (expirationTime in the past)
-            expired_user = {
-                "uid": "mytube-402-expired-uid",
-                "email": "ci-expired@mytube.test",
-                "emailVerified": False,
-                "isAnonymous": False,
-                "providerData": [{
-                    "providerId": "password",
-                    "uid": "ci-expired@mytube.test",
-                    "displayName": None,
-                    "email": "ci-expired@mytube.test",
-                    "phoneNumber": None,
-                    "photoURL": None,
-                }],
-                "stsTokenManager": {
-                    "refreshToken": "AEu_fake_refresh_for_mytube_402",
-                    "accessToken": "fake.access.token.mytube402",
-                    # Expiry in the past (2001-01-01 UTC ms)
-                    "expirationTime": 978307200000,
-                },
-                "createdAt": "978307200000",
-                "lastLoginAt": "978307200000",
-            }
-            ls_key = f"firebase:authUser:{api_key}:[DEFAULT]"
-            init_script = f"(function(){{ try {{ localStorage.setItem({json.dumps(ls_key)}, {json.dumps(json.dumps(expired_user))}); window.__mytube402_injected = true; }} catch(e) {{ window.__mytube402_injected = false; }} }})();"
-            # Recreate context with the init script so the expired session is present
-            context.close()
-            context = browser_instance.new_context()
-            context.add_init_script(script=init_script)
-            page = context.new_page()
-            # Toggle offline before navigation so Firebase will attempt a refresh while offline
-            context.set_offline(True)
-            # Additionally abort Firebase auth endpoints to deterministically simulate
-            # auth-token refresh failure (defensive — some SDK paths respond
-            # differently to navigator.onLine changes).
-            firebase_patterns = [
-                "https://securetoken.googleapis.com/**",
-                "https://identitytoolkit.googleapis.com/**",
-                "https://www.googleapis.com/identitytoolkit/**",
-                "https://*.firebaseapp.com/**",
-                "https://*.firebaseio.com/**",
-            ]
-            def _abort(route, req):
-                try:
-                    route.abort("aborted")
-                except Exception:
-                    try:
-                        route.fulfill(status=503, body="")
-                    except Exception:
-                        route.abort()
-            for p in firebase_patterns:
-                context.route(p, _abort)
-            # Fallback predicate for edge-case URLs.
-            def _predicate(route, req):
-                url = req.url or ""
-                if any(k in url for k in [
-                    "securetoken.googleapis.com",
-                    "identitytoolkit.googleapis.com",
-                    "googleapis.com/identitytoolkit",
-                    ".firebaseapp.com",
-                    ".firebaseio.com",
-                ]):
-                    return _abort(route, req)
-                return route.continue_()
-            context.route(lambda r: True, _predicate)
-            page.goto(web_config.dashboard_url(), wait_until="domcontentloaded")
+        # Require explicit credentials for the UI login test; otherwise skip
+        if not (web_config.test_email and web_config.test_password):
+            pytest.skip("Skipping UI-login test because FIREBASE_TEST_EMAIL/PASSWORD not provided")
 
-        site_header = SiteHeader(page)
-
-        # Ensure we appear authenticated (Sign in link should NOT be visible)
-        assert not site_header.has_sign_in_link(), "Precondition failed: user appears unauthenticated"
-
-        # Accelerate long intervals so the app's heartbeat/probe runs quickly
-        try:
-            page.evaluate("() => { var _orig = window.setInterval; window.setInterval = function(fn, delay){ var rest = Array.prototype.slice.call(arguments,2); var newDelay = (typeof delay === 'number' && delay >= 10000) ? 100 : delay; return _orig.apply(window, [fn, newDelay].concat(rest)); }; }")
-        except Exception:
-            pass
-
-        # Toggle the browser to offline mode
-        context.set_offline(True)
-
-        # Wait for the app's proactive reachability to react
+        login = LoginPage(page)
+        login.navigate(web_config.login_url())
+        login.login_as(web_config.test_email, web_config.test_password)
+        # Wait for header to reflect authenticated state (no "Sign in" link).
         try:
             page.wait_for_function(
-                "() => { const el = document.querySelector('header [role=\'alert\']'); return el && (el.innerText||'').trim().length > 0; }",
-                timeout=12_000,
+                "() => { const links = Array.from(document.querySelectorAll('header a') || []); return !links.some(a => (a.innerText||'').trim().toLowerCase().includes('sign in')); }",
+                timeout=15_000,
             )
         except Exception:
-            pass
+            pytest.skip("UI login did not reach authenticated state within timeout")
 
-        # Assert header alert visible with expected message
-        assert site_header.has_auth_error_alert(), "Expected auth-error alert in header after going offline"
-        alert_text = site_header.auth_error_alert_text()
-        assert _EXPECTED_ERROR_TEXT in alert_text, f"Alert text did not match expected (got: {alert_text!r})"
+        # Toggle offline and run common assertions
+        context.set_offline(True)
+        _common_assertions_for_auth_offline(page)
 
     finally:
-        # Restore network (defensive) and close context
+        try:
+            context.set_offline(False)
+        except Exception:
+            pass
+        context.close()
+
+
+def test_offline_shows_auth_error_with_injected_session(browser_instance: Browser, web_config: WebConfig) -> None:
+    """Injected-session flow: pre-populate an EXPIRED session, ensure injection succeeded, then toggle offline and assert header alert.
+
+    This test only intercepts known Firebase/auth endpoints (no catch-all route).
+    """
+    # Start with a fresh context
+    context = browser_instance.new_context()
+
+    try:
+        page = context.new_page()
+        page.set_default_timeout(30_000)
+
+        # Navigate to discover API key
+        page.goto(web_config.home_url(), wait_until="domcontentloaded")
+        api_key = _extract_firebase_api_key(page)
+        if not api_key:
+            pytest.skip("Could not discover Firebase API key to inject fake session")
+
+        # Build an expired session object (expirationTime in the past)
+        expired_user = {
+            "uid": "mytube-402-expired-uid",
+            "email": "ci-expired@mytube.test",
+            "emailVerified": False,
+            "isAnonymous": False,
+            "providerData": [{
+                "providerId": "password",
+                "uid": "ci-expired@mytube.test",
+                "displayName": None,
+                "email": "ci-expired@mytube.test",
+                "phoneNumber": None,
+                "photoURL": None,
+            }],
+            "stsTokenManager": {
+                "refreshToken": "AEu_fake_refresh_for_mytube_402",
+                "accessToken": "fake.access.token.mytube402",
+                # Expiry in the past (2001-01-01 UTC ms)
+                "expirationTime": 978307200000,
+            },
+            "createdAt": "978307200000",
+            "lastLoginAt": "978307200000",
+        }
+        ls_key = f"firebase:authUser:{api_key}:[DEFAULT]"
+        init_script = f"(function(){{ try {{ localStorage.setItem({json.dumps(ls_key)}, {json.dumps(json.dumps(expired_user))}); window.__mytube402_injected = true; }} catch(e) {{ window.__mytube402_injected = false; }} }})();"
+
+        # Close the initial context and recreate with the init script present before navigation
+        context.close()
+        context = browser_instance.new_context()
+        context.add_init_script(script=init_script)
+
+        # Register only explicit Firebase/auth endpoints to simulate token-refresh failure
+        firebase_patterns = [
+            "https://securetoken.googleapis.com/**",
+            "https://identitytoolkit.googleapis.com/**",
+            "https://www.googleapis.com/identitytoolkit/**",
+            "https://*.firebaseapp.com/**",
+            "https://*.firebaseio.com/**",
+        ]
+
+        def _abort(route, req):
+            try:
+                route.abort("aborted")
+            except Exception:
+                try:
+                    route.fulfill(status=503, body="")
+                except Exception:
+                    try:
+                        route.abort()
+                    except Exception:
+                        pass
+
+        for p in firebase_patterns:
+            context.route(p, _abort)
+
+        # Navigate while offline so SDK attempts refresh while offline
+        context.set_offline(True)
+        page = context.new_page()
+        page.goto(web_config.dashboard_url(), wait_until="domcontentloaded")
+
+        # Verify injection succeeded (fail fast if not)
+        try:
+            injected = page.evaluate("() => !!window.__mytube402_injected")
+        except Exception:
+            injected = False
+        assert injected, "Injection did not set window.__mytube402_injected — aborting test"
+
+        # Run common assertions
+        _common_assertions_for_auth_offline(page)
+
+    finally:
         try:
             context.set_offline(False)
         except Exception:
