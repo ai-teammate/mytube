@@ -8,9 +8,10 @@ fails to resolve the authentication status.
 
 Steps
 -----
-1. Simulate a Firebase SDK initialization failure by blocking all requests
-   to Firebase auth domains (identitytoolkit.googleapis.com,
-   securetoken.googleapis.com, *.firebaseapp.com, firebase.googleapis.com).
+1. Simulate a Firebase SDK initialization failure by injecting a script
+   via context.add_init_script that overrides the onAuthStateChanged export
+   (webpack module 9997, export key "hg") to call the error callback after
+   a 100 ms delay instead of the success callback.
 2. Load the application (navigate to the home page /).
 
 Expected Result
@@ -21,15 +22,20 @@ a permanent loading state or allowing access.
 
 Test approach
 -------------
-Uses Playwright's page.route() to intercept and abort all HTTP(S) requests
-to Firebase authentication endpoints, simulating an SDK initialisation
-failure.  The test then navigates to the deployed home page and asserts that:
+Uses Playwright's context.add_init_script to inject a script before any
+page scripts run.  The script intercepts Object.defineProperty calls and,
+when webpack tries to define the "hg" export (onAuthStateChanged) on a
+module exports object, replaces the getter with a factory that returns a
+fake onAuthStateChanged that always calls the error callback after 100 ms.
+This directly triggers authError = true in AuthContext without relying on
+any network calls.
 
-  1. The application does NOT remain stuck in a permanent loading state
-     (the "Loading…" spinner must disappear within a reasonable timeout).
-  2. An error element visible to the user that communicates authentication
-     unavailability is present in the DOM (e.g. role="alert", or text
-     matching "unavailable", "authentication", "error").
+Why not network blocking?
+Network blocking (context.route()) was tried in previous runs and always
+failed: for unauthenticated users with no cached session the Firebase SDK
+resolves onAuthStateChanged with null synchronously from localStorage /
+IndexedDB without making any network requests, so the error callback is
+never triggered.
 
 Environment variables
 ---------------------
@@ -42,7 +48,7 @@ Architecture
 ------------
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest function-scoped fixtures (each test gets a
-  fresh browser context with the route intercepts already in place).
+  fresh browser context with the init script already injected).
 - No hardcoded URLs or credentials.
 """
 from __future__ import annotations
@@ -62,16 +68,54 @@ from testing.core.config.web_config import WebConfig
 # Constants
 # ---------------------------------------------------------------------------
 
-# Firebase auth-related domains to block.
-# Blocking these simulates an SDK initialisation failure / network outage.
-_FIREBASE_AUTH_PATTERNS = [
-    "**/identitytoolkit.googleapis.com/**",
-    "**/securetoken.googleapis.com/**",
-    "**/*.firebaseapp.com/**",
-    "**/firebase.googleapis.com/**",
-    # Firebase also uses this URL pattern for auth REST calls
-    "**/googleapis.com/identitytoolkit/**",
-]
+# Init script injected before any page scripts run.
+# Intercepts Object.defineProperty to detect when webpack module 9997 exports
+# "hg" (onAuthStateChanged) and replaces it with a fake that always calls the
+# error callback after 100 ms, directly triggering authError = true in
+# AuthContext without relying on any network calls.
+_FIREBASE_INTERCEPT_SCRIPT = """
+(function () {
+    var _origDefProp = Object.defineProperty;
+    Object.defineProperty = function (target, prop, descriptor) {
+        if (
+            prop === 'hg' &&
+            descriptor &&
+            typeof descriptor.get === 'function'
+        ) {
+            return _origDefProp(target, prop, {
+                enumerable: descriptor.enumerable,
+                configurable: true,
+                get: function () {
+                    return function fakeOnAuthStateChanged(auth, nextOrObserver, error) {
+                        var errorCb;
+                        if (
+                            nextOrObserver !== null &&
+                            typeof nextOrObserver === 'object' &&
+                            typeof nextOrObserver.error === 'function'
+                        ) {
+                            errorCb = nextOrObserver.error;
+                        } else {
+                            errorCb = error;
+                        }
+                        setTimeout(function () {
+                            if (typeof errorCb === 'function') {
+                                errorCb(
+                                    new Error(
+                                        'Firebase: Error (auth/network-request-failed).' +
+                                        ' A network AuthError has occurred (simulated).'
+                                    )
+                                );
+                            }
+                        }, 100);
+                        return function () {}; // unsubscribe no-op
+                    };
+                }
+            });
+        }
+        return _origDefProp.apply(Object, arguments);
+    };
+})();
+"""
 
 # How long (ms) to wait for the loading indicator to disappear.
 # If it does not disappear within this time we treat it as a "permanent
@@ -129,17 +173,20 @@ def browser(web_config: WebConfig):
 
 @pytest.fixture(scope="function")
 def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
-    """Open a fresh browser context with Firebase auth domains blocked.
+    """Open a fresh browser context with Firebase auth intercepted via init script.
 
-    Each test function gets its own context so route registrations do not
-    bleed between tests.
+    The init script overrides Object.defineProperty to replace the webpack
+    'hg' export (onAuthStateChanged) with a fake that always calls the error
+    callback after 100 ms, directly triggering authError = true in AuthContext.
+
+    Each test function gets its own context so the init script injection does
+    not bleed between tests.
     """
     context = browser.new_context()
     context.set_default_timeout(30_000)
 
-    # Register abort handlers for all Firebase auth patterns.
-    for pattern in _FIREBASE_AUTH_PATTERNS:
-        context.route(pattern, lambda route, **_: route.abort())
+    # Inject the Firebase interception script before any page scripts run.
+    context.add_init_script(script=_FIREBASE_INTERCEPT_SCRIPT)
 
     pg = context.new_page()
     pg.set_default_timeout(30_000)
