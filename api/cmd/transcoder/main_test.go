@@ -34,8 +34,8 @@ func (s *stubDownloader) Download(_ context.Context, _, _, destPath string) erro
 
 // stubUploader implements DirUploader.
 type stubUploader struct {
-	fileErr      error
-	dirErr       error
+	fileErr       error
+	dirErr        error
 	uploadedFiles []string
 	uploadedDirs  []string
 }
@@ -52,8 +52,8 @@ func (s *stubUploader) UploadDir(_ context.Context, _, prefix, _ string) error {
 
 // stubTranscoder implements Transcoder.
 type stubTranscoder struct {
-	hlsErr          error
-	thumbErr        error
+	hlsErr   error
+	thumbErr error
 	// silentThumbFail simulates FFmpeg exiting 0 but producing no thumbnail file.
 	silentThumbFail bool
 	calls           []string
@@ -340,7 +340,7 @@ func TestTranscode_SilentThumbnailFailure_SucceedsWithoutThumbnail(t *testing.T)
 // TestTranscode_SilentThumbnailFailure_NoThumbnailUpload verifies that when FFmpeg
 // exits 0 but writes no thumbnail file, no thumbnail upload is attempted.
 // Regression test for MYTUBE-384.
-func TestTranscode_SilentThumbnailFailure_NoThumbnailUpload(t *testing.T) {
+func TestTranscode_SilentThumbnailFailure_PlaceholderUploaded(t *testing.T) {
 	cfg := newTestConfig()
 	dl := &stubDownloader{content: "video"}
 	ul := &stubUploader{}
@@ -350,26 +350,33 @@ func TestTranscode_SilentThumbnailFailure_NoThumbnailUpload(t *testing.T) {
 	_ = transcode(context.Background(), cfg, dl, ul, &stubCleaner{}, tr, repo)
 
 	wantThumbObj := fmt.Sprintf("videos/%s/thumbnail.jpg", cfg.VideoID)
+	found := false
 	for _, f := range ul.uploadedFiles {
 		if f == wantThumbObj {
-			t.Errorf("thumbnail must not be uploaded when thumbnail file was not written, but found %q in uploadedFiles", f)
+			found = true
+			break
 		}
+	}
+	if !found {
+		t.Errorf("expected placeholder thumbnail to be uploaded to %q, uploadedFiles=%v", wantThumbObj, ul.uploadedFiles)
 	}
 }
 
-// TestTranscode_SilentThumbnailFailure_EmptyThumbnailURLInDB verifies that when
-// no thumbnail is produced, the DB record is updated with an empty thumbnail URL.
-// Regression test for MYTUBE-384.
-func TestTranscode_SilentThumbnailFailure_EmptyThumbnailURLInDB(t *testing.T) {
+// TestTranscode_SilentThumbnailFailure_PlaceholderThumbnailURLInDB verifies that when
+// thumbnail extraction produces no frame, the DB record is updated with the
+// CDN-based placeholder thumbnail URL. Regression test for MYTUBE-391.
+func TestTranscode_SilentThumbnailFailure_PlaceholderThumbnailURLInDB(t *testing.T) {
+	cfg := newTestConfig()
 	dl := &stubDownloader{content: "video"}
 	ul := &stubUploader{}
 	tr := &stubTranscoder{silentThumbFail: true}
 	repo := &stubVideoRepo{}
 
-	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
+	_ = transcode(context.Background(), cfg, dl, ul, &stubCleaner{}, tr, repo)
 
-	if repo.lastUpdate.ThumbnailURL != "" {
-		t.Errorf("ThumbnailURL must be empty when thumbnail was not produced, got %q", repo.lastUpdate.ThumbnailURL)
+	wantThumb := fmt.Sprintf("%s/videos/%s/thumbnail.jpg", cfg.CDNBaseURL, cfg.VideoID)
+	if repo.lastUpdate.ThumbnailURL != wantThumb {
+		t.Errorf("ThumbnailURL = %q, want %q", repo.lastUpdate.ThumbnailURL, wantThumb)
 	}
 }
 
