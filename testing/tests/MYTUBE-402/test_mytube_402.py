@@ -106,23 +106,76 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
     site_header = SiteHeader(page)
     # Ensure we appear authenticated (Sign in link should NOT be visible)
     assert not site_header.has_sign_in_link(), "Precondition failed: user appears unauthenticated"
-    # Accelerate long intervals so the app's heartbeat/probe runs quickly
+
+    # Prepare artifacts directory for failure diagnostics
+    artifacts_dir = os.path.join(os.path.dirname(__file__), "artifacts")
     try:
-        page.evaluate("() => { var _orig = window.setInterval; window.setInterval = function(fn, delay){ var rest = Array.prototype.slice.call(arguments,2); var newDelay = (typeof delay === 'number' && delay >= 10000) ? 100 : delay; return _orig.apply(window, [fn, newDelay].concat(rest)); }; }")
+        os.makedirs(artifacts_dir, exist_ok=True)
     except Exception:
         pass
-    # Wait for the app's proactive reachability to react
+
+    console_msgs: list[str] = []
+
+    def _on_console(msg):
+        try:
+            console_msgs.append(f"{msg.type}: {msg.text}")
+        except Exception:
+            console_msgs.append(f"console: <unserializable>")
+
     try:
-        page.wait_for_function(
-            "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }",
-            timeout=12_000,
+        page.on("console", _on_console)
+    except Exception:
+        # Some Playwright bindings may not allow attaching; ignore if it fails
+        pass
+
+    # Accelerate long intervals so the app's heartbeat/probe runs quickly, but store original
+    try:
+        page.evaluate(
+            "() => { if (!window.__mytube402_origSetInterval) { window.__mytube402_origSetInterval = window.setInterval; window.setInterval = function(fn, delay){ var rest = Array.prototype.slice.call(arguments,2); var newDelay = (typeof delay === 'number' && delay >= 10000) ? 100 : delay; return window.__mytube402_origSetInterval.apply(window, [fn, newDelay].concat(rest)); }; } }"
         )
     except Exception:
         pass
+
+    # Wait for the app's proactive reachability to react; capture diagnostics on timeout
+    try:
+        page.wait_for_function(
+            "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }",
+            timeout=20_000,
+        )
+    except Exception as e:
+        ts = int(time.time())
+        ss = os.path.join(artifacts_dir, f"auth-offline-failure-{ts}.png")
+        html = os.path.join(artifacts_dir, f"auth-offline-failure-{ts}.html")
+        console_file = os.path.join(artifacts_dir, f"auth-offline-failure-{ts}.log")
+        try:
+            page.screenshot(path=ss)
+        except Exception:
+            pass
+        try:
+            open(html, "w", encoding="utf-8").write(page.content())
+        except Exception:
+            pass
+        try:
+            open(console_file, "w", encoding="utf-8").write("\n".join(console_msgs))
+        except Exception:
+            pass
+        # Re-raise with helpful message and artifact locations
+        raise AssertionError(
+            f"Timeout waiting for auth-error alert; captured artifacts: screenshot={ss}, html={html}, console={console_file}"
+        ) from e
+
     # Assert header alert visible with expected message
     assert site_header.has_auth_error_alert(), "Expected auth-error alert in header after going offline"
     alert_text = site_header.auth_error_alert_text()
     assert _EXPECTED_ERROR_TEXT in alert_text, f"Alert text did not match expected (got: {alert_text!r})"
+
+    # Restore original timer behavior if we replaced it
+    try:
+        page.evaluate(
+            "() => { if (window.__mytube402_origSetInterval) { window.setInterval = window.__mytube402_origSetInterval; delete window.__mytube402_origSetInterval; } }"
+        )
+    except Exception:
+        pass
 
 
 def test_offline_shows_auth_error_with_ui_login(browser_instance: Browser, web_config: WebConfig) -> None:
@@ -218,7 +271,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
             "https://*.firebaseio.com/**",
         ]
 
-        def _abort(route, req):
+        def _abort(route):
             try:
                 route.abort("aborted")
             except Exception:
@@ -244,6 +297,22 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
         except Exception:
             injected = False
         assert injected, "Injection did not set window.__mytube402_injected — aborting test"
+
+        # Trigger a deterministic token refresh to exercise the SDK refresh path.
+        # This call will await the Promise returned by getIdToken(true) and will
+        # either resolve to true/false depending on success; while offline it's
+        # expected to fail quickly but it deterministically triggers the refresh logic.
+        try:
+            refreshed = page.evaluate(r"""() => {
+                try {
+                    if (window.firebase && firebase.auth && firebase.auth().currentUser && typeof firebase.auth().currentUser.getIdToken === 'function') {
+                        return firebase.auth().currentUser.getIdToken(true).then(()=>true).catch(()=>false);
+                    }
+                } catch(e) {}
+                return false;
+            }""")
+        except Exception:
+            refreshed = False
 
         # Run common assertions
         _common_assertions_for_auth_offline(page)
