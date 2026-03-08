@@ -104,6 +104,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           SOURCE_GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          CLI_ALLOWED_COMMANDS: "find,ls,cat,mkdir,bash,run-agent.sh"
         run: |
           CI_RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo "CI Run URL: ${CI_RUN_URL}"
