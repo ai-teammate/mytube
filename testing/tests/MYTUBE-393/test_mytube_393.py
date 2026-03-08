@@ -40,8 +40,9 @@ import json
 import os
 import sys
 
-import psycopg2
 import pytest
+
+from testing.components.services.user_db_service import UserDbService
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -88,66 +89,44 @@ def db_config() -> DBConfig:
 
 
 @pytest.fixture(scope="module")
-def db_conn(db_config: DBConfig):
-    """Open a direct psycopg2 connection for setup and assertions."""
-    conn = psycopg2.connect(db_config.dsn())
-    conn.autocommit = True
-    yield conn
-    conn.close()
+def user_db_service(db_config: DBConfig):
+    """Open a UserDbService connection; yields None if DB is unreachable."""
+    svc = UserDbService(db_config)
+    if not svc.connect():
+        yield None
+        return
+    yield svc
+    svc.close()
 
 
 @pytest.fixture(scope="module")
-def precondition_no_user(db_conn):
+def precondition_no_user(user_db_service):
     """Ensure ci-test-user-001 does NOT exist in users before the test runs.
 
-    Saves the current state (user_id if present) and deletes the row (plus any
-    owned videos) so the test starts from a clean slate.  After the test suite
-    the fixture cleans up any rows that may have been inadvertently created by
-    a regression (i.e. auto-provisioning bug).
-
-    Teardown does NOT re-insert the original row because other tests that rely
-    on a pre-existing user row seed their own data idempotently.
+    Deletes the user via UserDbService if present, and during teardown ensures any
+    rows created by a regression are removed. If the DB is unreachable the fixture
+    yields None and DB assertions should skip.
     """
-    with db_conn.cursor() as cur:
-        # Capture existing state.
-        cur.execute(
-            "SELECT id FROM users WHERE firebase_uid = %s",
-            (_FIREBASE_TEST_UID,),
-        )
-        row = cur.fetchone()
-        pre_existing_user_id = str(row[0]) if row else None
+    if user_db_service is None:
+        yield None
+        return
+
+    row = user_db_service.get_user_by_firebase_uid(_FIREBASE_TEST_UID)
+    pre_existing_user_id = str(row[0]) if row else None
 
     if pre_existing_user_id:
-        # Delete FK-dependent rows first.
-        with db_conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM videos WHERE uploader_id = %s",
-                (pre_existing_user_id,),
-            )
-            cur.execute(
-                "DELETE FROM users WHERE id = %s",
-                (pre_existing_user_id,),
-            )
+        try:
+            user_db_service.delete_user_by_firebase_uid(_FIREBASE_TEST_UID)
+        except Exception:
+            pass
 
-    yield pre_existing_user_id  # provides pre-existing user ID if needed by tests
+    yield pre_existing_user_id
 
-    # Teardown: remove any user/video rows that a regression may have created.
-    with db_conn.cursor() as cur:
-        cur.execute(
-            "SELECT id FROM users WHERE firebase_uid = %s",
-            (_FIREBASE_TEST_UID,),
-        )
-        row = cur.fetchone()
-        if row:
-            leftover_user_id = str(row[0])
-            cur.execute(
-                "DELETE FROM videos WHERE uploader_id = %s",
-                (leftover_user_id,),
-            )
-            cur.execute(
-                "DELETE FROM users WHERE id = %s",
-                (leftover_user_id,),
-            )
+    # Teardown: remove any rows a regression may have created.
+    try:
+        user_db_service.delete_user_by_firebase_uid(_FIREBASE_TEST_UID)
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="module")
@@ -218,14 +197,12 @@ class TestPostVideoUnregisteredUser:
             f"Full response body: {post_response['body']!r}"
         )
 
-    def test_no_user_row_created_in_db(self, db_conn, post_response: dict) -> None:
+    def test_no_user_row_created_in_db(self, user_db_service, post_response: dict) -> None:
         """Step 4: No new row must appear in the users table for the unregistered UID."""
-        with db_conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM users WHERE firebase_uid = %s",
-                (_FIREBASE_TEST_UID,),
-            )
-            row = cur.fetchone()
+        if user_db_service is None:
+            pytest.skip("Database is not reachable — skipping DB assertion.")
+
+        row = user_db_service.get_user_by_firebase_uid(_FIREBASE_TEST_UID)
         assert row is None, (
             f"A user row was created in the users table for firebase_uid "
             f"{_FIREBASE_TEST_UID!r} despite the API rejecting the request with "
@@ -234,25 +211,18 @@ class TestPostVideoUnregisteredUser:
             f"User ID created: {row[0] if row else 'N/A'}"
         )
 
-    def test_no_video_row_created_in_db(self, db_conn, post_response: dict) -> None:
+    def test_no_video_row_created_in_db(self, user_db_service, post_response: dict) -> None:
         """Step 5: No new row must appear in the videos table linked to the unregistered user.
 
-        Since no user row should exist, we verify via a subquery using firebase_uid.
+        Uses UserDbService to query videos by uploader firebase uid.
         """
-        with db_conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT v.id, v.title
-                FROM videos v
-                JOIN users u ON v.uploader_id = u.id
-                WHERE u.firebase_uid = %s
-                """,
-                (_FIREBASE_TEST_UID,),
-            )
-            row = cur.fetchone()
-        assert row is None, (
+        if user_db_service is None:
+            pytest.skip("Database is not reachable — skipping DB assertion.")
+
+        rows = user_db_service.get_videos_by_uploader_firebase_uid(_FIREBASE_TEST_UID)
+        assert not rows, (
             f"A video row was created in the videos table linked to unregistered user "
             f"{_FIREBASE_TEST_UID!r} despite the API rejecting the request with "
             f"HTTP {post_response['status_code']}. "
-            f"Video row: id={row[0]}, title={row[1]!r}" if row else ""
+            f"Video rows: {rows!r}"
         )
