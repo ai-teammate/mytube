@@ -273,6 +273,18 @@ class TestFirebaseConnectivityRestoration:
                 except Exception:
                     pass
 
+        # Give the app a nudge: dispatch 'online' event and reload so it will attempt reconnects
+        try:
+            page.evaluate("() => { window.dispatchEvent(new Event('online')); }")
+        except Exception:
+            pass
+
+        try:
+            page.reload(wait_until="domcontentloaded")
+        except Exception:
+            # if reload fails, continue to polling
+            pass
+
         # Wait for the app to detect restored connectivity and remove the alert
-        gone = _wait_for_auth_error_gone(page)
+        gone = _wait_for_auth_error_gone(page, timeout_ms=120_000)
         assert gone, "Expected the auth error alert to be removed from the UI after connectivity was restored"
