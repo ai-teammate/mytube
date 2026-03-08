@@ -49,9 +49,9 @@ func (s *stubWriteCloser) Close() error {
 }
 
 type stubWriter struct {
-	wc       *stubWriteCloser
-	openErr  error
-	calls    []struct{ bucket, object string }
+	wc      *stubWriteCloser
+	openErr error
+	calls   []struct{ bucket, object string }
 }
 
 func (s *stubWriter) NewWriter(_ context.Context, bucket, object string, _ storage.WriteAttrs) io.WriteCloser {

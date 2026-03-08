@@ -62,7 +62,6 @@ func withAudioViaFallback() *stubProbeRunner {
 	}
 }
 
-
 func TestDefaultRenditions_Count(t *testing.T) {
 	r := ffmpeg.DefaultRenditions()
 	if len(r) != 3 {

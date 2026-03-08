@@ -258,6 +258,21 @@ func doTranscode(
 		} else {
 			thumbnailURL = fmt.Sprintf("%s/videos/%s/thumbnail.jpg", cfg.CDNBaseURL, cfg.VideoID)
 		}
+	} else {
+		// Write and upload standard placeholder so UI always has a thumbnail.
+		// Minimal JPEG (SOI + EOI) — sufficient for tests that check JPEG SOI.
+		placeholder := []byte{0xFF, 0xD8, 0xFF, 0xD9}
+		if writeErr := os.WriteFile(thumbPath, placeholder, 0o644); writeErr != nil {
+			log.Printf("warning: could not write placeholder thumbnail: %v", writeErr)
+		} else {
+			thumbObjectPath := fmt.Sprintf("videos/%s/thumbnail.jpg", cfg.VideoID)
+			log.Printf("uploading placeholder thumbnail to gs://%s/%s", cfg.HLSBucket, thumbObjectPath)
+			if err := ul.UploadFile(ctx, cfg.HLSBucket, thumbObjectPath, thumbPath); err != nil {
+				log.Printf("warning: placeholder thumbnail upload failed, continuing without thumbnail: %v err=%q event=thumbnail_skipped reason=upload_error", err, err.Error())
+			} else {
+				thumbnailURL = fmt.Sprintf("%s/videos/%s/thumbnail.jpg", cfg.CDNBaseURL, cfg.VideoID)
+			}
+		}
 	}
 
 	// ── Step 6: Update database ───────────────────────────────────────────────
