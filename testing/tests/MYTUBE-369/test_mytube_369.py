@@ -201,6 +201,22 @@ def transcoded_silent_video(
     except Exception:
         pass
 
+    # ── Teardown: best-effort cleanup of HLS output objects under videos/{video_id}/
+    try:
+        hls_bucket = storage_client.bucket(gcp_config.hls_bucket)
+        prefix = f"videos/{video_id}/"
+        # list_blobs returns an iterator; convert to list to avoid generator issues
+        blobs = list(hls_bucket.list_blobs(prefix=prefix))
+        for blob in blobs:
+            try:
+                blob.delete()
+            except Exception:
+                # ignore individual delete failures
+                pass
+    except Exception:
+        # ignore failures during cleanup
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Tests
