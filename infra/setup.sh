@@ -106,10 +106,10 @@ gcloud storage buckets add-iam-policy-binding "gs://${RAW_BUCKET}" \
   --project="${PROJECT}"
 
 echo ""
-echo "==> Granting ${TRANSCODER_SA_EMAIL} objectAdmin on ${HLS_BUCKET}..."
+echo "==> Granting ${TRANSCODER_SA_EMAIL} objectUser on ${HLS_BUCKET}..."
 gcloud storage buckets add-iam-policy-binding "gs://${HLS_BUCKET}" \
   --member="serviceAccount:${TRANSCODER_SA_EMAIL}" \
-  --role="roles/storage.objectAdmin" \
+  --role="roles/storage.objectUser" \
   --project="${PROJECT}"
 
 echo ""

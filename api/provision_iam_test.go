@@ -18,19 +18,19 @@ func TestProvisionWorkflowTranscoderSADeleteOnRawUploads(t *testing.T) {
 
 	// The role granted to the transcoder SA on raw-uploads must NOT be objectViewer
 	// (read-only) or objectCreator (write-only). It must be objectUser or objectAdmin.
-	if strings.Contains(content, "objectViewer") {
-		// objectViewer may appear in the CI SA section — only fail if it appears near
-		// the transcoder SA + RAW_BUCKET block.
-		lines := strings.Split(content, "\n")
-		inTranscoderRawBlock := false
-		for _, line := range lines {
-			if strings.Contains(line, "TRANSCODER_SA") && strings.Contains(line, "RAW_BUCKET") {
-				inTranscoderRawBlock = true
-			}
-			if inTranscoderRawBlock && strings.Contains(line, "objectViewer") {
+	// Use a window-scan to detect objectViewer near a TRANSCODER_SA block that also
+	// references RAW_BUCKET — the two tokens never appear on the same YAML line.
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "TRANSCODER_SA") {
+			start := max(0, i-5)
+			end := min(len(lines), i+15)
+			block := strings.Join(lines[start:end], "\n")
+			if (strings.Contains(block, "RAW_BUCKET") || strings.Contains(block, "raw-uploads")) &&
+				strings.Contains(block, "objectViewer") {
 				t.Errorf("provision-gcs-buckets.yml grants objectViewer to transcoder SA on "+
 					"raw-uploads bucket. objectViewer does not include storage.objects.delete. "+
-					"Use roles/storage.objectUser instead.\nLine: %s", strings.TrimSpace(line))
+					"Use roles/storage.objectUser instead.")
 				break
 			}
 		}
@@ -131,10 +131,13 @@ func TestSetupShAPISADeleteOnBothBuckets(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "API_SA") && !strings.Contains(content, "api_sa") &&
-		!strings.Contains(content, "API_SERVER_SA") {
-		t.Errorf("infra/setup.sh does not contain any API SA variable or grant. " +
-			"The API server SA needs objectUser or objectAdmin on both GCS buckets.")
+	if !containsAPISAGrantOnBucket(content, "RAW_BUCKET", "raw-uploads") {
+		t.Errorf("infra/setup.sh does not grant API SA a delete-capable role on raw-uploads bucket. " +
+			"The API server SA needs objectUser or objectAdmin on raw-uploads.")
+	}
+	if !containsAPISAGrantOnBucket(content, "HLS_BUCKET", "hls-output") {
+		t.Errorf("infra/setup.sh does not grant API SA a delete-capable role on hls-output bucket. " +
+			"The API server SA needs objectUser or objectAdmin on hls-output.")
 	}
 }
 
@@ -252,18 +255,4 @@ func setupShContainsTranscoderObjectUserOnRaw(content string) bool {
 		}
 	}
 	return false
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
