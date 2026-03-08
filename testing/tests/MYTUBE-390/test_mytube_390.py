@@ -400,10 +400,15 @@ class TestThumbnailSkippedHLSIntact:
         missing_manifest: list[str] = []
 
         for video_id in hls_bucket_videos_without_thumbnail:
-            manifest_blob = storage_client.bucket(hls_bucket).blob(
-                f"videos/{video_id}/index.m3u8"
-            )
-            if not manifest_blob.exists():
+            # Check all required HLS objects (keeps code DRY and uses the module-level constant)
+            missing_objs: list[str] = []
+            for obj in _REQUIRED_HLS_OBJECTS:
+                blob = storage_client.bucket(hls_bucket).blob(
+                    f"videos/{video_id}/{obj}"
+                )
+                if not blob.exists():
+                    missing_objs.append(obj)
+            if missing_objs:
                 missing_manifest.append(video_id)
 
         assert not missing_manifest, (
