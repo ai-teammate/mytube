@@ -190,7 +190,7 @@ def browser(web_config: WebConfig):
 
 @pytest.fixture(scope="function")
 def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
-    """Open a fresh browser context with Firebase auth intercepted via init script.
+    """Yield a Page already navigated to home_url with the Firebase intercept active.
 
     The init script overrides Object.defineProperty to replace the webpack
     'hg' export (onAuthStateChanged) with a fake that always calls the error
@@ -198,6 +198,11 @@ def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
 
     Each test function gets its own context so the init script injection does
     not bleed between tests.
+
+    NOTE: The page is pre-navigated to home_url before it is yielded.
+    Tests MUST NOT call ``pg.goto()`` again — doing so causes a redundant
+    double-navigation (the intercept does re-activate, but it doubles wall-clock
+    time for every test in this suite).
     """
     context = browser.new_context()
     context.set_default_timeout(30_000)
@@ -242,9 +247,9 @@ class TestFirebaseAuthErrorState:
         the "Loading…" spinner must disappear within _LOADING_DISMISS_TIMEOUT_MS.
         A permanent loading state would prevent users from receiving any
         feedback.
-        """
-        blocked_page.goto(web_config.home_url())
 
+        Note: blocked_page is pre-navigated to home_url by the fixture.
+        """
         loading = blocked_page.locator(_LOADING_TEXT_SELECTOR)
         try:
             loading.wait_for(state="visible", timeout=5_000)
@@ -281,9 +286,9 @@ class TestFirebaseAuthErrorState:
 
         A role="alert" element with empty text (e.g. the Next.js
         RouteAnnouncer) does NOT satisfy this requirement.
-        """
-        blocked_page.goto(web_config.home_url())
 
+        Note: blocked_page is pre-navigated to home_url by the fixture.
+        """
         # Wait for any loading state to clear first.
         loading = blocked_page.locator(_LOADING_TEXT_SELECTOR)
         try:

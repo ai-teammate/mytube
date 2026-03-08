@@ -4,7 +4,7 @@
 import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AuthProvider, useAuth, HEARTBEAT_INTERVAL_MS } from "@/context/AuthContext";
+import { AuthProvider, useAuth, HEARTBEAT_INTERVAL_MS, HEARTBEAT_PROBE_TIMEOUT_MS } from "@/context/AuthContext";
 
 // ─── Mock Firebase ────────────────────────────────────────────────────────────
 
@@ -464,5 +464,37 @@ describe("AuthProvider — mid-session reachability heartbeat", () => {
     });
 
     expect(callCount).toBe(countAfterFirstError);
+  });
+
+  it("sets authError=true when heartbeat probe exceeds HEARTBEAT_PROBE_TIMEOUT_MS (degraded network simulation)", async () => {
+    // getIdToken returns a promise that never resolves, simulating a hanging
+    // network request on a degraded-but-reachable connection.
+    const mockGetIdToken = jest.fn().mockReturnValue(new Promise(() => {}));
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false")
+    );
+
+    expect(screen.getByTestId("auth-error")).toHaveTextContent("false");
+
+    // Advance past the interval so the probe fires, then past the probe timeout
+    // so the internal timeout promise rejects.
+    await act(async () => {
+      jest.advanceTimersByTime(HEARTBEAT_INTERVAL_MS + HEARTBEAT_PROBE_TIMEOUT_MS);
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("auth-error")).toHaveTextContent("true")
+    );
   });
 });
