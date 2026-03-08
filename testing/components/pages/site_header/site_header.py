@@ -49,8 +49,10 @@ class SiteHeader:
     # Auth-state assertions
     # ------------------------------------------------------------------
 
-    # role="alert" span rendered by SiteHeader.tsx when authError=true
-    _AUTH_ERROR_ALERT_SELECTOR = "[role='alert']"
+    # role="alert" span rendered by SiteHeader.tsx when authError=true.
+    # Scoped to <header> to avoid false positives from other alert elements
+    # (toasts, form validation, etc.) elsewhere on the page.
+    _AUTH_ERROR_ALERT_SELECTOR = "header [role='alert']"
 
     # "Sign in" navigation link rendered when not authenticated and no auth error.
     # Scoped to <header> to avoid matching form buttons/headings on other pages.
