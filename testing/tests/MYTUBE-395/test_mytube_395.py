@@ -125,12 +125,13 @@ _AUTH_ERROR_KEYWORDS = re.compile(
 
 # Firebase auth / token request patterns to block.
 _FIREBASE_BLOCK_PATTERNS = [
-    "**/*securetoken.googleapis.com/**",
-    "**/*identitytoolkit.googleapis.com/**",
-    "**/*googleapis.com/identitytoolkit/**",
-    # Also block any *.firebaseapp.com auth domain calls
-    "**/*.firebaseapp.com/**",
-    "**/*firebaseio.com/**",
+    # Use explicit scheme+host patterns so Playwright's route matching is deterministic.
+    "https://securetoken.googleapis.com/**",
+    "https://identitytoolkit.googleapis.com/**",
+    "https://www.googleapis.com/identitytoolkit/**",
+    # Also block any configured authDomain (firebaseapp.com) and realtime DB hosts.
+    "https://*.firebaseapp.com/**",
+    "https://*.firebaseio.com/**",
 ]
 
 # Expired Firebase user fixture stored in localStorage.
@@ -386,8 +387,40 @@ def blocked_page(
     context.add_init_script(script=init_script)
 
     # 2. Block all Firebase auth and token refresh endpoints.
+    # Prefer deterministic matching: if a caller's URL contains a firebase
+    # host string, block it explicitly. Use route.abort() with a supported
+    # error code ('aborted') to simulate network failure. As an alternative,
+    # fulfilling with 503 is also a valid approach but aborting keeps the
+    # client-side behaviour closer to a network outage.
+    def _block_handler(route, req):
+        try:
+            route.abort("aborted")
+        except Exception:
+            # Fallback: if abort with code fails for any reason, return a 503
+            # response to simulate server-side unavailability.
+            try:
+                route.fulfill(status=503, body="")
+            except Exception:
+                route.abort()
+
     for pattern in _FIREBASE_BLOCK_PATTERNS:
-        context.route(pattern, lambda route, _req: route.abort("blockedbyclient"))
+        context.route(pattern, _block_handler)
+
+    # Additionally, add a predicate-based route to catch any edge-case URLs
+    # that might not match the glob patterns (defensive measure).
+    def _predicate(route, req):
+        url = req.url or ""
+        if any(k in url for k in [
+            "securetoken.googleapis.com",
+            "identitytoolkit.googleapis.com",
+            "googleapis.com/identitytoolkit",
+            ".firebaseapp.com",
+            ".firebaseio.com",
+        ]):
+            return _block_handler(route, req)
+        return route.continue_()
+
+    context.route(lambda r: True, _predicate)
 
     pg = context.new_page()
     pg.set_default_timeout(30_000)
