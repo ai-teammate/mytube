@@ -37,14 +37,29 @@ class UserDbService:
         """
         with self._conn:
             with self._conn.cursor() as cur:
+                # Videos table references users.id via uploader_id
                 cur.execute(
-                    "DELETE FROM videos WHERE user_id = (SELECT id FROM users WHERE firebase_uid = %s)",
+                    "DELETE FROM videos WHERE uploader_id = (SELECT id FROM users WHERE firebase_uid = %s)",
                     (firebase_uid,),
                 )
                 cur.execute(
                     "DELETE FROM users WHERE firebase_uid = %s",
                     (firebase_uid,),
                 )
+
+    def get_videos_by_uploader_firebase_uid(self, firebase_uid: str):
+        """Return a list of (id, title) tuples for videos uploaded by the user identified by firebase_uid."""
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT v.id, v.title
+                FROM videos v
+                JOIN users u ON v.uploader_id = u.id
+                WHERE u.firebase_uid = %s
+                """,
+                (firebase_uid,),
+            )
+            return cur.fetchall()
 
     def get_user_by_firebase_uid(self, firebase_uid: str):
         """Return the ``(id, firebase_uid)`` row for *firebase_uid*, or None."""
