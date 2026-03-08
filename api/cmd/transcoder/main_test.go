@@ -52,9 +52,11 @@ func (s *stubUploader) UploadDir(_ context.Context, _, prefix, _ string) error {
 
 // stubTranscoder implements Transcoder.
 type stubTranscoder struct {
-	hlsErr   error
-	thumbErr error
-	calls    []string
+	hlsErr          error
+	thumbErr        error
+	// silentThumbFail simulates FFmpeg exiting 0 but producing no thumbnail file.
+	silentThumbFail bool
+	calls           []string
 }
 
 func (s *stubTranscoder) TranscodeHLS(_ context.Context, _, outputDir string, _ []ffmpeg.Rendition) error {
@@ -70,6 +72,10 @@ func (s *stubTranscoder) ExtractThumbnail(_ context.Context, _, destPath string,
 	s.calls = append(s.calls, "ExtractThumbnail")
 	if s.thumbErr != nil {
 		return s.thumbErr
+	}
+	if s.silentThumbFail {
+		// Simulate FFmpeg exiting 0 but not writing the thumbnail file.
+		return nil
 	}
 	return os.WriteFile(destPath, []byte("jpeg"), 0o644)
 }
@@ -265,15 +271,123 @@ func TestTranscode_TranscodeHLSError_MarksVideoFailed(t *testing.T) {
 	}
 }
 
-func TestTranscode_ThumbnailError_ReturnsError(t *testing.T) {
+// TestTranscode_ThumbnailError_DoesNotAbortJob verifies that a thumbnail extraction
+// failure is non-fatal: the job must succeed and HLS output must be preserved.
+// Regression test for MYTUBE-384.
+func TestTranscode_ThumbnailError_DoesNotAbortJob(t *testing.T) {
 	dl := &stubDownloader{content: "video"}
 	ul := &stubUploader{}
 	tr := &stubTranscoder{thumbErr: errors.New("thumbnail error")}
 	repo := &stubVideoRepo{}
 
 	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected no error when thumbnail extraction fails, got: %v", err)
+	}
+}
+
+// TestTranscode_ThumbnailError_DoesNotMarkFailed verifies that a thumbnail error
+// does not mark the video as failed (thumbnail is non-fatal).
+// Regression test for MYTUBE-384.
+func TestTranscode_ThumbnailError_DoesNotMarkFailed(t *testing.T) {
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	tr := &stubTranscoder{thumbErr: errors.New("thumbnail error")}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
+
+	if repo.markFailed {
+		t.Error("MarkFailed must not be called when only the thumbnail fails")
+	}
+}
+
+// TestTranscode_ThumbnailError_DoesNotCleanUpHLS verifies that a thumbnail error
+// does not trigger HLS cleanup (thumbnail is non-fatal, HLS output must be preserved).
+// Regression test for MYTUBE-384.
+func TestTranscode_ThumbnailError_DoesNotCleanUpHLS(t *testing.T) {
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	tr := &stubTranscoder{thumbErr: errors.New("thumbnail error")}
+	repo := &stubVideoRepo{}
+	cleaner := &stubCleaner{}
+
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, cleaner, tr, repo)
+
+	if len(cleaner.deletedPrefixes) != 0 {
+		t.Errorf("HLS must not be cleaned up when only the thumbnail fails, got deletedPrefixes=%v", cleaner.deletedPrefixes)
+	}
+}
+
+// TestTranscode_SilentThumbnailFailure_SucceedsWithoutThumbnail verifies the
+// exact bug from MYTUBE-384: when FFmpeg exits 0 but produces no thumbnail file,
+// the job must still succeed (HLS upload and DB update must complete).
+func TestTranscode_SilentThumbnailFailure_SucceedsWithoutThumbnail(t *testing.T) {
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	tr := &stubTranscoder{silentThumbFail: true}
+	repo := &stubVideoRepo{}
+
+	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
+	if err != nil {
+		t.Fatalf("expected no error for silent thumbnail failure, got: %v", err)
+	}
+	if !repo.updateCalled {
+		t.Error("UpdateVideo must be called even when thumbnail is missing")
+	}
+}
+
+// TestTranscode_SilentThumbnailFailure_NoThumbnailUpload verifies that when FFmpeg
+// exits 0 but writes no thumbnail file, no thumbnail upload is attempted.
+// Regression test for MYTUBE-384.
+func TestTranscode_SilentThumbnailFailure_NoThumbnailUpload(t *testing.T) {
+	cfg := newTestConfig()
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	tr := &stubTranscoder{silentThumbFail: true}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), cfg, dl, ul, &stubCleaner{}, tr, repo)
+
+	wantThumbObj := fmt.Sprintf("videos/%s/thumbnail.jpg", cfg.VideoID)
+	for _, f := range ul.uploadedFiles {
+		if f == wantThumbObj {
+			t.Errorf("thumbnail must not be uploaded when thumbnail file was not written, but found %q in uploadedFiles", f)
+		}
+	}
+}
+
+// TestTranscode_SilentThumbnailFailure_EmptyThumbnailURLInDB verifies that when
+// no thumbnail is produced, the DB record is updated with an empty thumbnail URL.
+// Regression test for MYTUBE-384.
+func TestTranscode_SilentThumbnailFailure_EmptyThumbnailURLInDB(t *testing.T) {
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	tr := &stubTranscoder{silentThumbFail: true}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
+
+	if repo.lastUpdate.ThumbnailURL != "" {
+		t.Errorf("ThumbnailURL must be empty when thumbnail was not produced, got %q", repo.lastUpdate.ThumbnailURL)
+	}
+}
+
+// TestTranscode_SilentThumbnailFailure_HLSUploaded verifies that HLS output is
+// uploaded successfully even when thumbnail extraction silently fails.
+// Regression test for MYTUBE-384.
+func TestTranscode_SilentThumbnailFailure_HLSUploaded(t *testing.T) {
+	cfg := newTestConfig()
+	dl := &stubDownloader{content: "video"}
+	ul := &stubUploader{}
+	tr := &stubTranscoder{silentThumbFail: true}
+	repo := &stubVideoRepo{}
+
+	_ = transcode(context.Background(), cfg, dl, ul, &stubCleaner{}, tr, repo)
+
+	wantDir := fmt.Sprintf("videos/%s", cfg.VideoID)
+	if len(ul.uploadedDirs) == 0 || ul.uploadedDirs[0] != wantDir {
+		t.Errorf("HLS dir must still be uploaded when thumbnail fails; uploadedDirs=%v", ul.uploadedDirs)
 	}
 }
 
@@ -289,15 +403,18 @@ func TestTranscode_UploadDirError_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestTranscode_UploadFileError_ReturnsError(t *testing.T) {
+// TestTranscode_UploadFileError_DoesNotAbortJob verifies that a thumbnail upload
+// failure is non-fatal: the job must succeed and HLS output must be preserved.
+// Regression test for MYTUBE-384.
+func TestTranscode_UploadFileError_DoesNotAbortJob(t *testing.T) {
 	dl := &stubDownloader{content: "video"}
 	ul := &stubUploader{fileErr: errors.New("upload file failed")}
 	tr := &stubTranscoder{}
 	repo := &stubVideoRepo{}
 
 	err := transcode(context.Background(), newTestConfig(), dl, ul, &stubCleaner{}, tr, repo)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected no error when thumbnail upload fails, got: %v", err)
 	}
 }
 
