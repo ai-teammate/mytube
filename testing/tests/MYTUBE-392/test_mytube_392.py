@@ -116,25 +116,13 @@ def post_video_response(
         # Uses INSERT ... ON CONFLICT DO NOTHING so the row is always present
         # without wiping any pre-existing data.
         try:
-            with user_db_service._conn.cursor() as cur:  # noqa: SLF001
-                cur.execute(
-                    "INSERT INTO users (firebase_uid, username) VALUES (%s, %s) "
-                    "ON CONFLICT (firebase_uid) DO NOTHING",
-                    (_FIREBASE_TEST_UID, _TEST_USERNAME),
-                )
-                user_db_service._conn.commit()  # noqa: SLF001
+            user_db_service.ensure_user_exists(_FIREBASE_TEST_UID, _TEST_USERNAME)
         except Exception:
             pass
 
         # Count users with this firebase_uid BEFORE the API call.
         try:
-            with user_db_service._conn.cursor() as cur:  # noqa: SLF001
-                cur.execute(
-                    "SELECT COUNT(*) FROM users WHERE firebase_uid = %s",
-                    (_FIREBASE_TEST_UID,),
-                )
-                row = cur.fetchone()
-                user_count_before = int(row[0]) if row else None
+            user_count_before = user_db_service.count_users_by_firebase_uid(_FIREBASE_TEST_UID)
         except Exception:
             pass
 
@@ -146,13 +134,7 @@ def post_video_response(
     if user_db_service is not None and _FIREBASE_TEST_UID:
         # Count users after the API call to detect spurious duplicate rows.
         try:
-            with user_db_service._conn.cursor() as cur:  # noqa: SLF001
-                cur.execute(
-                    "SELECT COUNT(*) FROM users WHERE firebase_uid = %s",
-                    (_FIREBASE_TEST_UID,),
-                )
-                row = cur.fetchone()
-                user_count_after = int(row[0]) if row else None
+            user_count_after = user_db_service.count_users_by_firebase_uid(_FIREBASE_TEST_UID)
         except Exception:
             pass
 
