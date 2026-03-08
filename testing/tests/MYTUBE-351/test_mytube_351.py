@@ -73,6 +73,22 @@ from testing.core.config.web_config import WebConfig
 # "hg" (onAuthStateChanged) and replaces it with a fake that always calls the
 # error callback after 100 ms, directly triggering authError = true in
 # AuthContext without relying on any network calls.
+#
+# IMPORTANT — minification-dependent export key "hg":
+# The key "hg" is assigned by webpack's minifier at build time and will change
+# with any webpack config change, Firebase JS SDK version bump, or minification
+# seed change.  If the intercept silently stops working (tests timeout with
+# "element not found" instead of asserting the auth-error alert), re-discover
+# the current key by running the following in DevTools after loading the app:
+#
+#   Object.entries(window.__webpack_modules__ ?? {})
+#     .find(([, m]) => m?.toString().includes('onAuthStateChanged'))
+#
+# Update the prop === 'hg' check below with the new key.
+#
+# The script sets window.__authInterceptActivated = true when it matches the
+# property.  The blocked_page fixture asserts this flag after page load to
+# detect silently-broken intercepts early.
 _FIREBASE_INTERCEPT_SCRIPT = """
 (function () {
     var _origDefProp = Object.defineProperty;
@@ -82,6 +98,7 @@ _FIREBASE_INTERCEPT_SCRIPT = """
             descriptor &&
             typeof descriptor.get === 'function'
         ) {
+            window.__authInterceptActivated = true;
             return _origDefProp(target, prop, {
                 enumerable: descriptor.enumerable,
                 configurable: true,
@@ -190,6 +207,20 @@ def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
 
     pg = context.new_page()
     pg.set_default_timeout(30_000)
+
+    # Navigate and assert that the intercept actually activated.
+    # window.__authInterceptActivated is set by the script when it matches the
+    # 'hg' property.  If False, the minified export key has changed and the
+    # script needs updating — see the comment above _FIREBASE_INTERCEPT_SCRIPT.
+    pg.goto(web_config.home_url())
+    activated = pg.evaluate("typeof window.__authInterceptActivated !== 'undefined' && window.__authInterceptActivated === true")
+    assert activated, (
+        "Firebase intercept script did NOT activate (window.__authInterceptActivated is not true). "
+        "The minified webpack export key 'hg' may have changed. "
+        "Re-discover the current key with: "
+        "Object.entries(window.__webpack_modules__ ?? {}).find(([, m]) => m?.toString().includes('onAuthStateChanged'))"
+    )
+
     yield pg
     context.close()
 
