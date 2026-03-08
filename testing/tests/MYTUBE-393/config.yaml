@@ -1,0 +1,5 @@
+test_id: MYTUBE-393
+type: api
+framework: rest+psycopg2
+platform: gcp
+dependencies: []
