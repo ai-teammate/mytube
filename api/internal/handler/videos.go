@@ -67,16 +67,17 @@ type CreateVideoResponse struct {
 
 // UserIDProvider retrieves the internal user ID for the authenticated caller.
 // Satisfied by *repository.UserRepository and allows tests to inject a stub.
+// Used by ManageVideoHandler and MeVideosHandler (lookup only, no provisioning).
 type UserIDProvider interface {
 	GetByFirebaseUID(ctx context.Context, firebaseUID string) (*repository.User, error)
 }
 
 // VideosHandler handles requests to /api/videos.
 type VideosHandler struct {
-	videos   VideoCreator
-	users    UserIDProvider
-	signer   storage.Signer
-	bucket   string
+	videos VideoCreator
+	users  UserIDProvider
+	signer storage.Signer
+	bucket string
 }
 
 // NewVideosHandler constructs a VideosHandler.
@@ -141,15 +142,17 @@ func (h *VideosHandler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the internal user ID from the Firebase UID in the token.
+	// Reject Firebase-authenticated callers who have no row in the users table.
+	// Registration must happen via the dedicated sign-up flow; unregistered
+	// identities must not be silently provisioned here.
 	user, err := h.users.GetByFirebaseUID(r.Context(), claims.UID)
 	if err != nil {
-		log.Printf("POST /api/videos: get user %s: %v", claims.UID, err)
+		log.Printf("POST /api/videos: lookup user %s: %v", claims.UID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if user == nil {
-		writeJSONError(w, "user not found", http.StatusNotFound)
+		writeJSONError(w, "user account not registered", http.StatusForbidden)
 		return
 	}
 

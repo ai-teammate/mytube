@@ -341,7 +341,7 @@ func TestNewVideosHandler_POST_MIMETypeWithParams_Accepted(t *testing.T) {
 	}
 }
 
-func TestNewVideosHandler_POST_GetUserError_Returns500(t *testing.T) {
+func TestNewVideosHandler_POST_LookupUserError_Returns500(t *testing.T) {
 	dbErr := errors.New("db error")
 	h := buildVideosHandler(
 		&stubVideoCreator{},
@@ -358,27 +358,43 @@ func TestNewVideosHandler_POST_GetUserError_Returns500(t *testing.T) {
 	rec := serveVideos(h, req)
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 on user lookup error, got %d", rec.Code)
+		t.Errorf("expected 500 on lookup user error, got %d", rec.Code)
 	}
 }
 
-func TestNewVideosHandler_POST_UserNotFound_Returns404(t *testing.T) {
+// TestNewVideosHandler_POST_UserNotSeeded_Returns403 verifies that a
+// Firebase-authenticated caller with no matching row in the users table receives
+// HTTP 403 Forbidden. Unregistered identities must be explicitly rejected rather
+// than silently auto-provisioned (MYTUBE-388 regression guard).
+func TestNewVideosHandler_POST_UserNotSeeded_Returns403(t *testing.T) {
+	t.Setenv("RAW_UPLOADS_BUCKET", "test-bucket")
+
+	// Simulate a user that does not exist in the DB: GetByFirebaseUID returns nil.
 	h := buildVideosHandler(
-		&stubVideoCreator{},
+		&stubVideoCreator{record: defaultVideoRecord()},
 		&stubUserIDProvider{user: nil},
 		&stubStorageSigner{url: "https://signed.url"},
 	)
 
-	claims := &auth.TokenClaims{UID: "uid1", Email: "user@example.com"}
+	// Use claims matching the CI test user described in the bug report.
+	claims := &auth.TokenClaims{UID: "ci-test-user-001", Email: "ci-test@mytube.test"}
 	req := withClaims(
 		httptest.NewRequest(http.MethodPost, "/api/videos",
-			bytes.NewBufferString(`{"title":"My Video","mime_type":"video/mp4"}`)),
+			bytes.NewBufferString(`{"title":"Test Video","mime_type":"video/mp4"}`)),
 		claims,
 	)
 	rec := serveVideos(h, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected 404 when user not found, got %d", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for unregistered user, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("response body is not valid JSON: %v", err)
+	}
+	if body["error"] != "user account not registered" {
+		t.Errorf("expected error 'user account not registered', got %q", body["error"])
 	}
 }
 
