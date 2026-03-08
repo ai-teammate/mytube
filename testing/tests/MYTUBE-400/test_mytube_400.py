@@ -23,14 +23,12 @@ The application does not display the error message: "Authentication services are
 from __future__ import annotations
 
 import os
-import sys
 
 import pytest
 from playwright.sync_api import Browser, Page, sync_playwright
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
 from testing.core.config.web_config import WebConfig
+from testing.components.global_alerts.global_alerts import GlobalAlerts
 from testing.components.pages.login_page.login_page import LoginPage
 from testing.components.pages.site_header.site_header import SiteHeader
 from testing.components.pages.dashboard_page.dashboard_page import DashboardPage
@@ -111,12 +109,10 @@ class TestNoAuthErrorWhenNetworkActive:
             )
 
             # Secondary: ensure no global alert with the specific auth-unavailable text
-            alerts = page.locator("[role='alert']")
-            for i in range(alerts.count()):
-                text = (alerts.nth(i).text_content() or "").strip()
-                assert "Authentication services are currently unavailable" not in text, (
-                    f"Found unexpected auth-unavailable alert: {text!r}"
-                )
+            global_alerts = GlobalAlerts(page)
+            assert not global_alerts.has_auth_unavailable_alert(), (
+                "Found unexpected auth-unavailable alert"
+            )
 
         finally:
             ctx.close()
