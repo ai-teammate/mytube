@@ -196,28 +196,34 @@ class TestPlaceholderStaticAnalysis(unittest.TestCase):
                 "(see test_placeholder_upload_when_thumb_not_ready)."
             )
 
-        # After uploading the placeholder, thumbnailURL must be set before UpdateVideo.
-        # The URL is constructed the same way as for a real thumbnail.
-        self.assertIn(
-            "thumbnail.jpg",
-            self.source,
-            "main.go must construct a thumbnailURL pointing to the placeholder "
-            "thumbnail.jpg so the DB record is updated with a non-empty URL.",
+        # After uploading the placeholder, thumbnailURL must be assigned in the
+        # else/fallback branch and UpdateVideo must be called with that value.
+        import re
+        else_block_pattern = re.compile(
+            r'else\s*\{[^}]*thumbnailURL[^}]*\}',
+            re.DOTALL,
+        )
+        self.assertTrue(
+            else_block_pattern.search(self.source),
+            "main.go must set thumbnailURL in the placeholder/else branch before "
+            "calling UpdateVideo, so the DB record is updated with a non-empty URL.",
         )
 
 
 def _has_placeholder_upload_path(source: str) -> bool:
     """Return True if the source contains placeholder-thumbnail upload logic.
 
-    Looks for an UploadFile call that is NOT inside the ``if thumbReady``
-    block.  This is done by checking that there are at least two *call-site*
-    references to UploadFile (not counting the interface method signature).
-    A call site looks like ``ul.UploadFile(`` or ``uploader.UploadFile(``.
+    Looks for an UploadFile call inside an ``else`` block, which indicates
+    that a fallback/placeholder upload path exists when thumbReady is false.
+    Using a targeted else-block regex avoids false positives from unrelated
+    UploadFile call sites (e.g. HLS segment uploads in the happy path).
     """
     import re
-    # Count actual call sites, not interface/struct definitions.
-    call_sites = re.findall(r'\w+\.UploadFile\(', source)
-    return len(call_sites) >= 2
+    else_upload_pattern = re.compile(
+        r'else\s*\{[^}]*UploadFile[^}]*\}',
+        re.DOTALL,
+    )
+    return bool(else_upload_pattern.search(source))
 
 
 # ===========================================================================
@@ -364,15 +370,13 @@ def transcoder_service(gcp_config: GcpConfig, storage_client):
 
 
 @pytest.fixture(scope="module")
-def video_only_test_run(gcp_config: GcpConfig, transcoder_service: HLSTranscoderService):
+def video_only_test_run(gcp_config: GcpConfig, transcoder_service: HLSTranscoderService, storage_client):
     """Upload a video-only MP4 to the raw bucket and run the transcoding job.
 
     Yields a dict with:
         video_id   — the UUID used for this run
         job_result — JobExecutionResult from HLSTranscoderService
     """
-    from google.cloud import storage as gcs_storage
-
     # Use a synthetic video-only raw object path from env, or upload a probe.
     raw_object_path = os.environ.get("GCS_TEST_VIDEO_ONLY_OBJECT", "")
     video_id = str(uuid.uuid4())
@@ -382,9 +386,7 @@ def video_only_test_run(gcp_config: GcpConfig, transcoder_service: HLSTranscoder
         # environment the caller should provide a proper video-only MP4 via
         # GCS_TEST_VIDEO_ONLY_OBJECT.
         raw_object_path = f"raw/mytube-391-probe-{video_id}.mp4"
-        client = gcs_storage.Client()
-        bucket = client.bucket(gcp_config.raw_bucket)
-        blob = bucket.blob(raw_object_path)
+        blob = storage_client.bucket(gcp_config.raw_bucket).blob(raw_object_path)
         blob.upload_from_string(_DUMMY_VIDEO_BYTES, content_type="video/mp4")
 
     result = transcoder_service.run_transcoding_job(
@@ -397,9 +399,7 @@ def video_only_test_run(gcp_config: GcpConfig, transcoder_service: HLSTranscoder
     # Cleanup: delete probe object if we uploaded it.
     if not os.environ.get("GCS_TEST_VIDEO_ONLY_OBJECT"):
         try:
-            from google.cloud import storage as gcs_storage
-            client = gcs_storage.Client()
-            client.bucket(gcp_config.raw_bucket).blob(raw_object_path).delete()
+            storage_client.bucket(gcp_config.raw_bucket).blob(raw_object_path).delete()
         except Exception:
             pass
 
@@ -476,6 +476,7 @@ class TestPlaceholderGCSIntegration:
         video_only_test_run: dict,
         transcoder_service: HLSTranscoderService,
         gcp_config: GcpConfig,
+        storage_client,
     ) -> None:
         """The thumbnail.jpg file must be a valid JPEG (non-empty, JPEG SOI header).
 
@@ -499,10 +500,9 @@ class TestPlaceholderGCSIntegration:
         from testing.components.services.gcs_service import GCSService
         from testing.core.config.gcs_config import GCSConfig
         gcs_cfg = GCSConfig()
-        from google.cloud import storage as gcs_storage
         gcs_svc = GCSService(
             config=gcs_cfg,
-            storage_client=gcs_storage.Client(),
+            storage_client=storage_client,
         )
         header_bytes = gcs_svc.download_object_bytes(
             gcp_config.hls_bucket, thumb_object, start=0, end=2
