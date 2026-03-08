@@ -66,6 +66,7 @@ jobs:
         run: |
           gcloud run jobs update ${{ env.TRANSCODER_JOB }} \
             --image ${{ env.TRANSCODER_IMAGE }}:${{ github.sha }} \
+            --update-env-vars "CDN_BASE_URL=${{ vars.CDN_BASE_URL }}" \
             --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }}
 
