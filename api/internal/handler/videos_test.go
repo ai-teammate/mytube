@@ -39,13 +39,17 @@ func (s *stubVideoCreator) Create(_ context.Context, p repository.CreateVideoPar
 	return s.record, s.err
 }
 
-// stubUserIDProvider is a UserIDProvider stub.
+// stubUserIDProvider is a UserIDProvider and UserProvisioner stub.
 type stubUserIDProvider struct {
 	user *repository.User
 	err  error
 }
 
 func (s *stubUserIDProvider) GetByFirebaseUID(_ context.Context, _ string) (*repository.User, error) {
+	return s.user, s.err
+}
+
+func (s *stubUserIDProvider) Upsert(_ context.Context, _, _, _ string) (*repository.User, error) {
 	return s.user, s.err
 }
 
@@ -86,7 +90,7 @@ func defaultVideoRecord() *repository.VideoRecord {
 
 // buildVideosHandler wires the injectable constructor so tests bypass
 // os.Getenv("RAW_UPLOADS_BUCKET").
-func buildVideosHandler(videos handler.VideoCreator, users handler.UserIDProvider, signer storage.Signer) http.Handler {
+func buildVideosHandler(videos handler.VideoCreator, users handler.UserProvisioner, signer storage.Signer) http.Handler {
 	// Use the exported constructor; bucket name comes from env.
 	// In tests we call the package-level helper that passes bucket directly.
 	// Since newVideosHandlerWithBucket is unexported, we use
@@ -341,7 +345,7 @@ func TestNewVideosHandler_POST_MIMETypeWithParams_Accepted(t *testing.T) {
 	}
 }
 
-func TestNewVideosHandler_POST_GetUserError_Returns500(t *testing.T) {
+func TestNewVideosHandler_POST_UpsertUserError_Returns500(t *testing.T) {
 	dbErr := errors.New("db error")
 	h := buildVideosHandler(
 		&stubVideoCreator{},
@@ -358,27 +362,41 @@ func TestNewVideosHandler_POST_GetUserError_Returns500(t *testing.T) {
 	rec := serveVideos(h, req)
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 on user lookup error, got %d", rec.Code)
+		t.Errorf("expected 500 on upsert user error, got %d", rec.Code)
 	}
 }
 
-func TestNewVideosHandler_POST_UserNotFound_Returns404(t *testing.T) {
+// TestNewVideosHandler_POST_UserNotSeeded_AutoProvisions_Returns201 verifies that
+// a Firebase-authenticated user with no pre-existing users row is auto-provisioned
+// (via Upsert) and the video creation proceeds to return 201.
+// Regression test for MYTUBE-383: previously this returned 404 "user not found".
+func TestNewVideosHandler_POST_UserNotSeeded_AutoProvisions_Returns201(t *testing.T) {
+	t.Setenv("RAW_UPLOADS_BUCKET", "test-bucket")
+
+	// Simulate a user that does not yet exist in the DB: Upsert creates the row
+	// and returns the provisioned user — stub models this by returning a valid user.
+	provisionedUser := &repository.User{
+		ID:          "00000000-0000-0000-0000-000000000042",
+		FirebaseUID: "ci-test-user-001",
+		Username:    "ci-test",
+	}
 	h := buildVideosHandler(
-		&stubVideoCreator{},
-		&stubUserIDProvider{user: nil},
+		&stubVideoCreator{record: defaultVideoRecord()},
+		&stubUserIDProvider{user: provisionedUser},
 		&stubStorageSigner{url: "https://signed.url"},
 	)
 
-	claims := &auth.TokenClaims{UID: "uid1", Email: "user@example.com"}
+	// Use claims matching the CI test user described in the bug report.
+	claims := &auth.TokenClaims{UID: "ci-test-user-001", Email: "ci-test@mytube.test"}
 	req := withClaims(
 		httptest.NewRequest(http.MethodPost, "/api/videos",
-			bytes.NewBufferString(`{"title":"My Video","mime_type":"video/mp4"}`)),
+			bytes.NewBufferString(`{"title":"Test Video","mime_type":"video/mp4"}`)),
 		claims,
 	)
 	rec := serveVideos(h, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected 404 when user not found, got %d", rec.Code)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected 201 after auto-provisioning user, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
