@@ -234,11 +234,11 @@ func doTranscode(
 	// than 5 s or for some containers without a combined audio/video stream.
 	// thumbReady is checked below before the upload step is attempted.
 	if err := tr.ExtractThumbnail(ctx, rawPath, thumbPath, 5); err != nil {
-		log.Printf("warning: thumbnail extraction failed, continuing without thumbnail: %v", err)
+		log.Printf("warning: thumbnail extraction failed, continuing without thumbnail: %v err=%q event=thumbnail_skipped reason=extraction_error", err, err.Error())
 	} else if fi, statErr := os.Stat(thumbPath); statErr == nil && fi.Size() > 0 {
 		thumbReady = true
 	} else {
-		log.Printf("warning: thumbnail file not written after extraction (video-only or short clip shorter than seek offset?), continuing without thumbnail")
+		log.Printf("warning: thumbnail file not written after extraction (video-only or short clip shorter than seek offset?), continuing without thumbnail event=thumbnail_skipped reason=silent_ffmpeg_failure")
 	}
 
 	// ── Step 4: Upload HLS output ─────────────────────────────────────────────
@@ -254,7 +254,7 @@ func doTranscode(
 		thumbObjectPath := fmt.Sprintf("videos/%s/thumbnail.jpg", cfg.VideoID)
 		log.Printf("uploading thumbnail to gs://%s/%s", cfg.HLSBucket, thumbObjectPath)
 		if err := ul.UploadFile(ctx, cfg.HLSBucket, thumbObjectPath, thumbPath); err != nil {
-			log.Printf("warning: thumbnail upload failed, continuing without thumbnail: %v", err)
+			log.Printf("warning: thumbnail upload failed, continuing without thumbnail: %v err=%q event=thumbnail_skipped reason=upload_error", err, err.Error())
 		} else {
 			thumbnailURL = fmt.Sprintf("%s/videos/%s/thumbnail.jpg", cfg.CDNBaseURL, cfg.VideoID)
 		}
