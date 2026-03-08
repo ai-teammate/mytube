@@ -20,6 +20,7 @@ jobs:
       RAW_BUCKET: mytube-raw-uploads
       HLS_BUCKET: mytube-hls-output
       TRANSCODER_SA: mytube-transcoder
+      API_SERVICE: mytube-api
       CI_SA: ai-teammate-gcloud
 
     steps:
@@ -95,20 +96,55 @@ jobs:
           fi
 
       # ── 4. Grant bucket IAM to transcoder SA ────────────────────────────────
-      - name: Grant transcoder SA objectViewer on raw-uploads
+      - name: Grant transcoder SA objectUser on raw-uploads
         run: |
           SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           gcloud storage buckets add-iam-policy-binding "gs://${{ env.RAW_BUCKET }}" \
             --member="serviceAccount:${SA_EMAIL}" \
-            --role="roles/storage.objectViewer" \
+            --role="roles/storage.objectUser" \
             --project="${{ env.PROJECT_ID }}"
 
-      - name: Grant transcoder SA objectCreator on hls-output
+      - name: Grant transcoder SA objectUser on hls-output
         run: |
           SA_EMAIL="${{ env.TRANSCODER_SA }}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
           gcloud storage buckets add-iam-policy-binding "gs://${{ env.HLS_BUCKET }}" \
             --member="serviceAccount:${SA_EMAIL}" \
-            --role="roles/storage.objectCreator" \
+            --role="roles/storage.objectUser" \
+            --project="${{ env.PROJECT_ID }}"
+
+      # ── 5a. Get API server SA and grant bucket IAM ──────────────────────────
+      - name: Get API server service account email
+        id: get_api_sa
+        run: |
+          API_SA_EMAIL=$(gcloud run services describe "${{ env.API_SERVICE }}" \
+            --region="${{ env.REGION }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --format="value(spec.template.spec.serviceAccountName)" 2>/dev/null || true)
+          if [ -z "${API_SA_EMAIL}" ]; then
+            # Service not deployed yet — derive from default Compute SA (project number)
+            PROJECT_NUMBER=$(gcloud projects describe "${{ env.PROJECT_ID }}" \
+              --format="value(projectNumber)")
+            API_SA_EMAIL="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          elif [[ "${API_SA_EMAIL}" != *"@"* ]]; then
+            API_SA_EMAIL="${API_SA_EMAIL}@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          fi
+          echo "api_sa_email=${API_SA_EMAIL}" >> "$GITHUB_OUTPUT"
+          echo "API SA: ${API_SA_EMAIL}"
+
+      - name: Grant API server SA objectUser on raw-uploads
+        run: |
+          API_SA_EMAIL="${{ steps.get_api_sa.outputs.api_sa_email }}"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.RAW_BUCKET }}" \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/storage.objectUser" \
+            --project="${{ env.PROJECT_ID }}"
+
+      - name: Grant API server SA objectUser on hls-output
+        run: |
+          API_SA_EMAIL="${{ steps.get_api_sa.outputs.api_sa_email }}"
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.HLS_BUCKET }}" \
+            --member="serviceAccount:${API_SA_EMAIL}" \
+            --role="roles/storage.objectUser" \
             --project="${{ env.PROJECT_ID }}"
 
       # ── 5. Grant CI SA legacyBucketReader for test access ───────────────────
@@ -160,7 +196,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Bucket | Access |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA read; CI SA read+download+create) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| gs://${{ env.HLS_BUCKET }} | allUsers objectViewer (CDN delivery) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| gs://${{ env.RAW_BUCKET }} | private (transcoder SA objectUser; API SA objectUser; CI SA read+download+create) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| gs://${{ env.HLS_BUCKET }} | allUsers objectViewer (CDN delivery); transcoder SA objectUser; API SA objectUser |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "MYTUBE-79 / MYTUBE-49 / MYTUBE-127 / MYTUBE-318 tests should now pass." >> "$GITHUB_STEP_SUMMARY"
+          echo "MYTUBE-79 / MYTUBE-49 / MYTUBE-127 / MYTUBE-318 / MYTUBE-387 tests should now pass." >> "$GITHUB_STEP_SUMMARY"
