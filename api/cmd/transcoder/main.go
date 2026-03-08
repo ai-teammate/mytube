@@ -223,10 +223,22 @@ func doTranscode(
 	}
 
 	// ── Step 3: Extract thumbnail ─────────────────────────────────────────────
+	// Thumbnail extraction is best-effort: if FFmpeg exits with an error or
+	// produces no output file (silent failure — common for video-only input when
+	// the seek offset meets or exceeds the video duration), the job logs a warning
+	// and continues without a thumbnail rather than aborting the pipeline.
 	thumbPath := filepath.Join(workDir, "thumbnail.jpg")
 	log.Printf("extracting thumbnail from %s → %s", rawPath, thumbPath)
+	thumbReady := false
+	// 5-second seek offset: may produce no output for video-only clips shorter
+	// than 5 s or for some containers without a combined audio/video stream.
+	// thumbReady is checked below before the upload step is attempted.
 	if err := tr.ExtractThumbnail(ctx, rawPath, thumbPath, 5); err != nil {
-		return fmt.Errorf("extract thumbnail: %w", err)
+		log.Printf("warning: thumbnail extraction failed, continuing without thumbnail: %v err=%q event=thumbnail_skipped reason=extraction_error", err, err.Error())
+	} else if fi, statErr := os.Stat(thumbPath); statErr == nil && fi.Size() > 0 {
+		thumbReady = true
+	} else {
+		log.Printf("warning: thumbnail file not written after extraction (video-only or short clip shorter than seek offset?), continuing without thumbnail event=thumbnail_skipped reason=silent_ffmpeg_failure")
 	}
 
 	// ── Step 4: Upload HLS output ─────────────────────────────────────────────
@@ -237,15 +249,19 @@ func doTranscode(
 	}
 
 	// ── Step 5: Upload thumbnail ──────────────────────────────────────────────
-	thumbObjectPath := fmt.Sprintf("videos/%s/thumbnail.jpg", cfg.VideoID)
-	log.Printf("uploading thumbnail to gs://%s/%s", cfg.HLSBucket, thumbObjectPath)
-	if err := ul.UploadFile(ctx, cfg.HLSBucket, thumbObjectPath, thumbPath); err != nil {
-		return fmt.Errorf("upload thumbnail: %w", err)
+	var thumbnailURL string
+	if thumbReady {
+		thumbObjectPath := fmt.Sprintf("videos/%s/thumbnail.jpg", cfg.VideoID)
+		log.Printf("uploading thumbnail to gs://%s/%s", cfg.HLSBucket, thumbObjectPath)
+		if err := ul.UploadFile(ctx, cfg.HLSBucket, thumbObjectPath, thumbPath); err != nil {
+			log.Printf("warning: thumbnail upload failed, continuing without thumbnail: %v err=%q event=thumbnail_skipped reason=upload_error", err, err.Error())
+		} else {
+			thumbnailURL = fmt.Sprintf("%s/videos/%s/thumbnail.jpg", cfg.CDNBaseURL, cfg.VideoID)
+		}
 	}
 
 	// ── Step 6: Update database ───────────────────────────────────────────────
 	hlsManifestPath := fmt.Sprintf("gs://%s/videos/%s/index.m3u8", cfg.HLSBucket, cfg.VideoID)
-	thumbnailURL := fmt.Sprintf("%s/videos/%s/thumbnail.jpg", cfg.CDNBaseURL, cfg.VideoID)
 
 	log.Printf("updating video %s: hls=%s thumb=%s", cfg.VideoID, hlsManifestPath, thumbnailURL)
 	if err := repo.UpdateVideo(ctx, cfg.VideoID, video.Update{
