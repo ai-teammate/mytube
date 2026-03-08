@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.integration
 def test_transcode_silent_thumbnail_failure_placeholder_thumbnail_url_in_db():
     """Run the Go unit test TestTranscode_SilentThumbnailFailure_PlaceholderThumbnailURLInDB
     in api/cmd/transcoder and assert it passes.
