@@ -1,0 +1,6 @@
+test_id: MYTUBE-376
+type: gcp
+framework: pytest
+dependencies:
+  - GOOGLE_APPLICATION_CREDENTIALS
+  - GCP_PROJECT_ID
