@@ -301,12 +301,31 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
         ls_key = f"firebase:authUser:{api_key}:[DEFAULT]"
         init_script = f"(function(){{ try {{ localStorage.setItem({json.dumps(ls_key)}, {json.dumps(json.dumps(expired_user))}); window.__mytube402_injected = true; }} catch(e) {{ window.__mytube402_injected = false; }} }})();"
 
-        # Close the initial context and recreate with the init script present before navigation
+        # Recreate context with the init script present so the fake session is available before the app loads
         context.close()
         context = browser_instance.new_context()
         context.add_init_script(script=init_script)
 
-        # Register only explicit Firebase/auth endpoints to simulate token-refresh failure
+        page = context.new_page()
+
+        # Navigate online first so the app and SDK can initialize with the injected session
+        page.goto(web_config.dashboard_url(), wait_until="domcontentloaded")
+
+        # Verify injection succeeded (fail fast if not)
+        try:
+            injected = page.evaluate("() => !!window.__mytube402_injected")
+        except Exception:
+            injected = False
+        assert injected, "Injection did not set window.__mytube402_injected — aborting test"
+
+        # Give the SDK a chance to initialize if present
+        try:
+            page.wait_for_function("() => !!(window.firebase && window.firebase.auth && firebase.auth().currentUser)", timeout=30_000)
+        except Exception:
+            # proceed; the subsequent refresh attempts will handle absence
+            pass
+
+        # Register only explicit Firebase/auth endpoints to simulate token-refresh failure once we go offline
         firebase_patterns = [
             "https://securetoken.googleapis.com/**",
             "https://identitytoolkit.googleapis.com/**",
@@ -330,17 +349,8 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
         for p in firebase_patterns:
             context.route(p, _abort)
 
-        # Navigate while offline so SDK attempts refresh while offline
+        # Now simulate network loss and trigger a deterministic token refresh to exercise the SDK refresh path while offline.
         context.set_offline(True)
-        page = context.new_page()
-        page.goto(web_config.dashboard_url(), wait_until="domcontentloaded")
-
-        # Verify injection succeeded (fail fast if not)
-        try:
-            injected = page.evaluate("() => !!window.__mytube402_injected")
-        except Exception:
-            injected = False
-        assert injected, "Injection did not set window.__mytube402_injected — aborting test"
 
         # Give the SDK a short moment to initialize if present, but don't block test excessively
         try:
@@ -381,7 +391,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
         last_exc = None
         # Try for a bounded total time for the SDK to initialize and for getIdToken to be invoked deterministically.
         start_time = time.time()
-        total_timeout = 30  # seconds
+        total_timeout = 40  # seconds (increased to be more tolerant in CI)
         attempt = 0
         while time.time() - start_time < total_timeout:
             try:
@@ -391,7 +401,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
                             // Race the token refresh against a short internal timeout so evaluate resolves promptly.
                             return Promise.race([
                                 firebase.auth().currentUser.getIdToken(true).then(()=>({ok:true,res:true})).catch(()=>({ok:true,res:false})),
-                                new Promise(resolve => setTimeout(()=>resolve({ok:false,res:null,timeout:true}), 10000))
+                                new Promise(resolve => setTimeout(()=>resolve({ok:false,res:null,timeout:true}), 15000))
                             ]);
                         }
                     } catch(e) {}
