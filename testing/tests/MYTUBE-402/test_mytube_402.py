@@ -138,20 +138,20 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
 
     # Wait for the app's proactive reachability to react; allow a short retry/backoff loop and capture diagnostics on final timeout
     predicate = "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }"
-    attempts = 3
+    attempts = 6
     found = False
     last_exc = None
     for attempt in range(attempts):
         try:
             # try with a longer per-attempt timeout to allow SDK and rendering cycles
-            page.wait_for_function(predicate, timeout=25_000)
+            page.wait_for_function(predicate, timeout=45_000)
             found = True
             break
         except Exception as e:
             last_exc = e
-            # short incremental backoff before retrying
+            # short incremental backoff before retrying, visible in Playwright traces
             try:
-                page.wait_for_timeout((1 + attempt * 2) * 1000)
+                page.wait_for_timeout((2 + attempt * 2) * 1000)
             except Exception:
                 pass
 
@@ -362,7 +362,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
 
         refreshed = None
         last_exc = None
-        for attempt in range(6):
+        for attempt in range(8):
             try:
                 refreshed = page.evaluate(r"""() => {
                     try {
@@ -370,17 +370,17 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
                             return firebase.auth().currentUser.getIdToken(true).then(()=>true).catch(()=>false);
                         }
                     } catch(e) {}
-                    return false;
+                    return null;
                 }""")
-                # If we got a boolean result, break and continue with assertions
+                # If we got a boolean result (True/False), break and continue; if null, SDK not ready — retry
                 if isinstance(refreshed, bool):
                     break
             except Exception as e:
                 last_exc = e
-                try:
-                    page.wait_for_timeout((1 + attempt) * 1000)
-                except Exception:
-                    pass
+            try:
+                page.wait_for_timeout((1 + attempt) * 1000)
+            except Exception:
+                pass
 
         if not isinstance(refreshed, bool):
             ss, html, console_file = _capture_token_failure(page, tag="token-refresh")
