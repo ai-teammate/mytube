@@ -362,39 +362,55 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
 
         refreshed = None
         last_exc = None
-        for attempt in range(8):
+        # Try for a bounded total time for the SDK to initialize and for getIdToken to be invoked deterministically.
+        start_time = time.time()
+        total_timeout = 30  # seconds
+        attempt = 0
+        while time.time() - start_time < total_timeout:
             try:
-                refreshed = page.evaluate(r"""() => {
+                result = page.evaluate(r"""() => {
                     try {
                         if (window.firebase && firebase.auth && firebase.auth().currentUser && typeof firebase.auth().currentUser.getIdToken === 'function') {
-                            return firebase.auth().currentUser.getIdToken(true).then(()=>true).catch(()=>false);
+                            // Race the token refresh against a short internal timeout so evaluate resolves promptly.
+                            return Promise.race([
+                                firebase.auth().currentUser.getIdToken(true).then(()=>({ok:true,res:true})).catch(()=>({ok:true,res:false})),
+                                new Promise(resolve => setTimeout(()=>resolve({ok:false,res:null,timeout:true}), 10000))
+                            ]);
                         }
                     } catch(e) {}
-                    return null;
+                    return {ok:false,res:null};
                 }""")
-                # If we got True, the token refresh succeeded and we can proceed.
-                # If we got False, the refresh promise rejected (e.g., due to offline) — treat as transient and retry.
-                # If we got null, the SDK or currentUser is not ready yet — retry.
-                if refreshed is True:
-                    break
+                # result should be deserialized as a dict-like object
+                if isinstance(result, dict):
+                    if result.get("ok") is True:
+                        refreshed = result.get("res")
+                        # If refresh resolved successfully (True), break; if False, treat as transient and retry a bit longer.
+                        if refreshed is True:
+                            break
+                    else:
+                        # SDK not ready or internal timeout -> retry
+                        refreshed = None
+                else:
+                    refreshed = None
             except Exception as e:
                 last_exc = e
+                refreshed = None
+            # Backoff before retrying (visible in traces)
             try:
-                page.wait_for_timeout((1 + attempt) * 1000)
+                page.wait_for_timeout(min(1000 * (1 + attempt), 5000))
             except Exception:
                 pass
+            attempt += 1
 
-        if not isinstance(refreshed, bool):
+        if refreshed is None:
             ss, html, console_file = _capture_token_failure(page, tag="token-refresh")
             raise AssertionError(
-                f"Could not deterministically invoke token refresh; captured artifacts: screenshot={ss}, html={html}, console={console_file}"
+                f"Could not deterministically invoke token refresh within {total_timeout}s; captured artifacts: screenshot={ss}, html={html}, console={console_file}"
             ) from last_exc
-
-        # Optionally log the refresh outcome (True means token refresh promise resolved)
-        # but do not force a specific boolean since offline behavior may vary.
 
         # Run common assertions
         _common_assertions_for_auth_offline(page)
+
 
     finally:
         try:
