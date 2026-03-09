@@ -151,7 +151,7 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
             last_exc = e
             # short incremental backoff before retrying
             try:
-                time.sleep(1 + attempt * 2)
+                page.wait_for_timeout((1 + attempt * 2) * 1000)
             except Exception:
                 pass
 
@@ -378,7 +378,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
             except Exception as e:
                 last_exc = e
                 try:
-                    time.sleep(1 + attempt)
+                    page.wait_for_timeout((1 + attempt) * 1000)
                 except Exception:
                     pass
 
