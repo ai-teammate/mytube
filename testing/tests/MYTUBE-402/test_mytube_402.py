@@ -211,8 +211,25 @@ def test_offline_shows_auth_error_with_ui_login(browser_instance: Browser, web_c
                 "() => { const links = Array.from(document.querySelectorAll('header a') || []); return !links.some(a => (a.innerText||'').trim().toLowerCase().includes('sign in')); }",
                 timeout=15_000,
             )
-        except Exception:
-            pytest.skip("UI login did not reach authenticated state within timeout")
+        except Exception as e:
+            # Capture artifacts and fail loudly so CI provides diagnostics for triage
+            artifacts_dir = os.path.join(os.path.dirname(__file__), "artifacts")
+            try:
+                os.makedirs(artifacts_dir, exist_ok=True)
+            except Exception:
+                pass
+            ts = int(time.time())
+            ss = os.path.join(artifacts_dir, f"ui-login-failure-{ts}.png")
+            html = os.path.join(artifacts_dir, f"ui-login-failure-{ts}.html")
+            try:
+                page.screenshot(path=ss)
+            except Exception:
+                pass
+            try:
+                open(html, "w", encoding="utf-8").write(page.content())
+            except Exception:
+                pass
+            pytest.fail(f"UI login did not reach authenticated state within timeout; artifacts: screenshot={ss}, html={html}")
 
         # Toggle offline and run common assertions
         context.set_offline(True)
