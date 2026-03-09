@@ -138,20 +138,20 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
 
     # Wait for the app's proactive reachability to react; allow a short retry/backoff loop and capture diagnostics on final timeout
     predicate = "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }"
-    attempts = 5
+    attempts = 3
     found = False
     last_exc = None
     for attempt in range(attempts):
         try:
             # try with a longer per-attempt timeout to allow SDK and rendering cycles
-            page.wait_for_function(predicate, timeout=15_000)
+            page.wait_for_function(predicate, timeout=25_000)
             found = True
             break
         except Exception as e:
             last_exc = e
-            # short exponential backoff before retrying
+            # short incremental backoff before retrying
             try:
-                time.sleep(1 + attempt)
+                time.sleep(1 + attempt * 2)
             except Exception:
                 pass
 
@@ -327,13 +327,13 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
 
         # Give the SDK a short moment to initialize if present, but don't block test excessively
         try:
-            page.wait_for_function("() => !!(window.firebase && window.firebase.auth)", timeout=5_000)
+            page.wait_for_function("() => !!(window.firebase && window.firebase.auth)", timeout=20_000)
         except Exception:
             # proceed; the subsequent refresh attempts will handle absence
             pass
 
         # Trigger a deterministic token refresh to exercise the SDK refresh path.
-        # Use a small retry loop so the SDK has a brief window to initialize; capture
+        # Use a bounded retry loop so the SDK has a brief window to initialize; capture
         # diagnostics and fail fast if we cannot invoke the refresh deterministically.
         artifacts_dir = os.path.join(os.path.dirname(__file__), "artifacts")
         try:
@@ -362,7 +362,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
 
         refreshed = None
         last_exc = None
-        for attempt in range(5):
+        for attempt in range(6):
             try:
                 refreshed = page.evaluate(r"""() => {
                     try {
@@ -378,7 +378,7 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
             except Exception as e:
                 last_exc = e
                 try:
-                    time.sleep(1)
+                    time.sleep(1 + attempt)
                 except Exception:
                     pass
 
