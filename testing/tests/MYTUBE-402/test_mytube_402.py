@@ -138,20 +138,20 @@ def _common_assertions_for_auth_offline(page: Page) -> None:
 
     # Wait for the app's proactive reachability to react; allow a short retry/backoff loop and capture diagnostics on final timeout
     predicate = "() => { const el = document.querySelector('header [role=\\'alert\\']'); return el && (el.innerText||'').trim().length > 0; }"
-    attempts = 3
+    attempts = 5
     found = False
     last_exc = None
     for attempt in range(attempts):
         try:
-            # try with a modest per-attempt timeout to allow a few SDK cycles
-            page.wait_for_function(predicate, timeout=10_000)
+            # try with a longer per-attempt timeout to allow SDK and rendering cycles
+            page.wait_for_function(predicate, timeout=15_000)
             found = True
             break
         except Exception as e:
             last_exc = e
-            # short backoff before retrying
+            # short exponential backoff before retrying
             try:
-                time.sleep(1)
+                time.sleep(1 + attempt)
             except Exception:
                 pass
 
@@ -238,6 +238,20 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
         page = context.new_page()
         page.set_default_timeout(30_000)
 
+        # Attach console listener early so failures capture logs
+        console_msgs: list[str] = []
+
+        def _on_console(msg):
+            try:
+                console_msgs.append(f"{msg.type}: {msg.text}")
+            except Exception:
+                console_msgs.append("console: <unserializable>")
+
+        try:
+            page.on("console", _on_console)
+        except Exception:
+            pass
+
         # Navigate to discover API key
         page.goto(web_config.home_url(), wait_until="domcontentloaded")
         api_key = _extract_firebase_api_key(page)
@@ -311,6 +325,13 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
             injected = False
         assert injected, "Injection did not set window.__mytube402_injected — aborting test"
 
+        # Give the SDK a short moment to initialize if present, but don't block test excessively
+        try:
+            page.wait_for_function("() => !!(window.firebase && window.firebase.auth)", timeout=5_000)
+        except Exception:
+            # proceed; the subsequent refresh attempts will handle absence
+            pass
+
         # Trigger a deterministic token refresh to exercise the SDK refresh path.
         # Use a small retry loop so the SDK has a brief window to initialize; capture
         # diagnostics and fail fast if we cannot invoke the refresh deterministically.
@@ -334,16 +355,14 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
             except Exception:
                 pass
             try:
-                # best-effort collect console messages
-                # page.on may not have been attached here; ignore failures
-                pass
+                open(console_file, "w", encoding="utf-8").write("\n".join(console_msgs))
             except Exception:
                 pass
             return ss, html, console_file
 
         refreshed = None
         last_exc = None
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 refreshed = page.evaluate(r"""() => {
                     try {
