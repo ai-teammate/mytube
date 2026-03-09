@@ -372,8 +372,10 @@ def test_offline_shows_auth_error_with_injected_session(browser_instance: Browse
                     } catch(e) {}
                     return null;
                 }""")
-                # If we got a boolean result (True/False), break and continue; if null, SDK not ready — retry
-                if isinstance(refreshed, bool):
+                # If we got True, the token refresh succeeded and we can proceed.
+                # If we got False, the refresh promise rejected (e.g., due to offline) — treat as transient and retry.
+                # If we got null, the SDK or currentUser is not ready yet — retry.
+                if refreshed is True:
                     break
             except Exception as e:
                 last_exc = e
