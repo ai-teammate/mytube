@@ -11,7 +11,7 @@
   /* Text */
   --text-primary:   #222222;
   --text-secondary: #666666;
-  /* #6e6e78 gives ≈5.2:1 contrast on --bg-page, meeting WCAG AA for normal text */
+  /* #6e6e78 gives ≈4.78:1 contrast on --bg-page, meeting WCAG AA for normal text */
   --text-subtle:    #6e6e78;
   --text-cta:       #ffffff;
   --text-pill:      #6d40cb;
