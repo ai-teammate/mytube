@@ -1,9 +1,5 @@
 import React from "react";
-
-interface DecorPlayProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * DecorPlay — decorative play/sigma shape (120×120).
@@ -15,7 +11,7 @@ export default function DecorPlay({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: DecorPlayProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

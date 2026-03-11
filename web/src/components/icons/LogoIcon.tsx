@@ -1,14 +1,10 @@
 import React from "react";
-
-interface LogoIconProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * LogoIcon — the "smile-play" brand logo.
  * Uses fill="currentColor" so colour is controlled by the parent's CSS class.
- * Recommended: text-red-600 on white, text-white on coloured backgrounds.
+ * Recommended: text-red-600 on white backgrounds.
  * Defaults to aria-hidden="true" (decorative); pass aria-label / role="img" to make it semantic.
  */
 export default function LogoIcon({
@@ -16,7 +12,7 @@ export default function LogoIcon({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: LogoIconProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

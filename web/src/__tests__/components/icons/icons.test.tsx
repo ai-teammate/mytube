@@ -98,6 +98,19 @@ describe("DecorPlay", () => {
     expect(getSvg(container)).toHaveClass("opacity-20");
   });
 
+  it("accepts a style prop", () => {
+    const { container } = render(<DecorPlay style={{ opacity: 0.5 }} />);
+    expect(getSvg(container)).toHaveStyle({ opacity: "0.5" });
+  });
+
+  it("allows aria-hidden to be overridden to false", () => {
+    const { container } = render(
+      <DecorPlay aria-hidden={false} aria-label="decorative play shape" role="img" />
+    );
+    expect(getSvg(container)).toHaveAttribute("aria-hidden", "false");
+    expect(getSvg(container)).toHaveAttribute("aria-label", "decorative play shape");
+  });
+
   it("forwards extra SVG props", () => {
     const { container } = render(<DecorPlay data-testid="decor-play" />);
     expect(getSvg(container)).toHaveAttribute("data-testid", "decor-play");
@@ -130,6 +143,19 @@ describe("DecorFilm", () => {
   it("accepts a className prop", () => {
     const { container } = render(<DecorFilm className="text-blue-400" />);
     expect(getSvg(container)).toHaveClass("text-blue-400");
+  });
+
+  it("accepts a style prop", () => {
+    const { container } = render(<DecorFilm style={{ opacity: 0.3 }} />);
+    expect(getSvg(container)).toHaveStyle({ opacity: "0.3" });
+  });
+
+  it("allows aria-hidden to be overridden to false", () => {
+    const { container } = render(
+      <DecorFilm aria-hidden={false} aria-label="decorative film shape" role="img" />
+    );
+    expect(getSvg(container)).toHaveAttribute("aria-hidden", "false");
+    expect(getSvg(container)).toHaveAttribute("aria-label", "decorative film shape");
   });
 
   it("forwards extra SVG props", () => {
@@ -166,6 +192,19 @@ describe("DecorCamera", () => {
     expect(getSvg(container)).toHaveClass("rotate-12");
   });
 
+  it("accepts a style prop", () => {
+    const { container } = render(<DecorCamera style={{ opacity: 0.4 }} />);
+    expect(getSvg(container)).toHaveStyle({ opacity: "0.4" });
+  });
+
+  it("allows aria-hidden to be overridden to false", () => {
+    const { container } = render(
+      <DecorCamera aria-hidden={false} aria-label="decorative camera shape" role="img" />
+    );
+    expect(getSvg(container)).toHaveAttribute("aria-hidden", "false");
+    expect(getSvg(container)).toHaveAttribute("aria-label", "decorative camera shape");
+  });
+
   it("forwards extra SVG props", () => {
     const { container } = render(<DecorCamera data-testid="decor-camera" />);
     expect(getSvg(container)).toHaveAttribute("data-testid", "decor-camera");
@@ -198,6 +237,19 @@ describe("DecorWave", () => {
   it("accepts a className prop", () => {
     const { container } = render(<DecorWave className="text-purple-500" />);
     expect(getSvg(container)).toHaveClass("text-purple-500");
+  });
+
+  it("accepts a style prop", () => {
+    const { container } = render(<DecorWave style={{ opacity: 0.6 }} />);
+    expect(getSvg(container)).toHaveStyle({ opacity: "0.6" });
+  });
+
+  it("allows aria-hidden to be overridden to false", () => {
+    const { container } = render(
+      <DecorWave aria-hidden={false} aria-label="decorative wave shape" role="img" />
+    );
+    expect(getSvg(container)).toHaveAttribute("aria-hidden", "false");
+    expect(getSvg(container)).toHaveAttribute("aria-label", "decorative wave shape");
   });
 
   it("forwards extra SVG props", () => {

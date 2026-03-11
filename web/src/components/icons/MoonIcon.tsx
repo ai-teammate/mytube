@@ -1,9 +1,5 @@
 import React from "react";
-
-interface MoonIconProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * MoonIcon — moon SVG for the dark-mode toggle button.
@@ -16,7 +12,7 @@ export default function MoonIcon({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: MoonIconProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

@@ -1,13 +1,11 @@
 import React from "react";
-
-interface DecorCameraProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * DecorCamera — decorative camera/triangle shape.
  * Uses fill="currentColor". Intended as a background decoration.
+ * NOTE: Inner detail shapes (lens circles) use fill="white". This icon is designed for
+ * light / white backgrounds only.
  * Defaults to aria-hidden="true".
  */
 export default function DecorCamera({
@@ -15,7 +13,7 @@ export default function DecorCamera({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: DecorCameraProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

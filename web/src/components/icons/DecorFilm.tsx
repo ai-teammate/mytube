@@ -1,13 +1,11 @@
 import React from "react";
-
-interface DecorFilmProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * DecorFilm — decorative film/atom shape.
  * Uses fill="currentColor". Intended as a background decoration.
+ * NOTE: Inner detail shapes (sprocket holes, frame window) use fill="white". This icon is
+ * designed for light / white backgrounds only.
  * Defaults to aria-hidden="true".
  */
 export default function DecorFilm({
@@ -15,7 +13,7 @@ export default function DecorFilm({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: DecorFilmProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

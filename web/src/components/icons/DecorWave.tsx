@@ -1,9 +1,5 @@
 import React from "react";
-
-interface DecorWaveProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * DecorWave — decorative wave/book shape.
@@ -15,7 +11,7 @@ export default function DecorWave({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: DecorWaveProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

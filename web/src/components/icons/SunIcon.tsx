@@ -1,9 +1,5 @@
 import React from "react";
-
-interface SunIconProps extends React.SVGProps<SVGSVGElement> {
-  className?: string;
-  style?: React.CSSProperties;
-}
+import type { IconBaseProps } from "./types";
 
 /**
  * SunIcon — sun SVG for the light-mode toggle button.
@@ -16,7 +12,7 @@ export default function SunIcon({
   style,
   "aria-hidden": ariaHidden = true,
   ...rest
-}: SunIconProps) {
+}: IconBaseProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
