@@ -45,7 +45,8 @@ body[data-theme="dark"] {
 
   --text-primary:   #f0f0f0;
   --text-secondary: #a0a0ab;
-  --text-subtle:    #6e6e78;
+  /* #84848e gives ≈5.17:1 contrast on #0f0f11, meeting WCAG AA for normal text */
+  --text-subtle:    #84848e;
   --text-cta:       #ffffff;
   --text-pill:      #b39ce8;
 

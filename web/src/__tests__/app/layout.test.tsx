@@ -72,14 +72,14 @@ describe("RootLayout", () => {
     expect(screen.getByTestId("app-shell")).toBeInTheDocument();
   });
 
-  it("applies Inter font variable class to the body", () => {
+  it("applies Inter font variable class to the html element", () => {
     render(
       <RootLayout>
         <span>content</span>
       </RootLayout>
     );
-    const body = document.querySelector("body");
-    expect(body?.className).toContain("--font-inter");
+    const html = document.querySelector("html");
+    expect(html?.className).toContain("--font-inter");
   });
 
   it("applies antialiased class to the body", () => {
