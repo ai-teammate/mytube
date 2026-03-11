@@ -1,42 +1,92 @@
 @import "tailwindcss";
 
+/* ─── Light theme design tokens ─────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --bg-page:    #f8f9fa;
+  --bg-content: #ffffff;
+  --bg-header:  #ffffff;
+  --bg-card:    #f3f4f8;
+
+  /* Text */
+  --text-primary:   #222222;
+  --text-secondary: #666666;
+  /* #6e6e78 gives ≈4.78:1 contrast on --bg-page, meeting WCAG AA for normal text */
+  --text-subtle:    #6e6e78;
+  --text-cta:       #ffffff;
+  --text-pill:      #6d40cb;
+
+  /* Accent */
+  --accent-cta:         #62c235;
+  --accent-cta-end:     #62c235;
+  --accent-pill-bg:     #e5daf6;
+  --accent-login-border:#a189db;
+  --accent-logo:        #6d40cb;
+
+  /* Borders & shadows */
+  --border-light:  #dcdcdc;
+  --shadow-main:   0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-card:   0 8px 20px rgba(0, 0, 0, 0.08);
+
+  /* Interactive */
+  --star-color: #ff6666;
+
+  /* Decorative */
+  --gradient-hero: linear-gradient(135deg, #6d40cb 0%, #62c235 100%);
+  --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ─── Dark theme overrides ──────────────────────────────────────────────────── */
+body[data-theme="dark"] {
+  --bg-page:    #0f0f11;
+  --bg-content: #1a1a1f;
+  --bg-header:  #1a1a1f;
+  --bg-card:    #242428;
+
+  --text-primary:   #f0f0f0;
+  --text-secondary: #a0a0ab;
+  /* #84848e gives ≈5.17:1 contrast on #0f0f11, meeting WCAG AA for normal text */
+  --text-subtle:    #84848e;
+  --text-cta:       #ffffff;
+  --text-pill:      #b39ce8;
+
+  --accent-cta:          #62c235;
+  --accent-cta-end:      #4fa82b;
+  --accent-pill-bg:      #2d1f4e;
+  --accent-login-border: #7b5fc0;
+  --accent-logo:         #9370db;
+
+  --border-light: #333340;
+  --shadow-main:  0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-card:  0 8px 20px rgba(0, 0, 0, 0.30);
+
+  --star-color: #ff6666;
+
+  --gradient-hero: linear-gradient(135deg, #9370db 0%, #62c235 100%);
+  --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Base typography ────────────────────────────────────────────────────────── */
+html,
+body {
+  font-family: var(--font-inter), "Roboto", "Open Sans", sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
 }
 
 /*
   Tailwind v4 preflight resets input/textarea/select/button to
-  `background-color: transparent; color: inherit`.  The app uses hardcoded
-  light containers (bg-white / bg-gray-50) everywhere, so when a user's OS is
-  in dark mode the inherited body colour (#ededed) becomes invisible against
-  those white backgrounds.  Pin form-element text to an explicit dark token so
-  typed text, placeholders and button labels are always legible.
+  `background-color: transparent; color: inherit`.  Pin form-element text to
+  an explicit token so typed text, placeholders and button labels are always
+  legible regardless of theme.
 */
 @layer base {
   input,
   textarea,
   select {
-    color: var(--color-gray-900);
+    color: var(--text-primary);
   }
 }
