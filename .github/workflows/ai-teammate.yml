@@ -276,6 +276,7 @@ jobs:
           CONFLUENCE_DEFAULT_SPACE: ${{ vars.CONFLUENCE_DEFAULT_SPACE }}
           CONFLUENCE_GRAPHQL_PATH: ${{ vars.CONFLUENCE_GRAPHQL_PATH }}
           JIRA_CLEAR_CACHE: "true"
+          DMTOOLS_CACHE_ENABLED: ${{ vars.DMTOOLS_CACHE_ENABLED }}
           # DMTools Integration Settings
           DMTOOLS_INTEGRATIONS: "jira,confluence,figma,ai,cli,file,github"
 
