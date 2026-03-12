@@ -7,6 +7,9 @@ import VideoCard from "@/components/VideoCard";
 
 const defaultRepository: DiscoveryRepository = new ApiDiscoveryRepository();
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+const HERO_PILLS = ["Upload & Share", "HLS Streaming", "Playlists & Discovery"] as const;
+
 interface HomePageProps {
   repository?: DiscoveryRepository;
 }
@@ -44,14 +47,12 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
     };
   }, [repository]);
 
-  const pills = ["Upload & Share", "HLS Streaming", "Playlists & Discovery"];
-
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Hero section */}
       <section aria-label="Hero" style={{ marginBottom: "3rem", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-          {pills.map((label) => (
+          {HERO_PILLS.map((label) => (
             <span
               key={label}
               style={{
