@@ -57,6 +57,7 @@ from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.hero_section.hero_section_component import HeroSectionComponent
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -170,62 +171,6 @@ def _start_fixture_server() -> tuple[HTTPServer, str]:
     return server, f"http://127.0.0.1:{port}/"
 
 
-# ---------------------------------------------------------------------------
-# Core assertion helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_grid_template_columns(page, selector: str) -> str:
-    """Return the computed grid-template-columns value for the given selector."""
-    return page.eval_on_selector(
-        selector,
-        "el => window.getComputedStyle(el).gridTemplateColumns",
-    )
-
-
-def _assert_stacked_layout(page, text_sel: str, panel_sel: str) -> None:
-    """Assert that the visual panel is rendered *below* the text column
-    (single-column / stacked layout)."""
-    text_box = page.locator(text_sel).bounding_box()
-    panel_box = page.locator(panel_sel).bounding_box()
-
-    assert text_box is not None, "Text column not found / not visible"
-    assert panel_box is not None, "Visual panel not found / not visible"
-
-    text_bottom = text_box["y"] + text_box["height"]
-    panel_top = panel_box["y"]
-
-    # Allow 2 px tolerance for sub-pixel rounding
-    assert panel_top >= text_bottom - 2, (
-        f"Visual panel is NOT stacked below the text column at this viewport.\n"
-        f"Text column:  y={text_box['y']:.1f}, height={text_box['height']:.1f}, "
-        f"bottom={text_bottom:.1f}\n"
-        f"Visual panel: y={panel_top:.1f}\n"
-        "Expected the visual panel to start at or after the text column's bottom "
-        "(single-column / stacked layout), but the panel appears beside it."
-    )
-
-
-def _assert_side_by_side_layout(page, text_sel: str, panel_sel: str) -> None:
-    """Assert that at desktop width the two columns are rendered side-by-side."""
-    text_box = page.locator(text_sel).bounding_box()
-    panel_box = page.locator(panel_sel).bounding_box()
-
-    assert text_box is not None, "Text column not found / not visible"
-    assert panel_box is not None, "Visual panel not found / not visible"
-
-    text_mid_y = text_box["y"] + text_box["height"] / 2
-    panel_mid_y = panel_box["y"] + panel_box["height"] / 2
-
-    # In a two-column layout both elements share the same grid row; their
-    # vertical midpoints should be within ~100 px of each other.
-    assert abs(text_mid_y - panel_mid_y) < 100, (
-        f"At desktop viewport the columns do not appear side-by-side.\n"
-        f"Text column mid-y:  {text_mid_y:.1f}\n"
-        f"Visual panel mid-y: {panel_mid_y:.1f}\n"
-        "Expected both columns to share the same grid row."
-    )
-
 
 # ---------------------------------------------------------------------------
 # Pytest fixtures
@@ -247,27 +192,26 @@ class TestMytube454HeroResponsiveness:
 
     # ── Fixture mode (always runs — self-contained) ──────────────────────────
 
-    def test_fixture_desktop_two_column_layout(self) -> None:
+    def test_fixture_desktop_two_column_layout(self, web_config: WebConfig) -> None:
         """Step 1 (desktop baseline, fixture) — at 1280 px the grid is two-column.
 
         The computed grid-template-columns must contain two values and the
         text column and visual panel must be rendered side-by-side.
         """
-        cfg = WebConfig()
         server, fixture_url = _start_fixture_server()
         try:
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=cfg.headless, slow_mo=cfg.slow_mo)
+                browser = pw.chromium.launch(headless=web_config.headless, slow_mo=web_config.slow_mo)
                 try:
                     page = browser.new_page()
                     page.set_viewport_size(_DESKTOP_VIEWPORT)
                     page.goto(fixture_url, timeout=_PAGE_LOAD_TIMEOUT)
                     page.wait_for_load_state("domcontentloaded")
 
+                    hero = HeroSectionComponent(page)
+
                     # Verify computed grid has two columns
-                    cols = _get_grid_template_columns(
-                        page, "[data-testid='hero-grid']"
-                    )
+                    cols = hero.get_grid_template_columns()
                     # At 1280px the computed value is two pixel lengths (one per column)
                     col_values = cols.strip().split()
                     assert len(col_values) == 2, (
@@ -276,37 +220,32 @@ class TestMytube454HeroResponsiveness:
                     )
 
                     # Verify geometric side-by-side layout
-                    _assert_side_by_side_layout(
-                        page,
-                        "[data-testid='hero-text-column']",
-                        "[data-testid='hero-visual-panel']",
-                    )
+                    hero.assert_side_by_side_layout()
                 finally:
                     browser.close()
         finally:
             server.shutdown()
 
-    def test_fixture_mobile_grid_collapses_to_single_column(self) -> None:
+    def test_fixture_mobile_grid_collapses_to_single_column(self, web_config: WebConfig) -> None:
         """Steps 2-3 (mobile, fixture) — at 375 px the grid collapses to 1 column.
 
         The computed grid-template-columns must contain a single value and the
         visual panel must be rendered below (not beside) the text column.
         """
-        cfg = WebConfig()
         server, fixture_url = _start_fixture_server()
         try:
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=cfg.headless, slow_mo=cfg.slow_mo)
+                browser = pw.chromium.launch(headless=web_config.headless, slow_mo=web_config.slow_mo)
                 try:
                     page = browser.new_page()
                     page.set_viewport_size(_MOBILE_VIEWPORT)
                     page.goto(fixture_url, timeout=_PAGE_LOAD_TIMEOUT)
                     page.wait_for_load_state("domcontentloaded")
 
+                    hero = HeroSectionComponent(page)
+
                     # Verify computed grid has collapsed to one column
-                    cols = _get_grid_template_columns(
-                        page, "[data-testid='hero-grid']"
-                    )
+                    cols = hero.get_grid_template_columns()
                     col_values = cols.strip().split()
                     assert len(col_values) == 1, (
                         f"Expected 1 grid column at mobile viewport (375 px), "
@@ -315,11 +254,7 @@ class TestMytube454HeroResponsiveness:
                     )
 
                     # Verify geometric stacked layout
-                    _assert_stacked_layout(
-                        page,
-                        "[data-testid='hero-text-column']",
-                        "[data-testid='hero-visual-panel']",
-                    )
+                    hero.assert_stacked_layout()
                 finally:
                     browser.close()
         finally:
@@ -365,9 +300,9 @@ class TestMytube454HeroResponsiveness:
                         "The hero section may not be present on this deployment."
                     )
 
-                cols = page.eval_on_selector(
-                    "[data-testid='hero-grid'], .hero-grid",
-                    "el => window.getComputedStyle(el).gridTemplateColumns",
+                hero = HeroSectionComponent(page)
+                cols = hero.get_grid_template_columns(
+                    "[data-testid='hero-grid'], .hero-grid"
                 )
                 col_values = cols.strip().split()
                 assert len(col_values) == 1, (
@@ -375,5 +310,6 @@ class TestMytube454HeroResponsiveness:
                     f"but got: '{cols}'\n"
                     "The hero grid did NOT collapse to a single column below 768 px."
                 )
+                hero.assert_stacked_layout()
             finally:
                 browser.close()
