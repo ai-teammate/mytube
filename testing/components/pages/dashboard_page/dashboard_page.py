@@ -398,6 +398,95 @@ class DashboardPage:
         self._page.wait_for_url(lambda url: "/upload" in url, timeout=15_000)
 
     # ------------------------------------------------------------------
+    # CSS grid inspection (MYTUBE-522)
+    # ------------------------------------------------------------------
+
+    _VIDEO_GRID = '[data-testid="video-grid"]'
+    _DASHBOARD_TOOLBAR = '[data-testid="dashboard-toolbar"]'
+
+    def is_video_grid_present(self) -> bool:
+        """Return True if the video grid container is present in the DOM."""
+        return self._page.locator(self._VIDEO_GRID).count() > 0
+
+    def wait_for_video_grid_visible(self, timeout: int = 5_000) -> None:
+        """Wait until the video grid container is visible."""
+        self._page.locator(self._VIDEO_GRID).first.wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def is_toolbar_present(self) -> bool:
+        """Return True if the dashboard toolbar is present in the DOM."""
+        return self._page.locator(self._DASHBOARD_TOOLBAR).count() > 0
+
+    def get_video_grid_styles(self) -> dict | None:
+        """Return authored gridTemplateColumns and computed gap for the video grid.
+
+        Scans loaded stylesheets for the rule matching the video grid element so
+        that ``grid-template-columns`` is returned as the authored value rather
+        than the resolved pixel string from ``getComputedStyle``.
+        """
+        return self._page.evaluate(
+            """(sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return null;
+                const cs = window.getComputedStyle(el);
+                const computedGap = cs.gap || cs.rowGap || '';
+                let authoredGtc = '';
+                for (const sheet of document.styleSheets) {
+                    let rules;
+                    try { rules = sheet.cssRules || sheet.rules; } catch (e) { continue; }
+                    if (!rules) continue;
+                    for (const rule of rules) {
+                        if (!(rule instanceof CSSStyleRule)) continue;
+                        try {
+                            if (el.matches(rule.selectorText)) {
+                                const gtc = rule.style.gridTemplateColumns;
+                                if (gtc) { authoredGtc = gtc; }
+                            }
+                        } catch (e) {}
+                    }
+                }
+                return { gridTemplateColumns: authoredGtc, gap: computedGap };
+            }""",
+            self._VIDEO_GRID,
+        )
+
+    def get_live_grid_rule(self) -> dict | None:
+        """Scan all loaded document.styleSheets for the video grid CSS rule.
+
+        Returns a dict with ``gridTemplateColumns`` and ``gap`` if a rule
+        containing ``repeat(auto-fill, minmax(220px, ...))`` is found, or None.
+        """
+        return self._page.evaluate(
+            """() => {
+                for (const sheet of document.styleSheets) {
+                    let rules;
+                    try {
+                        rules = sheet.cssRules || sheet.rules;
+                    } catch (e) {
+                        continue;
+                    }
+                    if (!rules) continue;
+                    for (const rule of rules) {
+                        if (!(rule instanceof CSSStyleRule)) continue;
+                        const gtc = rule.style.gridTemplateColumns;
+                        if (
+                            gtc &&
+                            gtc.includes('auto-fill') &&
+                            gtc.includes('220px')
+                        ) {
+                            return {
+                                gridTemplateColumns: gtc,
+                                gap: rule.style.gap || rule.style.rowGap || ''
+                            };
+                        }
+                    }
+                }
+                return null;
+            }"""
+        )
+
+    # ------------------------------------------------------------------
     # Status badge inspection
     # ------------------------------------------------------------------
 
