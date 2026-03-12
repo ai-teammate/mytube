@@ -1,0 +1,14 @@
+ticket: MYTUBE-515
+description: Star rating widget redesign — color and size match visual specification
+framework: playwright
+platform: web
+language: python
+test_file: test_mytube_515.py
+dependencies:
+  - pytest>=8.0
+  - playwright>=1.40
+environment:
+  optional:
+    WEB_BASE_URL: Base URL of the deployed web application (for live mode)
+    PLAYWRIGHT_HEADLESS: Run browser headless (default: true)
+    PLAYWRIGHT_SLOW_MO: Slow-motion delay in ms (default: 0)
