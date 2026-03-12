@@ -62,13 +62,13 @@ describe("StarRating — MYTUBE-271: 500 error handling", () => {
     // Step 1: Wait for initial load — should show 3 stars (myRating: 3)
     await waitFor(() => {
       const buttons = screen.getAllByRole("button");
-      // 3 stars should be yellow (the user's previous rating)
-      // We check the first 3 buttons should have the yellow class
-      expect(buttons[0]).toHaveClass("text-yellow-400");
-      expect(buttons[1]).toHaveClass("text-yellow-400");
-      expect(buttons[2]).toHaveClass("text-yellow-400");
-      expect(buttons[3]).toHaveClass("text-gray-300");
-      expect(buttons[4]).toHaveClass("text-gray-300");
+      // 3 stars should be filled (the user's previous rating)
+      // We check the first 3 buttons should have the starFilled CSS module class
+      expect(buttons[0]).toHaveClass("starFilled");
+      expect(buttons[1]).toHaveClass("starFilled");
+      expect(buttons[2]).toHaveClass("starFilled");
+      expect(buttons[3]).not.toHaveClass("starFilled");
+      expect(buttons[4]).not.toHaveClass("starFilled");
     });
 
     // Step 2: User tries to click the 5th star (change from 3 to 5)
@@ -88,14 +88,14 @@ describe("StarRating — MYTUBE-271: 500 error handling", () => {
       );
     });
 
-    // Step 4: Verify stars reverted to previous state (3 stars yellow, 2 gray)
+    // Step 4: Verify stars reverted to previous state (3 stars filled, 2 empty)
     // Re-query buttons after error is displayed
     const updatedButtons = screen.getAllByRole("button");
-    expect(updatedButtons[0]).toHaveClass("text-yellow-400");
-    expect(updatedButtons[1]).toHaveClass("text-yellow-400");
-    expect(updatedButtons[2]).toHaveClass("text-yellow-400");
-    expect(updatedButtons[3]).toHaveClass("text-gray-300");
-    expect(updatedButtons[4]).toHaveClass("text-gray-300");
+    expect(updatedButtons[0]).toHaveClass("starFilled");
+    expect(updatedButtons[1]).toHaveClass("starFilled");
+    expect(updatedButtons[2]).toHaveClass("starFilled");
+    expect(updatedButtons[3]).not.toHaveClass("starFilled");
+    expect(updatedButtons[4]).not.toHaveClass("starFilled");
   });
 
   it("refetches rating summary on submitRating error", async () => {
