@@ -60,7 +60,7 @@ jest.mock("@/data/playlistRepository", () => ({
     deletePlaylist: jest.fn(),
     addVideo: jest.fn(),
     removeVideo: jest.fn(),
-    getByID: jest.fn(),
+    getByID: jest.fn().mockResolvedValue(null),
     listByUsername: jest.fn(),
   })),
 }));
@@ -131,7 +131,7 @@ function makePlaylistRepo(
     deletePlaylist: jest.fn().mockResolvedValue(undefined),
     addVideo: jest.fn(),
     removeVideo: jest.fn(),
-    getByID: jest.fn(),
+    getByID: jest.fn().mockResolvedValue(null),
     listByUsername: jest.fn(),
     ...overrides,
   };
@@ -187,7 +187,7 @@ describe("DashboardPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: /my studio/i })
+        screen.getByRole("heading", { name: /my videos/i })
       ).toBeInTheDocument();
     });
   });
@@ -227,7 +227,7 @@ describe("DashboardPage", () => {
 
   // ─── Video list ────────────────────────────────────────────────────────────
 
-  it("renders video titles in the table", async () => {
+  it("renders video titles in the grid", async () => {
     const videos = [
       makeDashboardVideo({ id: "vid-1", title: "First Video" }),
       makeDashboardVideo({ id: "vid-2", title: "Second Video" }),
@@ -266,7 +266,7 @@ describe("DashboardPage", () => {
     renderDashboard(repo);
 
     await waitFor(() => {
-      expect(screen.getByText("1,234,567")).toBeInTheDocument();
+      expect(screen.getByText(/1,234,567/)).toBeInTheDocument();
     });
   });
 
@@ -612,7 +612,8 @@ describe("DashboardPage", () => {
     await user.click(screen.getByRole("button", { name: /edit my video/i }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
 
-    const select = screen.getByLabelText(/category/i) as HTMLSelectElement;
+    const dialog = screen.getByRole("dialog");
+    const select = within(dialog).getByLabelText(/category/i) as HTMLSelectElement;
     const options = Array.from(select.options).map((o) => o.text);
     expect(options).toContain("Education");
     expect(options).toContain("Entertainment");
@@ -640,7 +641,8 @@ describe("DashboardPage", () => {
     await user.click(screen.getByRole("button", { name: /edit my video/i }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
 
-    await user.selectOptions(screen.getByLabelText(/category/i), "3");
+    const dialog = screen.getByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText(/category/i), "3");
 
     await act(async () => {
       await user.click(screen.getByRole("button", { name: /save changes/i }));
@@ -856,6 +858,248 @@ describe("DashboardPage", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Favourites")).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Toolbar: search filter ────────────────────────────────────────────────
+
+  it("renders search input in toolbar", async () => {
+    renderDashboard();
+    await waitFor(() =>
+      expect(screen.getByRole("searchbox", { name: /search videos/i })).toBeInTheDocument()
+    );
+  });
+
+  it("filters videos by search query", async () => {
+    const user = userEvent.setup();
+    const videos = [
+      makeDashboardVideo({ id: "vid-1", title: "Go Tutorial" }),
+      makeDashboardVideo({ id: "vid-2", title: "React Guide" }),
+    ];
+    renderDashboard(makeDashboardRepo(() => Promise.resolve(videos)));
+
+    await waitFor(() => expect(screen.getByText("Go Tutorial")).toBeInTheDocument());
+
+    await user.type(screen.getByRole("searchbox", { name: /search videos/i }), "go");
+
+    await waitFor(() => {
+      expect(screen.getByText("Go Tutorial")).toBeInTheDocument();
+      expect(screen.queryByText("React Guide")).not.toBeInTheDocument();
+    });
+  });
+
+  it("search filter is case-insensitive", async () => {
+    const user = userEvent.setup();
+    const videos = [makeDashboardVideo({ title: "Go Tutorial" })];
+    renderDashboard(makeDashboardRepo(() => Promise.resolve(videos)));
+
+    await waitFor(() => expect(screen.getByText("Go Tutorial")).toBeInTheDocument());
+
+    await user.type(screen.getByRole("searchbox", { name: /search videos/i }), "GO");
+
+    await waitFor(() => {
+      expect(screen.getByText("Go Tutorial")).toBeInTheDocument();
+    });
+  });
+
+  it("shows 'No videos match' empty state when search yields no results", async () => {
+    const user = userEvent.setup();
+    const videos = [makeDashboardVideo({ title: "Go Tutorial" })];
+    renderDashboard(makeDashboardRepo(() => Promise.resolve(videos)));
+
+    await waitFor(() => expect(screen.getByText("Go Tutorial")).toBeInTheDocument());
+
+    await user.type(
+      screen.getByRole("searchbox", { name: /search videos/i }),
+      "zzznomatch"
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/no videos match your filters/i)).toBeInTheDocument();
+    });
+  });
+
+  // ─── Toolbar: category filter ──────────────────────────────────────────────
+
+  it("renders category filter select in toolbar", async () => {
+    renderDashboard();
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /filter by category/i })).toBeInTheDocument()
+    );
+  });
+
+  it("filters videos by category", async () => {
+    const user = userEvent.setup();
+    const videos = [
+      makeDashboardVideo({ id: "vid-1", title: "Gaming Video", categoryId: 3 }),
+      makeDashboardVideo({ id: "vid-2", title: "Music Video", categoryId: 4 }),
+    ];
+    renderDashboard(makeDashboardRepo(() => Promise.resolve(videos)));
+
+    await waitFor(() => expect(screen.getByText("Gaming Video")).toBeInTheDocument());
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /filter by category/i }),
+      "3"
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Gaming Video")).toBeInTheDocument();
+      expect(screen.queryByText("Music Video")).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Toolbar: reset filters ────────────────────────────────────────────────
+
+  it("renders Reset filters button in toolbar", async () => {
+    renderDashboard();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /reset filters/i })).toBeInTheDocument()
+    );
+  });
+
+  it("Reset filters clears search query", async () => {
+    const user = userEvent.setup();
+    const videos = [makeDashboardVideo({ title: "Go Tutorial" })];
+    renderDashboard(makeDashboardRepo(() => Promise.resolve(videos)));
+
+    await waitFor(() => expect(screen.getByText("Go Tutorial")).toBeInTheDocument());
+
+    const searchInput = screen.getByRole("searchbox", { name: /search videos/i });
+    await user.type(searchInput, "zzz");
+    await user.click(screen.getByRole("button", { name: /reset filters/i }));
+
+    await waitFor(() => {
+      expect((searchInput as HTMLInputElement).value).toBe("");
+      expect(screen.getByText("Go Tutorial")).toBeInTheDocument();
+    });
+  });
+
+  it("Reset filters clears category selection", async () => {
+    const user = userEvent.setup();
+    const videos = [
+      makeDashboardVideo({ id: "vid-1", title: "Gaming Video", categoryId: 3 }),
+      makeDashboardVideo({ id: "vid-2", title: "Music Video", categoryId: 4 }),
+    ];
+    renderDashboard(makeDashboardRepo(() => Promise.resolve(videos)));
+
+    await waitFor(() => expect(screen.getByText("Gaming Video")).toBeInTheDocument());
+
+    const select = screen.getByRole("combobox", { name: /filter by category/i });
+    await user.selectOptions(select, "3");
+    await waitFor(() =>
+      expect(screen.queryByText("Music Video")).not.toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /reset filters/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Gaming Video")).toBeInTheDocument();
+      expect(screen.getByText("Music Video")).toBeInTheDocument();
+    });
+  });
+
+  // ─── Playlist chips ────────────────────────────────────────────────────────
+
+  it("renders playlist chips when playlists exist", async () => {
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([
+        makePlaylist({ id: "pl-1", title: "Favourites" }),
+      ]),
+      getByID: jest.fn().mockResolvedValue({ id: "pl-1", title: "Favourites", ownerUsername: "alice", videos: [] }),
+    });
+    renderDashboard(undefined, undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /favourites/i })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("button", { name: /^all$/i })).toBeInTheDocument();
+  });
+
+  it("does not render playlist chips when user has no playlists", async () => {
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([]),
+      getByID: jest.fn(),
+    });
+    renderDashboard(makeDashboardRepo(() => Promise.resolve([])), undefined, playlistRepo);
+
+    await waitFor(() =>
+      expect(screen.queryByText(/you haven.t uploaded any videos yet/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByRole("button", { name: /^all$/i })).not.toBeInTheDocument();
+  });
+
+  it("filters videos by active playlist chip using videoPlaylistMap", async () => {
+    const video1 = makeDashboardVideo({ id: "vid-1", title: "In Playlist" });
+    const video2 = makeDashboardVideo({ id: "vid-2", title: "Not In Playlist" });
+    const user = userEvent.setup();
+
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([makePlaylist({ id: "pl-1", title: "Favourites" })]),
+      getByID: jest.fn().mockResolvedValue({
+        id: "pl-1",
+        title: "Favourites",
+        ownerUsername: "alice",
+        videos: [{ id: "vid-1", title: "In Playlist", thumbnailUrl: null, position: 1 }],
+      }),
+    });
+
+    renderDashboard(
+      makeDashboardRepo(() => Promise.resolve([video1, video2])),
+      undefined,
+      playlistRepo
+    );
+
+    await waitFor(() => expect(screen.getByText("In Playlist")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /favourites/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /favourites/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("In Playlist")).toBeInTheDocument();
+      expect(screen.queryByText("Not In Playlist")).not.toBeInTheDocument();
+    });
+  });
+
+  it("Reset filters also resets active playlist chip to All", async () => {
+    const user = userEvent.setup();
+    const video1 = makeDashboardVideo({ id: "vid-1", title: "In Playlist" });
+    const video2 = makeDashboardVideo({ id: "vid-2", title: "Not In Playlist" });
+
+    const playlistRepo = makePlaylistRepo({
+      listMine: jest.fn().mockResolvedValue([makePlaylist({ id: "pl-1", title: "Favourites" })]),
+      getByID: jest.fn().mockResolvedValue({
+        id: "pl-1",
+        title: "Favourites",
+        ownerUsername: "alice",
+        videos: [{ id: "vid-1", title: "In Playlist", thumbnailUrl: null, position: 1 }],
+      }),
+    });
+
+    renderDashboard(
+      makeDashboardRepo(() => Promise.resolve([video1, video2])),
+      undefined,
+      playlistRepo
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /favourites/i })).toBeInTheDocument()
+    );
+
+    // activate chip filter
+    await user.click(screen.getByRole("button", { name: /favourites/i }));
+    await waitFor(() =>
+      expect(screen.queryByText("Not In Playlist")).not.toBeInTheDocument()
+    );
+
+    // reset all filters
+    await user.click(screen.getByRole("button", { name: /reset filters/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("In Playlist")).toBeInTheDocument();
+      expect(screen.getByText("Not In Playlist")).toBeInTheDocument();
     });
   });
 });
