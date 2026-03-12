@@ -24,6 +24,8 @@ Architecture
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - HeroSectionComponent from testing/components/pages/hero_section/ provides the
   CTA button locator and style helpers (component layer).
+- Browser lifecycle is managed by the shared framework fixture
+  (testing/frameworks/web/playwright/fixtures.py) via conftest.py.
 - Tests use only semantic methods from the component; no raw Playwright APIs
   in tests.
 """
@@ -33,7 +35,7 @@ import os
 import sys
 
 import pytest
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -45,8 +47,6 @@ from testing.components.pages.hero_section.hero_section_component import (
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-_PAGE_LOAD_TIMEOUT = 30_000  # ms
 
 # Green gradient from globals.css: linear-gradient(90deg, #62c235 0%, #4fa82b 100%)
 # Browsers resolve this to an rgb() form, but the gradient keyword and green
@@ -64,23 +64,8 @@ _EXPECTED_TEXT_COLOR = "rgb(255, 255, 255)"
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Fixtures (browser lifecycle lives in conftest.py)
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="module")
-def config() -> WebConfig:
-    return WebConfig()
-
-
-@pytest.fixture(scope="module")
-def browser_page(config: WebConfig):
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=config.headless, slow_mo=config.slow_mo)
-        page = browser.new_page(viewport={"width": 1280, "height": 720})
-        page.goto(config.home_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="networkidle")
-        yield page
-        browser.close()
 
 
 @pytest.fixture(scope="module")
@@ -98,6 +83,7 @@ def _contains_green_gradient(background_image: str) -> bool:
 
     The browser serialises the CSS gradient either as a hex colour literal or
     as rgb()/rgba(), so we check for the hex digits of the two green stops.
+    Both colour stops must be present to avoid false positives.
     """
     bi = background_image.lower()
     # Direct hex match (some WebKit builds keep the hex)
@@ -105,9 +91,6 @@ def _contains_green_gradient(background_image: str) -> bool:
         return True
     # rgb() serialisation: rgb(98, 194, 53) and rgb(79, 168, 43)
     if "rgb(98, 194, 53)" in bi and "rgb(79, 168, 43)" in bi:
-        return True
-    # Partial green tones — at least the primary stop must be recognisable
-    if "98, 194, 53" in bi:
         return True
     return False
 
