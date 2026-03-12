@@ -1,0 +1,343 @@
+/* ─── Workspace: two-column grid ─────────────────────────────────────────────
+   Left  : upload card (fixed-ish, 280–330 px)
+   Right : library area (fluid)
+   Mobile: single column, upload card first (DOM order)
+   ────────────────────────────────────────────────────────────────────────── */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 20px;
+}
+
+@media (max-width: 639px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Upload card ─────────────────────────────────────────────────────────── */
+
+.uploadCard {
+  background: var(--bg-card);
+  border-radius: 16px;
+  border: 1px solid rgba(127, 127, 127, 0.16);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardHeading {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ─── Alert / note banners ───────────────────────────────────────────────── */
+
+.errorAlert {
+  background: rgba(229, 62, 62, 0.08);
+  border: 1px solid rgba(229, 62, 62, 0.3);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #c53030;
+}
+
+.warningNote {
+  background: rgba(236, 153, 8, 0.08);
+  border: 1px solid rgba(236, 153, 8, 0.3);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+/* ─── Form layout ─────────────────────────────────────────────────────────── */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ─── Form controls ───────────────────────────────────────────────────────── */
+
+.formControl {
+  background: var(--bg-page);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.formControl:focus {
+  box-shadow: 0 0 0 3px rgba(109, 64, 203, 0.1);
+  border-color: var(--accent-logo);
+}
+
+.formControl:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Select: custom chevron via SVG data URI */
+.selectControl {
+  background: var(--bg-page);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 8px 36px 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+}
+
+.selectControl:focus {
+  box-shadow: 0 0 0 3px rgba(109, 64, 203, 0.1);
+  border-color: var(--accent-logo);
+}
+
+.selectControl:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Textarea modifier */
+.textareaModifier {
+  resize: none;
+  min-height: 76px;
+}
+
+/* File input */
+.fileInput {
+  font-size: 13px;
+  color: var(--text-secondary);
+  width: 100%;
+  cursor: pointer;
+}
+
+.fileInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hint / helper text */
+.tiny {
+  font-size: 12px;
+  color: var(--text-hint);
+  margin: 0;
+}
+
+/* ─── Progress bar ────────────────────────────────────────────────────────── */
+
+.progressLabel {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-subtle);
+  margin-bottom: 4px;
+}
+
+.progressShell {
+  background: rgba(127, 127, 127, 0.18);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-cta) 0%, var(--accent-cta-end) 100%);
+  transition: width 0.2s ease;
+}
+
+/* ─── CTA submit button ───────────────────────────────────────────────────── */
+
+.btnCta {
+  width: 100%;
+  border-radius: 12px;
+  background: var(--accent-cta);
+  color: var(--text-cta);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 16px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btnCta:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.btnCta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Library area ────────────────────────────────────────────────────────── */
+
+.libraryArea {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ─── Toolbar card ────────────────────────────────────────────────────────── */
+
+.toolbarCard {
+  background: var(--bg-card);
+  border-radius: 16px;
+  border: 1px solid rgba(127, 127, 127, 0.16);
+  box-shadow: var(--shadow-card);
+  padding: 12px 14px;
+}
+
+.toolbarRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbarInput {
+  background: var(--bg-page);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.toolbarInput:focus {
+  box-shadow: 0 0 0 3px rgba(109, 64, 203, 0.1);
+  border-color: var(--accent-logo);
+}
+
+.toolbarSelect {
+  background: var(--bg-page);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 7px 30px 7px 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+  white-space: nowrap;
+}
+
+.toolbarSelect:focus {
+  box-shadow: 0 0 0 3px rgba(109, 64, 203, 0.1);
+}
+
+.toolbarReset {
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border-light);
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.toolbarReset:hover {
+  background: var(--bg-page);
+}
+
+/* ─── Section heading row ─────────────────────────────────────────────────── */
+
+.sectionHeadingRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.sortLink {
+  font-size: 13px;
+  color: var(--accent-logo);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sortLink:hover {
+  opacity: 0.75;
+}
+
+/* ─── Video grid ──────────────────────────────────────────────────────────── */
+
+.videoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Library status messages ─────────────────────────────────────────────── */
+
+.libraryMessage {
+  font-size: 14px;
+  color: var(--text-subtle);
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.libraryError {
+  font-size: 14px;
+  color: #c53030;
+  padding: 12px 14px;
+  background: rgba(229, 62, 62, 0.08);
+  border-radius: 10px;
+  border: 1px solid rgba(229, 62, 62, 0.3);
+}
