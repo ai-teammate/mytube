@@ -66,6 +66,77 @@ body[data-theme="dark"] {
   --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
 }
 
+/* ─── AppShell: page-wrap + shell container ──────────────────────────────────── */
+
+.page-wrap {
+  position: relative;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg-page);
+  overflow-x: hidden;
+}
+
+/* Decor icons: absolutely positioned outside the shell, behind it (z-index: 1) */
+.decor {
+  position: absolute;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 1;
+  color: var(--accent-logo);
+}
+
+.decor.play {
+  top: -30px;
+  right: -30px;
+  width: 220px;
+  height: 220px;
+}
+
+.decor.film {
+  top: 50%;
+  left: -30px;
+  transform: translateY(-50%);
+  width: 180px;
+  height: 180px;
+}
+
+.decor.camera {
+  bottom: 100px;
+  left: 10px;
+  width: 160px;
+  height: 160px;
+}
+
+.decor.wave {
+  bottom: -30px;
+  right: 10px;
+  width: 200px;
+  height: 200px;
+}
+
+/* Inner shell: card with rounded corners and shadow, above decor (z-index: 2) */
+.shell {
+  position: relative;
+  z-index: 2;
+  max-width: 1320px;
+  margin: 0 auto;
+  border-radius: 24px;
+  background: var(--bg-content);
+  box-shadow: var(--shadow-main);
+  overflow: hidden;
+}
+
+/* Mobile (below sm = 640 px): full-bleed shell, no padding or rounded corners */
+@media (max-width: 639px) {
+  .page-wrap {
+    padding: 0;
+  }
+
+  .shell {
+    border-radius: 0;
+  }
+}
+
 /* ─── Base typography ────────────────────────────────────────────────────────── */
 html,
 body {

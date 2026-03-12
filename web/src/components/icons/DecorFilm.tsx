@@ -4,8 +4,8 @@ import type { IconBaseProps } from "./types";
 /**
  * DecorFilm — decorative film/atom shape.
  * Uses fill="currentColor". Intended as a background decoration.
- * NOTE: Inner detail shapes (sprocket holes, frame window) use fill="white". This icon is
- * designed for light / white backgrounds only.
+ * Inner detail shapes (sprocket holes, frame window) use fill="var(--bg-content)"
+ * so they remain correct in both light and dark themes.
  * Defaults to aria-hidden="true".
  */
 export default function DecorFilm({
@@ -27,15 +27,15 @@ export default function DecorFilm({
       {/* Film strip outer frame */}
       <rect x="10" y="30" width="100" height="60" rx="6" />
       {/* Sprocket holes — left column */}
-      <rect x="18" y="40" width="12" height="10" rx="2" fill="white" />
-      <rect x="18" y="55" width="12" height="10" rx="2" fill="white" />
-      <rect x="18" y="70" width="12" height="10" rx="2" fill="white" />
+      <rect x="18" y="40" width="12" height="10" rx="2" fill="var(--bg-content)" />
+      <rect x="18" y="55" width="12" height="10" rx="2" fill="var(--bg-content)" />
+      <rect x="18" y="70" width="12" height="10" rx="2" fill="var(--bg-content)" />
       {/* Sprocket holes — right column */}
-      <rect x="90" y="40" width="12" height="10" rx="2" fill="white" />
-      <rect x="90" y="55" width="12" height="10" rx="2" fill="white" />
-      <rect x="90" y="70" width="12" height="10" rx="2" fill="white" />
+      <rect x="90" y="40" width="12" height="10" rx="2" fill="var(--bg-content)" />
+      <rect x="90" y="55" width="12" height="10" rx="2" fill="var(--bg-content)" />
+      <rect x="90" y="70" width="12" height="10" rx="2" fill="var(--bg-content)" />
       {/* Centre frame window */}
-      <rect x="38" y="38" width="44" height="44" rx="4" fill="white" />
+      <rect x="38" y="38" width="44" height="44" rx="4" fill="var(--bg-content)" />
       {/* Atom nucleus */}
       <circle cx="60" cy="60" r="8" />
       {/* Atom orbit rings */}
