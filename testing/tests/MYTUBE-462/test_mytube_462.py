@@ -34,8 +34,8 @@ _EXPECTED_TEXT = "Welcome to MyTube"
 _EXPECTED_FONT_SIZE_PX = 22
 _EXPECTED_FONT_WEIGHT = 700
 
-# The heading is an <h1> inside the login card
-_HEADING_SELECTOR = "h1"
+# The heading is an <h1> inside the login card (scoped to auth-card container)
+_HEADING_SELECTOR = ".auth-card h1"
 
 
 @pytest.fixture(scope="module")
@@ -63,12 +63,8 @@ class TestAuthPageHeading:
     def test_heading_text(self, login_page_fixture: Page) -> None:
         """The main heading on the login page must read 'Welcome to MyTube'."""
         page = login_page_fixture
-        text: str = page.evaluate(
-            f"""() => {{
-                const el = document.querySelector('{_HEADING_SELECTOR}');
-                return el ? (el.innerText || el.textContent || '').trim() : '';
-            }}"""
-        )
+        locator = page.locator(_HEADING_SELECTOR)
+        text: str = locator.inner_text()
         assert text == _EXPECTED_TEXT, (
             f"Heading text mismatch. Expected: '{_EXPECTED_TEXT}', Got: '{text}'"
         )
@@ -76,12 +72,8 @@ class TestAuthPageHeading:
     def test_heading_font_size(self, login_page_fixture: Page) -> None:
         """The heading's computed font-size must be exactly 22px."""
         page = login_page_fixture
-        raw_font_size: str = page.evaluate(
-            f"""() => {{
-                const el = document.querySelector('{_HEADING_SELECTOR}');
-                return el ? window.getComputedStyle(el).fontSize : '';
-            }}"""
-        )
+        locator = page.locator(_HEADING_SELECTOR)
+        raw_font_size: str = locator.evaluate("el => window.getComputedStyle(el).fontSize")
         assert raw_font_size, (
             f"Could not read computed font-size for selector '{_HEADING_SELECTOR}'. "
             "The heading element may not be present in the DOM."
@@ -96,12 +88,8 @@ class TestAuthPageHeading:
     def test_heading_font_weight(self, login_page_fixture: Page) -> None:
         """The heading's computed font-weight must be 700 (bold)."""
         page = login_page_fixture
-        raw_font_weight: str = page.evaluate(
-            f"""() => {{
-                const el = document.querySelector('{_HEADING_SELECTOR}');
-                return el ? window.getComputedStyle(el).fontWeight : '';
-            }}"""
-        )
+        locator = page.locator(_HEADING_SELECTOR)
+        raw_font_weight: str = locator.evaluate("el => window.getComputedStyle(el).fontWeight")
         assert raw_font_weight, (
             f"Could not read computed font-weight for selector '{_HEADING_SELECTOR}'. "
             "The heading element may not be present in the DOM."
