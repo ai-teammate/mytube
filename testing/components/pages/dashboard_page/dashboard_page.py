@@ -291,9 +291,17 @@ class DashboardPage:
         """Return the current value of the search input."""
         return self._page.locator(self._SEARCH_INPUT).input_value()
 
+    def is_reset_button_visible(self) -> bool:
+        """Return True if the 'Reset filters' button is present in the toolbar."""
+        return self._page.locator(self._RESET_FILTERS_BTN).count() > 0
+
     def click_reset_filters(self) -> None:
         """Click the 'Reset filters' ghost button."""
         self._page.locator(self._RESET_FILTERS_BTN).click()
+
+    def wait(self, ms: int) -> None:
+        """Pause execution for *ms* milliseconds (thin wrapper for test synchronisation)."""
+        self._page.wait_for_timeout(ms)
 
     def is_playlist_row_visible(self, timeout: int = 5_000) -> bool:
         """Return True if the playlist chip row is visible."""

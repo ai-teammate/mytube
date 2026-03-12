@@ -318,8 +318,7 @@ class TestResetFilters:
             f"Dashboard toolbar (search input) is not visible in {mode} mode. "
             f"URL: {dash.current_url()}"
         )
-        reset_btn = dash._page.locator('button:has-text("Reset filters")')
-        assert reset_btn.count() > 0, (
+        assert dash.is_reset_button_visible(), (
             "'Reset filters' button not found in the toolbar. "
             f"URL: {dash.current_url()}"
         )
@@ -340,7 +339,7 @@ class TestResetFilters:
 
         # Step 3: Click Reset filters
         dash.click_reset_filters()
-        dash._page.wait_for_timeout(400)
+        dash.wait(400)
 
         # Assert: search input is cleared
         value_after_reset = dash.get_search_input_value()
@@ -365,7 +364,7 @@ class TestResetFilters:
 
         # Apply a search term that matches no titles
         dash.fill_search_input(_SEARCH_TERM)
-        dash._page.wait_for_timeout(300)
+        dash.wait(300)
 
         filtered_count = dash.get_video_card_count()
         no_match_shown = dash.is_no_match_message_visible()
@@ -379,7 +378,7 @@ class TestResetFilters:
 
         # Click Reset filters
         dash.click_reset_filters()
-        dash._page.wait_for_timeout(400)
+        dash.wait(400)
 
         restored_count = dash.get_video_card_count()
         assert restored_count == total_count, (
@@ -412,7 +411,7 @@ class TestResetFilters:
 
         # Step 2: Click a non-All playlist chip
         dash.click_playlist_chip_by_name(target_chip)
-        dash._page.wait_for_timeout(300)
+        dash.wait(300)
 
         # Verify it became active
         active_after_click = dash.get_active_chip_text()
@@ -424,7 +423,7 @@ class TestResetFilters:
 
         # Step 3: Click Reset filters
         dash.click_reset_filters()
-        dash._page.wait_for_timeout(400)
+        dash.wait(400)
 
         # Assert: 'All' chip is now active
         assert dash.is_all_chip_active(), (
@@ -460,11 +459,11 @@ class TestResetFilters:
 
         # Apply playlist filter
         dash.click_playlist_chip_by_name(non_all_chips[0])
-        dash._page.wait_for_timeout(300)
+        dash.wait(300)
 
         # Click Reset
         dash.click_reset_filters()
-        dash._page.wait_for_timeout(400)
+        dash.wait(400)
 
         restored_count = dash.get_video_card_count()
         assert restored_count == total_count, (
