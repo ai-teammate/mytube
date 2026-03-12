@@ -17,11 +17,7 @@ export const metadata: Metadata = {
   description: "Personal video platform",
 };
 
-/**
- * Blocking inline script that reads the user's theme preference from
- * localStorage and applies it to <body> before first paint, preventing
- * a flash of unstyled content (FOUC) when dark mode is active.
- */
+/** Root layout — wraps every page with providers, fonts, and theme initialisation. */
 export default function RootLayout({
   children,
 }: Readonly<{

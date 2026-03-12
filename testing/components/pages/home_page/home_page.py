@@ -255,4 +255,45 @@ class HomePage:
         import re
         self._page.wait_for_url(re.compile(r"/v/[^/]+"), timeout=timeout)
 
+    # ------------------------------------------------------------------
+    # Hero CTA — Browse Library
+    # ------------------------------------------------------------------
 
+    _BROWSE_LIBRARY_BUTTON = (
+        "button:has-text('Browse Library'), a:has-text('Browse Library')"
+    )
+    _VIDEO_GRID_SECTION = (
+        "section[aria-labelledby='recently-uploaded-heading'], "
+        "section[aria-labelledby='most-viewed-heading'], "
+        "[id='video-grid'], "
+        "[data-testid='video-grid']"
+    )
+
+    def browse_library_button(self):
+        """Return a locator for the 'Browse Library' hero CTA button."""
+        return self._page.locator(self._BROWSE_LIBRARY_BUTTON)
+
+    def video_grid_section(self):
+        """Return a locator for the video grid / discovery section."""
+        return self._page.locator(self._VIDEO_GRID_SECTION)
+
+    def scroll_to_top(self) -> None:
+        """Scroll the page back to the top and briefly wait for the animation."""
+        self._page.evaluate("window.scrollTo(0, 0)")
+        self._page.wait_for_timeout(300)
+
+    def current_scroll_y(self) -> int:
+        """Return the current vertical scroll position in pixels."""
+        return self._page.evaluate("window.scrollY")
+
+    def viewport_height(self) -> int:
+        """Return the current viewport height in pixels."""
+        return self._page.evaluate("window.innerHeight")
+
+    def click_browse_library(self) -> None:
+        """Click the first 'Browse Library' button in the hero section."""
+        self.browse_library_button().first.click()
+
+    def wait_for_scroll_animation(self, ms: int = 1_500) -> None:
+        """Wait *ms* milliseconds for a smooth-scroll animation to complete."""
+        self._page.wait_for_timeout(ms)
