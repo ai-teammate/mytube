@@ -27,8 +27,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
 
   /**
-   * On mount (client-only): read the persisted preference from localStorage
-   * and apply it to document.body via the data-theme attribute.
+   * On mount (client-only): read the persisted preference from localStorage.
    * Using useEffect ensures this runs only on the client, keeping the
    * component SSR-safe (no window/localStorage access during server render).
    */
@@ -36,16 +35,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
     const initial: Theme = stored === "dark" ? "dark" : "light";
     setTheme(initial);
-    document.body.setAttribute("data-theme", initial);
   }, []);
 
+  /** Apply data-theme and persist whenever theme changes. */
+  useEffect(() => {
+    document.body.setAttribute("data-theme", theme);
+    localStorage.setItem(STORAGE_KEY, theme);
+  }, [theme]);
+
   const toggleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const next: Theme = prev === "light" ? "dark" : "light";
-      document.body.setAttribute("data-theme", next);
-      localStorage.setItem(STORAGE_KEY, next);
-      return next;
-    });
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
   }, []);
 
   return (
