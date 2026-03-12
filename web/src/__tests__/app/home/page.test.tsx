@@ -181,4 +181,42 @@ describe("HomePage", () => {
       expect(getPopular).toHaveBeenCalledWith(20);
     });
   });
+
+  // ─── Hero section ─────────────────────────────────────────────────────────
+
+  it("renders the hero headline", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    render(<HomePage repository={repo} />);
+    expect(
+      screen.getByRole("heading", { level: 1, name: /mytube: personal video portal/i })
+    ).toBeInTheDocument();
+  });
+
+  it("renders all three feature pills", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    render(<HomePage repository={repo} />);
+    expect(screen.getByText("Upload & Share")).toBeInTheDocument();
+    expect(screen.getByText("HLS Streaming")).toBeInTheDocument();
+    expect(screen.getByText("Playlists & Discovery")).toBeInTheDocument();
+  });
+
+  it("renders the hero sub-text paragraph", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    render(<HomePage repository={repo} />);
+    expect(
+      screen.getByText(/your personal space to upload, stream, and discover videos/i)
+    ).toBeInTheDocument();
+  });
 });

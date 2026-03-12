@@ -7,6 +7,9 @@ import VideoCard from "@/components/VideoCard";
 
 const defaultRepository: DiscoveryRepository = new ApiDiscoveryRepository();
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+const HERO_PILLS = ["Upload & Share", "HLS Streaming", "Playlists & Discovery"] as const;
+
 interface HomePageProps {
   repository?: DiscoveryRepository;
 }
@@ -46,6 +49,47 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Hero section */}
+      <section aria-label="Hero" style={{ marginBottom: "3rem", textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+          {HERO_PILLS.map((label) => (
+            <span
+              key={label}
+              style={{
+                backgroundColor: "var(--accent-pill-bg)",
+                color: "var(--text-pill)",
+                padding: "0.25rem 0.75rem",
+                borderRadius: "9999px",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+              }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        <h1
+          style={{
+            fontSize: "clamp(1.75rem, 5vw, 3.5rem)",
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            margin: "0 auto 1rem",
+          }}
+        >
+          MYTUBE: personal video portal
+        </h1>
+        <p
+          style={{
+            color: "var(--text-secondary)",
+            maxWidth: "62ch",
+            margin: "0 auto",
+            lineHeight: 1.6,
+          }}
+        >
+          Your personal space to upload, stream, and discover videos — powered by HLS adaptive streaming and Google Cloud.
+        </p>
+      </section>
+
       {loading && (
         <p className="text-gray-500 text-center py-16">Loading…</p>
       )}
