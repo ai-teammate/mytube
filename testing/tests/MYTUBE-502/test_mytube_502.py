@@ -70,7 +70,6 @@ Architecture
 from __future__ import annotations
 
 import os
-import re
 import sys
 
 import pytest
@@ -80,6 +79,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
 from testing.components.pages.login_page.login_page import LoginPage
+from testing.components.pages.site_header.site_header import SiteHeader
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -88,20 +88,6 @@ from testing.components.pages.login_page.login_page import LoginPage
 _PAGE_LOAD_TIMEOUT = 30_000   # ms
 _NAVIGATION_TIMEOUT = 20_000  # ms — max time to wait for post-login redirect
 _AUTH_SETTLE_TIMEOUT = 10_000  # ms — max wait for avatar to appear after login
-
-# Selector: the avatar span rendered by SiteHeader.tsx inside the header
-# utility area when the user is authenticated.
-# It carries `aria-hidden="true"`, `rounded-full`, and is the only span
-# containing a single letter directly inside the <header> button that opens
-# the account menu.
-_AVATAR_SELECTOR = "header button span.rounded-full"
-
-# Regex matching any known purple hex stop used in --gradient-hero.
-# Light mode: #6d40cb  Dark mode: #9370db
-_PURPLE_HEX_RE = re.compile(r"#(6d40cb|9370db|[56789a-f][0-9a-f]{4}[89a-f][0-9a-f])", re.IGNORECASE)
-
-# Green colour stop used in both light and dark --gradient-hero.
-_GREEN_HEX = "#62c235"
 
 
 # ---------------------------------------------------------------------------
@@ -157,61 +143,11 @@ def authenticated_page(browser: Browser, web_config: WebConfig) -> Page:
     login_page.wait_for_navigation_to(web_config.home_url(), timeout=_NAVIGATION_TIMEOUT)
 
     # Wait until the avatar button appears in the header, confirming auth state.
-    pg.wait_for_selector(_AVATAR_SELECTOR, timeout=_AUTH_SETTLE_TIMEOUT)
+    header = SiteHeader(pg)
+    header.avatar_wait(timeout=_AUTH_SETTLE_TIMEOUT)
 
     yield pg
     context.close()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _avatar_css(page: Page) -> dict[str, str]:
-    """Return computed CSS properties of the avatar span as a dict."""
-    return page.evaluate(
-        """(sel) => {
-            const el = document.querySelector(sel);
-            if (!el) return {};
-            const s = window.getComputedStyle(el);
-            return {
-                borderRadius: s.borderRadius,
-                backgroundImage: s.backgroundImage,
-                background: s.background,
-            };
-        }""",
-        _AVATAR_SELECTOR,
-    )
-
-
-def _avatar_text(page: Page) -> str:
-    """Return the trimmed text content of the avatar span."""
-    el = page.query_selector(_AVATAR_SELECTOR)
-    if el is None:
-        return ""
-    return (el.text_content() or "").strip()
-
-
-def _contains_green(css_value: str) -> bool:
-    """Return True if *css_value* contains the green colour stop #62c235 in any form."""
-    # Browsers may convert hex → rgb; compare both forms.
-    return (
-        "62c235" in css_value.lower()
-        or "rgb(98, 194, 53)" in css_value
-    )
-
-
-def _contains_purple(css_value: str) -> bool:
-    """Return True if *css_value* contains any known purple colour stop."""
-    lower = css_value.lower()
-    # Hex forms
-    if "6d40cb" in lower or "9370db" in lower:
-        return True
-    # RGB forms: rgb(109, 64, 203)  or  rgb(147, 112, 219)
-    if "rgb(109, 64, 203)" in lower or "rgb(147, 112, 219)" in lower:
-        return True
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -228,15 +164,11 @@ class TestUserAvatarStyling:
         Expected: a rounded-full <span> exists inside a <header> <button> and
         is visible after the user has logged in.
         """
-        avatar = authenticated_page.query_selector(_AVATAR_SELECTOR)
-        assert avatar is not None, (
-            f"Avatar span ({_AVATAR_SELECTOR!r}) not found in the DOM after login. "
+        header = SiteHeader(authenticated_page)
+        assert header.avatar_is_visible(), (
+            f"Avatar span is not visible in the header after login. "
             f"The user may not be authenticated, or the header may not have rendered "
             f"the avatar button yet. "
-            f"Current URL: {authenticated_page.url!r}"
-        )
-        assert avatar.is_visible(), (
-            f"Avatar span ({_AVATAR_SELECTOR!r}) is present in the DOM but not visible. "
             f"Current URL: {authenticated_page.url!r}"
         )
 
@@ -246,9 +178,10 @@ class TestUserAvatarStyling:
         Expected: computed border-radius resolves to '50%' (Tailwind's
         rounded-full class) or equivalent pixel value matching a perfect circle.
         """
-        css = _avatar_css(authenticated_page)
+        header = SiteHeader(authenticated_page)
+        css = header.avatar_css()
         assert css, (
-            f"Could not read computed CSS from avatar span ({_AVATAR_SELECTOR!r}). "
+            f"Could not read computed CSS from avatar span. "
             f"Element may not be in the DOM. Current URL: {authenticated_page.url!r}"
         )
         border_radius = css.get("borderRadius", "")
@@ -278,7 +211,8 @@ class TestUserAvatarStyling:
         Expected: the computed background-image contains 'linear-gradient' with
         both green (#62c235) and purple (#6d40cb / #9370db) colour stops.
         """
-        css = _avatar_css(authenticated_page)
+        header = SiteHeader(authenticated_page)
+        css = header.avatar_css()
         bg_image = css.get("backgroundImage", "") or css.get("background", "")
 
         assert "linear-gradient" in bg_image.lower(), (
@@ -289,13 +223,13 @@ class TestUserAvatarStyling:
             f"Full computed CSS: {css!r}."
         )
 
-        assert _contains_green(bg_image), (
+        assert SiteHeader.avatar_contains_green(bg_image), (
             f"Expected the avatar gradient to contain green (#62c235 / rgb(98,194,53)), "
             f"but it was not found in: {bg_image!r}. "
             f"Check globals.css --gradient-hero definition."
         )
 
-        assert _contains_purple(bg_image), (
+        assert SiteHeader.avatar_contains_purple(bg_image), (
             f"Expected the avatar gradient to contain a purple colour stop "
             f"(#6d40cb / #9370db or their rgb equivalents), "
             f"but none were found in: {bg_image!r}. "
@@ -309,7 +243,8 @@ class TestUserAvatarStyling:
         character and is uppercase.  It represents the first character of the
         authenticated user's display name.
         """
-        letter = _avatar_text(authenticated_page)
+        header = SiteHeader(authenticated_page)
+        letter = header.avatar_text()
         assert len(letter) == 1, (
             f"Expected the avatar to display exactly one initial letter, "
             f"but got: {letter!r} (length {len(letter)}). "

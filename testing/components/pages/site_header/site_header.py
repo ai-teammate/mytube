@@ -84,3 +84,72 @@ class SiteHeader:
         """
         locator = self._page.locator(self._SIGN_IN_LINK_SELECTOR)
         return locator.count() > 0 and locator.first.is_visible()
+
+    # ------------------------------------------------------------------
+    # Avatar (authenticated user) helpers
+    # ------------------------------------------------------------------
+
+    # The avatar span rendered by SiteHeader.tsx inside the header utility
+    # area when the user is authenticated.  It carries ``rounded-full`` and
+    # is the only span containing a single letter directly inside the
+    # ``<header>`` button that opens the account menu.
+    _AVATAR_SELECTOR = "header button span.rounded-full"
+
+    # Green colour stop used in both light and dark --gradient-hero.
+    _AVATAR_GREEN_HEX = "#62c235"
+
+    def avatar_wait(self, timeout: float = 10_000) -> None:
+        """Wait until the avatar span appears in the header (confirms auth state)."""
+        self._page.wait_for_selector(self._AVATAR_SELECTOR, timeout=timeout)
+
+    def avatar_is_visible(self) -> bool:
+        """Return True if the avatar span is present and visible in the header."""
+        locator = self._page.locator(self._AVATAR_SELECTOR)
+        return locator.count() > 0 and locator.first.is_visible()
+
+    def avatar_css(self) -> dict[str, str]:
+        """Return computed CSS properties of the avatar span as a dict.
+
+        Keys: ``borderRadius``, ``backgroundImage``, ``background``.
+        Returns an empty dict when the element is not in the DOM.
+        """
+        return self._page.evaluate(
+            """(sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return {};
+                const s = window.getComputedStyle(el);
+                return {
+                    borderRadius: s.borderRadius,
+                    backgroundImage: s.backgroundImage,
+                    background: s.background,
+                };
+            }""",
+            self._AVATAR_SELECTOR,
+        )
+
+    def avatar_text(self) -> str:
+        """Return the trimmed text content of the avatar span."""
+        el = self._page.query_selector(self._AVATAR_SELECTOR)
+        if el is None:
+            return ""
+        return (el.text_content() or "").strip()
+
+    @staticmethod
+    def avatar_contains_green(css_value: str) -> bool:
+        """Return True if *css_value* contains the green colour stop #62c235."""
+        # Browsers may convert hex → rgb; compare both forms.
+        return (
+            "62c235" in css_value.lower()
+            or "rgb(98, 194, 53)" in css_value
+        )
+
+    @staticmethod
+    def avatar_contains_purple(css_value: str) -> bool:
+        """Return True if *css_value* contains any known purple colour stop."""
+        lower = css_value.lower()
+        if "6d40cb" in lower or "9370db" in lower:
+            return True
+        # RGB forms: rgb(109, 64, 203)  or  rgb(147, 112, 219)
+        if "rgb(109, 64, 203)" in lower or "rgb(147, 112, 219)" in lower:
+            return True
+        return False
