@@ -77,15 +77,6 @@ from testing.components.pages.visual_panel_page.visual_panel_page import VisualP
 _PAGE_LOAD_TIMEOUT = 30_000   # ms
 _CONTENT_LOAD_TIMEOUT = 15_000  # ms — wait for video data to arrive
 
-# The runtime thumbnail image rendered by HeroSection when thumbnailUrl is set.
-_THUMBNAIL_IMG_SELECTOR = "img[alt='Video preview']"
-
-# The placeholder div rendered by HeroSection when no thumbnailUrl is available.
-_CANVAS_PLACEHOLDER_SELECTOR = "[data-testid='canvas-placeholder']"
-
-# The visual canvas wrapper (CSS module class contains 'visualCanvas').
-_VISUAL_CANVAS_SELECTOR = "[class*='visualCanvas']"
-
 # Fixture HTML that simulates the expected post-fallback state: the visual
 # canvas shows the runtime thumbnail (img), NOT the placeholder.
 _FIXTURE_HTML = """\
@@ -246,19 +237,19 @@ class TestMytube534VisualPanelThumbnailFallback:
                     page.goto(fixture_url, timeout=_PAGE_LOAD_TIMEOUT)
                     page.wait_for_load_state("domcontentloaded")
 
+                    panel = VisualPanelPage(page)
+
                     # The img element must be visible — thumbnail fallback active.
-                    img = page.locator(_THUMBNAIL_IMG_SELECTOR)
-                    expect(img).to_be_visible(timeout=5_000)
+                    expect(panel.thumbnail_image).to_be_visible(timeout=5_000)
 
                     # The placeholder must NOT be present.
-                    placeholder = page.locator(_CANVAS_PLACEHOLDER_SELECTOR)
-                    assert placeholder.count() == 0, (
+                    assert panel.placeholder.count() == 0, (
                         "canvas-placeholder found in the visual canvas — "
                         "expected the img thumbnail to be shown instead."
                     )
 
                     # The img must have a non-empty src attribute.
-                    src = img.first.get_attribute("src") or ""
+                    src = panel.thumbnail_image.first.get_attribute("src") or ""
                     assert src.strip(), (
                         "img[alt='Video preview'] has an empty src attribute — "
                         "the thumbnail URL was not applied to the canvas image."
@@ -312,17 +303,18 @@ class TestMytube534VisualPanelThumbnailFallback:
 
                 # ── Step 2: Inspect .visual-canvas area within .visual-panel ──
 
+                panel = VisualPanelPage(page)
+
                 # The visual canvas wrapper uses a CSS-module class
                 # (HeroSection_visualCanvas__<hash>); match by substring.
-                canvas = page.locator(_VISUAL_CANVAS_SELECTOR).first
+                canvas = panel.visual_canvas.first
                 assert canvas.count() > 0 or canvas.is_visible(timeout=5_000), (
-                    "No visual canvas element found on the homepage "
-                    f"(selector: {_VISUAL_CANVAS_SELECTOR!r}). "
+                    "No visual canvas element found on the homepage. "
                     "The hero section visual panel may not be rendered."
                 )
 
                 # The runtime thumbnail img must be visible.
-                img = page.locator(_THUMBNAIL_IMG_SELECTOR)
+                img = panel.thumbnail_image
                 assert img.count() > 0, (
                     "img[alt='Video preview'] not found in the visual panel. "
                     "Expected: visual canvas shows the first video thumbnail "
@@ -335,7 +327,7 @@ class TestMytube534VisualPanelThumbnailFallback:
 
                 # The canvas-placeholder must NOT be visible (would indicate
                 # no thumbnailUrl — i.e. the fallback is not working).
-                placeholder = page.locator(_CANVAS_PLACEHOLDER_SELECTOR)
+                placeholder = panel.placeholder
                 assert placeholder.count() == 0 or not placeholder.first.is_visible(), (
                     "canvas-placeholder is visible in the visual panel. "
                     "Expected: the panel shows a video thumbnail "
