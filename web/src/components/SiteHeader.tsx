@@ -4,11 +4,14 @@ import { useState, useEffect, useRef, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
+import { LogoIcon, SunIcon, MoonIcon } from "@/components/icons";
 
 /**
- * SiteHeader renders the global site header with a search bar and auth-aware navigation.
- * - Unauthenticated: shows a "Sign in" button.
- * - Authenticated: shows a user menu with links to Upload, My Videos, Account Settings, and Sign out.
+ * SiteHeader renders the global site header with branded logo, nav links,
+ * theme toggle, search bar, and auth-aware navigation.
+ * - Unauthenticated: shows nav links (My Videos redirects to login), login button.
+ * - Authenticated: shows avatar with dropdown (Upload, My Videos, Account Settings, Sign out).
  */
 export default function SiteHeader() {
   const [query, setQuery] = useState("");
@@ -16,6 +19,7 @@ export default function SiteHeader() {
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { user, loading, signOut, authError } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -56,13 +60,59 @@ export default function SiteHeader() {
   }
 
   const displayName = user?.displayName || user?.email || "Account";
+  // Unauthenticated users clicking "My Videos" are redirected to login with ?next param
+  const myVideosHref = user ? "/dashboard" : "/login?next=/dashboard";
 
   return (
-    <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4">
-      <Link href="/" className="text-xl font-bold text-red-600 shrink-0">
-        mytube
+    <header
+      style={{
+        background: "var(--bg-header)",
+        borderBottom: "1px solid rgba(127,127,127,0.16)",
+      }}
+      className="min-h-[88px] px-10 py-4 flex items-center gap-6"
+    >
+      {/* Branded logo: SVG icon + text block */}
+      <Link href="/" className="flex items-center gap-2 shrink-0">
+        <LogoIcon
+          className="w-11 h-11"
+          style={{ color: "var(--accent-logo)" }}
+        />
+        <div className="flex flex-col leading-none gap-0.5">
+          <span
+            className="text-[22px] font-bold leading-none"
+            style={{ color: "var(--accent-logo)" }}
+          >
+            MYTUBE
+          </span>
+          {/* Logo subtitle uses var(--text-subtle) per WCAG AA — see MYTUBE-475 */}
+          <span
+            className="text-[12px] uppercase tracking-wider leading-none"
+            style={{ color: "var(--text-subtle)" }}
+          >
+            Personal Video Portal
+          </span>
+        </div>
       </Link>
 
+      {/* Primary nav links — visible for all users */}
+      <nav aria-label="Primary navigation" className="hidden sm:flex items-center gap-6">
+        <Link
+          href="/"
+          className="text-base transition-colors hover:underline"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          Home
+        </Link>
+        <Link
+          href={myVideosHref}
+          className="text-base transition-colors hover:underline"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          My Videos
+        </Link>
+      </nav>
+
+      {/* Search form — pill shape with purple focus accent */}
       <form
         onSubmit={handleSubmit}
         className="flex flex-1 max-w-xl"
@@ -75,7 +125,7 @@ export default function SiteHeader() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search videos…"
           aria-label="Search query"
-          className="flex-1 border border-gray-300 rounded-l-full px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+          className="flex-1 border border-gray-300 rounded-l-full px-4 py-2 text-sm focus:outline-none focus:border-[color:var(--accent-logo)]"
         />
         <button
           type="submit"
@@ -86,83 +136,117 @@ export default function SiteHeader() {
         </button>
       </form>
 
-      <nav aria-label="User navigation" className="ml-auto shrink-0">
-        {loading ? null : authError ? (
-          <span
-            role="alert"
-            className="text-sm font-medium text-red-600"
-          >
-            Authentication services are currently unavailable
-          </span>
-        ) : user ? (
-          <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => setMenuOpen((prev) => !prev)}
-              aria-haspopup="true"
-              aria-expanded={menuOpen}
-              aria-label="User menu"
-              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 rounded-full px-3 py-1.5 border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              <span
-                className="h-7 w-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold select-none"
-                aria-hidden="true"
-              >
-                {displayName[0].toUpperCase()}
-              </span>
-              <span className="hidden sm:inline max-w-[120px] truncate">{displayName}</span>
-            </button>
+      {/* Utility area: theme toggle + auth section */}
+      <div className="ml-auto flex items-center gap-3 shrink-0">
+        {/* Theme toggle — transparent ghost, focus ring uses accent-logo (see MYTUBE-473) */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          className="w-10 h-10 rounded-full flex items-center justify-center bg-transparent transition-colors hover:bg-[color:var(--bg-card)] focus-visible:outline-2"
+          style={{ outlineColor: "var(--accent-logo)" }}
+        >
+          {theme === "light" ? (
+            <MoonIcon className="w-5 h-5" style={{ color: "var(--text-secondary)" }} />
+          ) : (
+            <SunIcon className="w-5 h-5" style={{ color: "var(--text-secondary)" }} />
+          )}
+        </button>
 
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-gray-100 py-1 z-50"
+        {/* Auth section */}
+        <nav aria-label="User navigation" className="shrink-0">
+          {loading ? null : authError ? (
+            <span role="alert" className="text-sm font-medium text-red-600">
+              Authentication services are currently unavailable
+            </span>
+          ) : user ? (
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                aria-label="User menu"
+                className="flex items-center gap-2 text-sm font-medium rounded-full px-3 py-1.5 border transition-colors hover:opacity-90"
+                style={{
+                  borderColor: "var(--border-light)",
+                  color: "var(--text-primary)",
+                }}
               >
-                <Link
-                  href="/upload"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                {/* Avatar: gradient circle (--gradient-hero) with initial letter — see MYTUBE-477 */}
+                <span
+                  className="h-7 w-7 rounded-full text-white flex items-center justify-center text-xs font-bold select-none"
+                  style={{ background: "var(--gradient-hero)" }}
+                  aria-hidden="true"
                 >
-                  Upload
-                </Link>
-                <Link
-                  href="/dashboard"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  {displayName[0].toUpperCase()}
+                </span>
+                <span className="hidden sm:inline max-w-[120px] truncate">{displayName}</span>
+              </button>
+
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-48 rounded-xl shadow-lg border py-1 z-50"
+                  style={{
+                    background: "var(--bg-content)",
+                    borderColor: "var(--border-light)",
+                  }}
                 >
-                  My Videos
-                </Link>
-                <Link
-                  href="/settings"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  Account Settings
-                </Link>
-                <hr className="my-1 border-gray-100" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={handleSignOut}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50"
-                >
-                  Sign out
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <Link
-            href="/login"
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 rounded-full px-4 py-1.5 hover:bg-blue-50 transition-colors"
-          >
-            Sign in
-          </Link>
-        )}
-      </nav>
+                  <Link
+                    href="/upload"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-2 text-sm hover:bg-[color:var(--bg-card)]"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    Upload
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-2 text-sm hover:bg-[color:var(--bg-card)]"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    My Videos
+                  </Link>
+                  <Link
+                    href="/settings"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-2 text-sm hover:bg-[color:var(--bg-card)]"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    Account Settings
+                  </Link>
+                  <hr className="my-1" style={{ borderColor: "var(--border-light)" }} />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleSignOut}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-[color:var(--bg-card)]"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Login button: pill shape, branded border/colour, semibold */
+            <Link
+              href="/login"
+              className="text-sm font-semibold rounded-full px-4 py-1.5 border transition-colors hover:opacity-80"
+              style={{
+                borderColor: "var(--accent-login-border)",
+                color: "var(--accent-logo)",
+              }}
+            >
+              Sign in
+            </Link>
+          )}
+        </nav>
+      </div>
     </header>
   );
 }

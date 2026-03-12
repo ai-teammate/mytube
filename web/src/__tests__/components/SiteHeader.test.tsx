@@ -38,6 +38,14 @@ jest.mock("@/context/AuthContext", () => ({
   useAuth: () => ({ user: mockUser, loading: mockLoading, authError: mockAuthError, signOut: mockSignOut }),
 }));
 
+// ─── Mock ThemeContext ────────────────────────────────────────────────────────
+let mockTheme: "light" | "dark" = "light";
+const mockToggleTheme = jest.fn();
+
+jest.mock("@/context/ThemeContext", () => ({
+  useTheme: () => ({ theme: mockTheme, toggleTheme: mockToggleTheme }),
+}));
+
 import SiteHeader from "@/components/SiteHeader";
 
 beforeEach(() => {
@@ -45,6 +53,7 @@ beforeEach(() => {
   mockUser = null;
   mockLoading = false;
   mockAuthError = false;
+  mockTheme = "light";
 });
 
 describe("SiteHeader — search", () => {
@@ -244,5 +253,114 @@ describe("SiteHeader — authenticated", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+});
+
+describe("SiteHeader — branded logo", () => {
+  it("renders a link to / containing brand name MYTUBE", () => {
+    render(<SiteHeader />);
+    const logoLink = screen.getByRole("link", { name: /mytube/i });
+    expect(logoLink).toHaveAttribute("href", "/");
+  });
+
+  it("renders MYTUBE heading text", () => {
+    render(<SiteHeader />);
+    expect(screen.getByText("MYTUBE")).toBeInTheDocument();
+  });
+
+  it("renders the logo subtitle 'Personal Video Portal'", () => {
+    render(<SiteHeader />);
+    expect(screen.getByText(/personal video portal/i)).toBeInTheDocument();
+  });
+
+  it("renders the LogoIcon SVG inside the logo link", () => {
+    const { container } = render(<SiteHeader />);
+    const logoLink = screen.getByRole("link", { name: /mytube/i });
+    expect(logoLink.querySelector("svg")).toBeInTheDocument();
+  });
+});
+
+describe("SiteHeader — nav links", () => {
+  it("renders the Home nav link pointing to /", () => {
+    render(<SiteHeader />);
+    // May have multiple links to "/" (logo + Home); find the one with text "Home"
+    const homeLinks = screen.getAllByRole("link", { name: /^home$/i });
+    expect(homeLinks.length).toBeGreaterThanOrEqual(1);
+    expect(homeLinks[0]).toHaveAttribute("href", "/");
+  });
+
+  it("renders the My Videos nav link when unauthenticated, pointing to login redirect", () => {
+    render(<SiteHeader />);
+    // Nav My Videos (not the dropdown menuitem which only appears after click)
+    const navMyVideos = screen.getByRole("link", { name: /^my videos$/i });
+    expect(navMyVideos).toHaveAttribute("href", "/login?next=/dashboard");
+  });
+
+  it("renders the My Videos nav link when authenticated, pointing to /dashboard", () => {
+    mockUser = { email: "alice@example.com", displayName: "Alice" };
+    render(<SiteHeader />);
+    // The nav link (not the dropdown menuitem)
+    const allMyVideosLinks = screen.getAllByRole("link", { name: /my videos/i });
+    // At least one link (nav) with href /dashboard
+    const navLink = allMyVideosLinks.find((l) => l.getAttribute("href") === "/dashboard");
+    expect(navLink).toBeInTheDocument();
+  });
+});
+
+describe("SiteHeader — theme toggle", () => {
+  it("renders the theme toggle button", () => {
+    render(<SiteHeader />);
+    expect(screen.getByRole("button", { name: /switch to dark mode/i })).toBeInTheDocument();
+  });
+
+  it("shows MoonIcon (switch to dark) when theme is light", () => {
+    mockTheme = "light";
+    const { container } = render(<SiteHeader />);
+    const toggleBtn = screen.getByRole("button", { name: /switch to dark mode/i });
+    expect(toggleBtn.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("shows SunIcon (switch to light) when theme is dark", () => {
+    mockTheme = "dark";
+    render(<SiteHeader />);
+    expect(screen.getByRole("button", { name: /switch to light mode/i })).toBeInTheDocument();
+  });
+
+  it("calls toggleTheme when the theme toggle button is clicked", async () => {
+    const user = userEvent.setup();
+    render(<SiteHeader />);
+    await user.click(screen.getByRole("button", { name: /switch to (dark|light) mode/i }));
+    expect(mockToggleTheme).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SiteHeader — login button styling", () => {
+  it("renders the login button as a link to /login", () => {
+    render(<SiteHeader />);
+    const signInLink = screen.getByRole("link", { name: /sign in/i });
+    expect(signInLink).toHaveAttribute("href", "/login");
+  });
+
+  it("login link has font-semibold class (font-weight 600)", () => {
+    render(<SiteHeader />);
+    const signInLink = screen.getByRole("link", { name: /sign in/i });
+    expect(signInLink.className).toContain("font-semibold");
+  });
+
+  it("login link has rounded-full class (pill shape)", () => {
+    render(<SiteHeader />);
+    const signInLink = screen.getByRole("link", { name: /sign in/i });
+    expect(signInLink.className).toContain("rounded-full");
+  });
+});
+
+describe("SiteHeader — avatar gradient", () => {
+  it("authenticated avatar uses --gradient-hero token", () => {
+    mockUser = { email: "alice@example.com", displayName: "Alice" };
+    render(<SiteHeader />);
+    const menuBtn = screen.getByRole("button", { name: /user menu/i });
+    const avatarSpan = menuBtn.querySelector("span[aria-hidden='true']") as HTMLElement;
+    // JSDOM doesn't compute CSS vars; check raw style attribute
+    expect(avatarSpan?.getAttribute("style")).toContain("var(--gradient-hero)");
   });
 });
