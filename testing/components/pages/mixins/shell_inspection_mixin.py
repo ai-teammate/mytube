@@ -26,3 +26,20 @@ class ShellInspectionMixin:
             }
             return null;
         }""")
+
+    def has_shell_like_styles_excluding_auth_card(self) -> str | None:
+        """Return className of first shell-styled element outside .auth-card, or None.
+
+        The .auth-card element legitimately uses border-radius for its card design.
+        This method skips any element that is a descendant of .auth-card so that
+        only shell-specific layout styles are detected.
+        """
+        return self._page.evaluate("""() => {
+            for (const el of document.querySelectorAll('body *')) {
+                if (el.closest('.auth-card')) continue;
+                const s = window.getComputedStyle(el);
+                if (s.borderRadius === '24px' && s.maxWidth === '1320px')
+                    return el.className || el.tagName;
+            }
+            return null;
+        }""")
