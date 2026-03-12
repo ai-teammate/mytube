@@ -1,0 +1,174 @@
+/* ─── HeroSection layout ─────────────────────────────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 30px;
+  margin-bottom: 3rem;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Left column ─────────────────────────────────────────────────────────── */
+
+.heroContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Pill row */
+.pillRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.pill {
+  background: var(--accent-pill-bg);
+  color: var(--text-pill);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Headline */
+.headline {
+  font-size: clamp(34px, 5.2vw, 58px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0 0 1rem;
+  color: var(--text-primary);
+}
+
+/* Sub-text */
+.subText {
+  color: var(--text-secondary);
+  max-width: 62ch;
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+}
+
+/* CTA buttons row */
+.heroActions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+/* Stat cards row */
+.statCards {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.heroCard {
+  flex: 1;
+  min-width: 110px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  padding: 0.875rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--accent-logo);
+}
+
+.cardLabel {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.cardDesc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ─── Right column: visual panel ─────────────────────────────────────────── */
+
+.visualPanel {
+  background: var(--gradient-hero);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  min-height: 360px;
+}
+
+/* Frosted overlay — light mode default */
+.frostedOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Dark mode frosted overlay */
+:global(body[data-theme="dark"]) .frostedOverlay {
+  background: rgba(15, 15, 17, 0.72);
+}
+
+.visualTitle {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Quality badge pills */
+.qualityBadges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.badgeActive {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--accent-logo);
+  color: #ffffff;
+  border: 1px solid transparent;
+}
+
+/* Thumbnail / canvas area */
+.visualCanvas {
+  flex: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  min-height: 180px;
+}
+
+.canvasPlaceholder {
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-hero);
+  border-radius: 8px;
+  opacity: 0.6;
+}
