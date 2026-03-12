@@ -90,6 +90,35 @@ class RegisterPage:
         return text if text else None
 
     # ------------------------------------------------------------------
+    # Auth-switch link ("Sign in" → /login)
+    # ------------------------------------------------------------------
+
+    _SWITCH_LINK = 'p a[href*="/login"]'
+
+    def get_switch_link_color(self) -> str:
+        """Return the computed color of the switch-to-login link."""
+        return self._page.evaluate(
+            "(sel) => getComputedStyle(document.querySelector(sel)).color",
+            self._SWITCH_LINK,
+        )
+
+    def hover_switch_link(self) -> None:
+        """Hover the switch-to-login link and wait for CSS transitions."""
+        self._page.hover(self._SWITCH_LINK)
+        self._page.wait_for_timeout(300)
+
+    def get_switch_link_text_decoration(self) -> str:
+        """Return the computed textDecorationLine of the switch link."""
+        return self._page.evaluate(
+            "(sel) => getComputedStyle(document.querySelector(sel)).textDecorationLine",
+            self._SWITCH_LINK,
+        )
+
+    def wait_for_switch_link(self, timeout: int = 30_000) -> None:
+        """Block until the switch-to-login link is present in the DOM."""
+        self._page.wait_for_selector(self._SWITCH_LINK, timeout=timeout)
+
+    # ------------------------------------------------------------------
     # Form interactions
     # ------------------------------------------------------------------
 
