@@ -348,4 +348,38 @@ describe("WatchPage", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("renders sidebar with 'Recommendations coming soon' placeholder", async () => {
+    const repo = makeRepo(() => Promise.resolve(makeVideo()));
+
+    renderWatchPage(repo, "vid-1");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/recommendations coming soon/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("renders 'Rate this video' heading from StarRating widget", async () => {
+    const repo = makeRepo(() => Promise.resolve(makeVideo()));
+
+    renderWatchPage(repo, "vid-1");
+
+    await waitFor(() => {
+      expect(screen.getByText("Rate this video")).toBeInTheDocument();
+    });
+  });
+
+  it("renders view count in meta line below title", async () => {
+    const repo = makeRepo(() =>
+      Promise.resolve(makeVideo({ viewCount: 99 }))
+    );
+
+    renderWatchPage(repo, "vid-1");
+
+    await waitFor(() => {
+      expect(screen.getByText(/99 views/i)).toBeInTheDocument();
+    });
+  });
 });
