@@ -569,14 +569,10 @@ class TestCommentItemLiveApp:
         assert parsed is not None, (
             f"Could not parse live comment body color '{color}' as RGB."
         )
-        # --text-primary is either #222222 (light) or #f0f0f0 (dark)
-        # We check it's not transparent/black/white default
+        # --text-primary: #222222 (light) → rgb(34, 34, 34)
+        # --text-primary: #f0f0f0 (dark)  → rgb(240, 240, 240)
         r, g, b = parsed
-        assert (r, g, b) != (0, 0, 0), (
-            f"Live comment body color is pure black (0,0,0), "
-            f"suggesting var(--text-primary) is not resolving from the CSS."
-        )
-        assert (r, g, b) != (255, 255, 255), (
-            f"Live comment body color is pure white (255,255,255), "
-            f"suggesting var(--text-primary) is not resolving from the CSS."
+        assert (r, g, b) in [(34, 34, 34), (240, 240, 240)], (
+            f"Live comment body color '{color}' does not match either light-theme "
+            f"(rgb(34, 34, 34)) or dark-theme (rgb(240, 240, 240)) --text-primary value."
         )
