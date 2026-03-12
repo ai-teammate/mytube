@@ -323,10 +323,18 @@ class TestVideoCardLayout:
         )
 
         aspect = styles["aspectRatio"]
-        # Browsers may report as "16 / 9" or "1.7778" — check for 16 / 9 ratio.
-        assert "16" in aspect and "9" in aspect, (
+        # Browsers may report aspect-ratio as "16 / 9" or a decimal like "1.7778".
+        # Use numeric comparison to avoid false positives like "160 / 90".
+        import re as _re
+        _parts = _re.split(r"\s*/\s*", aspect.strip())
+        try:
+            _ratio = float(_parts[0]) / float(_parts[1]) if len(_parts) == 2 else float(_parts[0])
+            _ratio_ok = abs(_ratio - 16 / 9) < 0.01
+        except (ValueError, ZeroDivisionError):
+            _ratio_ok = False
+        assert _ratio_ok, (
             f"Thumbnail aspect-ratio does not match 16/9 spec.\n"
-            f"  Expected: '16 / 9' (or browser-normalised equivalent)\n"
+            f"  Expected: '16 / 9' (or browser-normalised decimal ~1.7778)\n"
             f"  Actual:   {aspect!r}\n"
             f"  Check '.thumb {{ aspect-ratio: 16 / 9 }}' in VideoCard.module.css."
         )
@@ -369,10 +377,26 @@ class TestVideoCardLayout:
             f"  Check '.thumbLabel {{ color: #fff }}' in VideoCard.module.css."
         )
         # Background is rgba(0,0,0,0.55) — semi-transparent dark.
+        # Browsers may report the alpha as 0.549... due to floating-point precision,
+        # so we accept both the canonical value and any close approximation by
+        # checking the rgb channels match and the alpha is within a small tolerance.
         bg = styles["backgroundColor"]
-        assert bg and bg.lower() != "transparent" and bg != "rgba(0, 0, 0, 0)", (
-            f"HD label background is transparent or unset.\n"
-            f"  Expected: rgba(0, 0, 0, 0.55)  (semi-transparent dark)\n"
+        _EXPECTED_HD_BG = "rgba(0, 0, 0, 0.55)"
+        import re as _re
+        _m = _re.match(r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)", bg or "")
+        _bg_ok = (
+            bg == _EXPECTED_HD_BG
+            or (
+                _m is not None
+                and _m.group(1) == "0"
+                and _m.group(2) == "0"
+                and _m.group(3) == "0"
+                and abs(float(_m.group(4)) - 0.55) < 0.01
+            )
+        )
+        assert _bg_ok, (
+            f"HD label background mismatch.\n"
+            f"  Expected: {_EXPECTED_HD_BG!r}  (semi-transparent dark)\n"
             f"  Actual:   {bg!r}\n"
             f"  Check '.thumbLabel {{ background: rgba(0,0,0,0.55) }}' "
             f"in VideoCard.module.css."
