@@ -47,6 +47,18 @@ describe("StarRating", () => {
     expect(buttons).toHaveLength(5);
   });
 
+  it("renders 'Rate this video' heading", () => {
+    const repo = makeRepo();
+    render(
+      <StarRating
+        videoID="vid-1"
+        repository={repo}
+        getToken={noOpGetToken}
+      />
+    );
+    expect(screen.getByText("Rate this video")).toBeInTheDocument();
+  });
+
   it("shows average rating and count after loading", async () => {
     const repo = makeRepo({
       getSummary: jest.fn().mockResolvedValue({
