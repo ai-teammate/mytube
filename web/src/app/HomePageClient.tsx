@@ -88,6 +88,23 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
         >
           Your personal space to upload, stream, and discover videos — powered by HLS adaptive streaming and Google Cloud.
         </p>
+        <button
+          onClick={() =>
+            document.getElementById("video-grid")?.scrollIntoView({ behavior: "smooth" })
+          }
+          style={{
+            marginTop: "1.5rem",
+            padding: "0.625rem 1.5rem",
+            borderRadius: "9999px",
+            border: "2px solid currentColor",
+            background: "transparent",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: "0.9375rem",
+          }}
+        >
+          Browse Library
+        </button>
       </section>
 
       {loading && (
@@ -103,7 +120,7 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
       {!loading && !error && (
         <>
           {/* Recently Uploaded section */}
-          <section aria-labelledby="recently-uploaded-heading" className="mb-12">
+          <section id="video-grid" aria-labelledby="recently-uploaded-heading" className="mb-12">
             <h2
               id="recently-uploaded-heading"
               className="text-xl font-semibold text-gray-900 mb-4"
