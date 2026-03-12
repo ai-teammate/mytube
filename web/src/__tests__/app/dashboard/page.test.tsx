@@ -864,7 +864,7 @@ describe("DashboardPage", () => {
   // ─── Toolbar: search filter ────────────────────────────────────────────────
 
   it("renders search input in toolbar", async () => {
-    renderDashboard();
+    renderDashboard(makeDashboardRepo(() => Promise.resolve([makeDashboardVideo()])));
     await waitFor(() =>
       expect(screen.getByRole("searchbox", { name: /search videos/i })).toBeInTheDocument()
     );
@@ -922,7 +922,7 @@ describe("DashboardPage", () => {
   // ─── Toolbar: category filter ──────────────────────────────────────────────
 
   it("renders category filter select in toolbar", async () => {
-    renderDashboard();
+    renderDashboard(makeDashboardRepo(() => Promise.resolve([makeDashboardVideo()])));
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: /filter by category/i })).toBeInTheDocument()
     );
@@ -952,7 +952,7 @@ describe("DashboardPage", () => {
   // ─── Toolbar: reset filters ────────────────────────────────────────────────
 
   it("renders Reset filters button in toolbar", async () => {
-    renderDashboard();
+    renderDashboard(makeDashboardRepo(() => Promise.resolve([makeDashboardVideo()])));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /reset filters/i })).toBeInTheDocument()
     );
@@ -1008,7 +1008,7 @@ describe("DashboardPage", () => {
       ]),
       getByID: jest.fn().mockResolvedValue({ id: "pl-1", title: "Favourites", ownerUsername: "alice", videos: [] }),
     });
-    renderDashboard(undefined, undefined, playlistRepo);
+    renderDashboard(makeDashboardRepo(() => Promise.resolve([makeDashboardVideo()])), undefined, playlistRepo);
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /favourites/i })).toBeInTheDocument()

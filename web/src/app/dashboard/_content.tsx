@@ -338,17 +338,7 @@ export function DashboardContent({
     }
   }, [user, loading, fetchVideos, fetchPlaylists]);
 
-  // Return null during auth loading to prevent flash.
-  if (loading) {
-    return null;
-  }
-
-  if (!user) {
-    return null;
-  }
-
-  // ─── Derived state ─────────────────────────────────────────────────────────
-
+  // ─── Derived state — must be before any early return ─────────────────────
   const filteredVideos = useMemo(() => {
     let result = videos;
     if (searchQuery.trim()) {
@@ -365,6 +355,15 @@ export function DashboardContent({
     }
     return result;
   }, [videos, searchQuery, categoryFilter, activePlaylistId, videoPlaylistMap]);
+
+  // Return null during auth loading to prevent flash.
+  if (loading) {
+    return null;
+  }
+
+  if (!user) {
+    return null;
+  }
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -528,7 +527,7 @@ export function DashboardContent({
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">My Videos</h1>
+          <h1 className={styles.sectionHeading}>My Videos</h1>
           <Link
             href="/upload"
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
@@ -597,7 +596,9 @@ export function DashboardContent({
               </div>
             )}
 
-            {/* Toolbar card */}
+            {/* Toolbar card + Playlist chips — only shown when videos exist */}
+            {videos.length > 0 && (
+              <>
             <div className={styles.toolbar}>
               <div className={styles.toolbarGrid}>
                 <input
@@ -653,6 +654,8 @@ export function DashboardContent({
                   </button>
                 ))}
               </div>
+            )}
+              </>
             )}
 
             {/* Loading / empty / grid */}
