@@ -24,9 +24,16 @@ jest.mock("@/context/AuthContext", () => ({
 
 import AppShell from "@/components/AppShell";
 
+const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockPathname = "/";
+  process.env.NEXT_PUBLIC_BASE_PATH = "";
+});
+
+afterAll(() => {
+  process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
 });
 
 describe("AppShell", () => {
@@ -296,5 +303,86 @@ describe("AppShell", () => {
       </AppShell>
     );
     expect(container.querySelectorAll(".decor")).toHaveLength(0);
+  });
+
+  // ── GitHub Pages base path — auth route detection with /mytube prefix ─────────
+
+  describe("GitHub Pages base path (/mytube)", () => {
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_BASE_PATH = "/mytube";
+    });
+
+    it("does NOT render shell on /mytube/login/ (GitHub Pages path)", () => {
+      mockPathname = "/mytube/login/";
+      const { container } = render(
+        <AppShell>
+          <div>Login page</div>
+        </AppShell>
+      );
+      expect(container.querySelector(".shell")).not.toBeInTheDocument();
+      expect(container.querySelector(".page-wrap")).not.toBeInTheDocument();
+    });
+
+    it("does NOT render shell on /mytube/register/ (GitHub Pages path)", () => {
+      mockPathname = "/mytube/register/";
+      const { container } = render(
+        <AppShell>
+          <div>Register page</div>
+        </AppShell>
+      );
+      expect(container.querySelector(".shell")).not.toBeInTheDocument();
+      expect(container.querySelector(".page-wrap")).not.toBeInTheDocument();
+    });
+
+    it("does NOT render decor elements on /mytube/login/", () => {
+      mockPathname = "/mytube/login/";
+      const { container } = render(
+        <AppShell>
+          <div>Login page</div>
+        </AppShell>
+      );
+      expect(container.querySelectorAll(".decor")).toHaveLength(0);
+    });
+
+    it("does NOT render decor elements on /mytube/register/", () => {
+      mockPathname = "/mytube/register/";
+      const { container } = render(
+        <AppShell>
+          <div>Register page</div>
+        </AppShell>
+      );
+      expect(container.querySelectorAll(".decor")).toHaveLength(0);
+    });
+
+    it("still renders children on /mytube/login/", () => {
+      mockPathname = "/mytube/login/";
+      render(
+        <AppShell>
+          <div>Login content</div>
+        </AppShell>
+      );
+      expect(screen.getByText("Login content")).toBeInTheDocument();
+    });
+
+    it("still renders children on /mytube/register/", () => {
+      mockPathname = "/mytube/register/";
+      render(
+        <AppShell>
+          <div>Register content</div>
+        </AppShell>
+      );
+      expect(screen.getByText("Register content")).toBeInTheDocument();
+    });
+
+    it("DOES render shell on /mytube/ (home page under basePath)", () => {
+      mockPathname = "/mytube/";
+      const { container } = render(
+        <AppShell>
+          <div>Home</div>
+        </AppShell>
+      );
+      expect(container.querySelector(".shell")).toBeInTheDocument();
+      expect(container.querySelector(".page-wrap")).toBeInTheDocument();
+    });
   });
 });
