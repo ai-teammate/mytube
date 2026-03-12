@@ -48,6 +48,8 @@ from testing.components.pages.site_header.site_header import SiteHeader
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 _FONT_WEIGHT_SEMIBOLD = 600
+_ACCENT_LOGIN_BORDER = "rgb(161, 137, 219)"  # --accent-login-border (#a189db)
+_ACCENT_LOGO = "rgb(109, 64, 203)"           # --accent-logo (#6d40cb)
 
 
 # ---------------------------------------------------------------------------
@@ -85,12 +87,9 @@ class TestLoginButtonStyling:
 
     def test_login_button_is_visible(self, header: SiteHeader) -> None:
         """Step 1: The login button must be present and visible in the header."""
-        btn = header.login_button()
-        assert btn.count() > 0, (
-            "No login button (a[href='/login']) found in the site header. "
-            "The unauthenticated nav area did not render the login button."
+        assert header.is_login_button_visible(), (
+            "Login button not visible in the site header for unauthenticated user."
         )
-        btn.first.wait_for(state="visible", timeout=5_000)
 
     def test_login_button_has_pill_shape(self, header: SiteHeader) -> None:
         """Step 2a: The button must have a pill shape (border-radius equals half the height)."""
@@ -110,23 +109,17 @@ class TestLoginButtonStyling:
     ) -> None:
         """Step 2b: The button border-color must resolve to var(--accent-login-border)."""
         styles = header.login_button_computed_styles()
-        border_color = styles.get("borderColor", "")
-        # --accent-login-border is #a189db (light) → rgb(161, 137, 219)
-        assert border_color not in ("rgba(0, 0, 0, 0)", "transparent", "", "rgb(0, 0, 0)"), (
-            f"Login button border-color is not the expected accent colour. "
-            f"Actual borderColor='{border_color}'. "
-            "Expected it to resolve to var(--accent-login-border) ≈ rgb(161, 137, 219)."
+        assert styles.get("borderColor") == _ACCENT_LOGIN_BORDER, (
+            f"Expected borderColor={_ACCENT_LOGIN_BORDER!r}, "
+            f"got {styles.get('borderColor')!r}."
         )
 
     def test_login_button_color_uses_accent_logo(self, header: SiteHeader) -> None:
         """Step 2c: The button text color must resolve to var(--accent-logo)."""
         styles = header.login_button_computed_styles()
-        text_color = styles.get("color", "")
-        # --accent-logo is #6d40cb (light) → rgb(109, 64, 203)
-        assert text_color not in ("rgba(0, 0, 0, 0)", "transparent", "", "rgb(0, 0, 0)"), (
-            f"Login button text color is not the expected accent colour. "
-            f"Actual color='{text_color}'. "
-            "Expected it to resolve to var(--accent-logo) ≈ rgb(109, 64, 203)."
+        assert styles.get("color") == _ACCENT_LOGO, (
+            f"Expected color={_ACCENT_LOGO!r}, "
+            f"got {styles.get('color')!r}."
         )
 
     def test_login_button_font_weight_is_semibold(self, header: SiteHeader) -> None:

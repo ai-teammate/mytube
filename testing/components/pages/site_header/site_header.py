@@ -94,12 +94,21 @@ class SiteHeader:
     # which resolves to a path containing "/login/" on deployment.
     _LOGIN_BUTTON_SELECTOR = "header a[href*='/login/']:not([href*='next'])"
 
-    def login_button(self) -> "Locator":
-        """Return the Playwright Locator for the header login button.
+    def _login_button(self) -> "Locator":
+        """Return the Playwright Locator for the header login button (internal).
 
         Only present when the user is *not* authenticated.
         """
         return self._page.locator(self._LOGIN_BUTTON_SELECTOR)
+
+    def is_login_button_visible(self) -> bool:
+        """Return True if the login button is present and visible in the header.
+
+        Parallel to ``is_sign_in_link_visible()``.
+        Only relevant for unauthenticated users.
+        """
+        locator = self._login_button()
+        return locator.count() > 0 and locator.first.is_visible()
 
     def login_button_computed_styles(self) -> dict:
         """Return a dict of computed CSS properties for the login button.
@@ -108,7 +117,7 @@ class SiteHeader:
         that tests can assert branded pill styling without accessing raw
         Playwright APIs.
         """
-        btn = self.login_button().first
+        btn = self._login_button().first
         btn.wait_for(state="visible", timeout=5_000)
         return btn.evaluate(
             """(el) => {
