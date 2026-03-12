@@ -20,7 +20,7 @@ Test Approach
 -------------
 Playwright navigates to the deployed /login/ and /register/ pages and:
   1. Locates the auth-switch link on each page (Login → "Create one";
-     Register → "Sign in").
+     Register → "Sign in") via the LoginPage and RegisterPage components.
   2. Reads the browser-computed ``color`` on the link element and compares it
      against the resolved value of the ``--accent-logo`` CSS custom property
      obtained from the document root — both values come from the live page so
@@ -31,9 +31,8 @@ Playwright navigates to the deployed /login/ and /register/ pages and:
 Architecture
 ------------
 - WebConfig from testing/core/config/web_config.py centralises env var access.
-- CSSGlobalsPage from testing/components/pages/css_globals_page/ provides
-  expected token values from the source stylesheet (used only as documentation
-  here; assertions compare against the live browser-resolved value).
+- LoginPage and RegisterPage page objects encapsulate all selectors and
+  CSS inspection helpers — no raw selectors appear in the test body.
 - Playwright sync API with pytest module-scoped fixtures.
 - No hardcoded URLs or credentials.
 
@@ -55,13 +54,14 @@ from playwright.sync_api import sync_playwright, Page
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.login_page.login_page import LoginPage
+from testing.components.pages.register_page.register_page import RegisterPage
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT = 30_000   # ms
-_HOVER_SETTLE_MS = 300        # ms to wait for CSS transitions after hover
 
 
 # ---------------------------------------------------------------------------
@@ -73,22 +73,6 @@ def _get_resolved_css_var(page: Page, var_name: str) -> str:
     return page.evaluate(
         "(v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim()",
         var_name,
-    )
-
-
-def _get_link_computed_color(page: Page, selector: str) -> str:
-    """Return the computed ``color`` of the element matching *selector*."""
-    return page.evaluate(
-        "(sel) => getComputedStyle(document.querySelector(sel)).color",
-        selector,
-    )
-
-
-def _get_link_text_decoration(page: Page, selector: str) -> str:
-    """Return the computed ``textDecorationLine`` of the element matching *selector*."""
-    return page.evaluate(
-        "(sel) => getComputedStyle(document.querySelector(sel)).textDecorationLine",
-        selector,
     )
 
 
@@ -133,25 +117,22 @@ class TestAuthSwitchLink:
 
     def test_login_switch_link_color(self, browser_page: Page, config: WebConfig) -> None:
         """Step 1 (Login page): The switch link color matches --accent-logo."""
-        browser_page.goto(config.login_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
-        browser_page.wait_for_selector('a[href*="/register"]', timeout=_PAGE_LOAD_TIMEOUT)
+        login_page = LoginPage(browser_page)
+        login_page.navigate(config.login_url())
+        login_page.wait_for_switch_link(timeout=_PAGE_LOAD_TIMEOUT)
 
-        selector = 'a[href*="/register"]'
-
-        # The expected color is the CSS variable resolved by the browser itself.
         expected_accent = _get_resolved_css_var(browser_page, "--accent-logo")
         assert expected_accent, (
             "--accent-logo CSS variable is not set on the document root. "
             "Check that globals.css is loaded correctly."
         )
 
-        actual_color = _get_link_computed_color(browser_page, selector)
+        actual_color = login_page.get_switch_link_color()
 
-        # Normalise expected: if hex, convert to rgb() for comparison.
         if expected_accent.startswith("#"):
             expected_rgb = _hex_to_rgb(expected_accent)
         else:
-            expected_rgb = expected_accent  # already rgb/other format
+            expected_rgb = expected_accent
 
         assert actual_color == expected_rgb, (
             f"Login page 'Create one' link color does not match --accent-logo. "
@@ -161,14 +142,13 @@ class TestAuthSwitchLink:
 
     def test_login_switch_link_hover_underline(self, browser_page: Page, config: WebConfig) -> None:
         """Step 2 (Login page): Hovering the switch link applies underline decoration."""
-        browser_page.goto(config.login_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
-        browser_page.wait_for_selector('a[href*="/register"]', timeout=_PAGE_LOAD_TIMEOUT)
+        login_page = LoginPage(browser_page)
+        login_page.navigate(config.login_url())
+        login_page.wait_for_switch_link(timeout=_PAGE_LOAD_TIMEOUT)
 
-        selector = 'a[href*="/register"]'
-        browser_page.hover(selector)
-        browser_page.wait_for_timeout(_HOVER_SETTLE_MS)
+        login_page.hover_switch_link()
 
-        text_decoration = _get_link_text_decoration(browser_page, selector)
+        text_decoration = login_page.get_switch_link_text_decoration()
 
         assert "underline" in text_decoration, (
             f"Login page 'Create one' link does not show underline on hover. "
@@ -182,10 +162,9 @@ class TestAuthSwitchLink:
 
     def test_register_switch_link_color(self, browser_page: Page, config: WebConfig) -> None:
         """Step 1 (Register page): The switch link color matches --accent-logo."""
-        browser_page.goto(config.register_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
-        browser_page.wait_for_selector('a[href*="/login"]', timeout=_PAGE_LOAD_TIMEOUT)
-
-        selector = 'a[href*="/login"]'
+        register_page = RegisterPage(browser_page)
+        browser_page.goto(config.register_url(), wait_until="domcontentloaded")
+        register_page.wait_for_switch_link(timeout=_PAGE_LOAD_TIMEOUT)
 
         expected_accent = _get_resolved_css_var(browser_page, "--accent-logo")
         assert expected_accent, (
@@ -193,7 +172,7 @@ class TestAuthSwitchLink:
             "Check that globals.css is loaded correctly."
         )
 
-        actual_color = _get_link_computed_color(browser_page, selector)
+        actual_color = register_page.get_switch_link_color()
 
         if expected_accent.startswith("#"):
             expected_rgb = _hex_to_rgb(expected_accent)
@@ -208,17 +187,17 @@ class TestAuthSwitchLink:
 
     def test_register_switch_link_hover_underline(self, browser_page: Page, config: WebConfig) -> None:
         """Step 2 (Register page): Hovering the switch link applies underline decoration."""
-        browser_page.goto(config.register_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
-        browser_page.wait_for_selector('a[href*="/login"]', timeout=_PAGE_LOAD_TIMEOUT)
+        register_page = RegisterPage(browser_page)
+        browser_page.goto(config.register_url(), wait_until="domcontentloaded")
+        register_page.wait_for_switch_link(timeout=_PAGE_LOAD_TIMEOUT)
 
-        selector = 'a[href*="/login"]'
-        browser_page.hover(selector)
-        browser_page.wait_for_timeout(_HOVER_SETTLE_MS)
+        register_page.hover_switch_link()
 
-        text_decoration = _get_link_text_decoration(browser_page, selector)
+        text_decoration = register_page.get_switch_link_text_decoration()
 
         assert "underline" in text_decoration, (
             f"Register page 'Sign in' link does not show underline on hover. "
             f"Computed textDecorationLine after hover: '{text_decoration}'. "
             "The link should carry the Tailwind class 'hover:underline'."
         )
+
