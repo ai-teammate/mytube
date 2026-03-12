@@ -38,14 +38,12 @@ Architecture
 from __future__ import annotations
 
 import os
-import sys
+import re
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import pytest
 from playwright.sync_api import sync_playwright, Page
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -54,64 +52,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 _FIXTURE_PORT = 19433
 _PAGE_LOAD_TIMEOUT = 15_000  # ms
 
+_GLOBALS_CSS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "web", "src", "app", "globals.css"
+)
+
+
+def _load_globals_css() -> str:
+    with open(_GLOBALS_CSS_PATH, encoding="utf-8") as f:
+        css = f.read()
+    # Strip Tailwind import — not needed for fixture and would fail offline
+    css = re.sub(r'@import\s+"tailwindcss"\s*;', "", css)
+    return css
+
+
 # ---------------------------------------------------------------------------
 # Fixture HTML
-# Embeds the relevant rules from globals.css (the @import "tailwindcss" line
-# is omitted — it is not required for this assertion and would fail in an
-# offline fixture server).
+# Loads the actual globals.css (stripping the @import "tailwindcss" line
+# which is not needed for this assertion and would fail in an offline server).
 # ---------------------------------------------------------------------------
 
-_FIXTURE_HTML = """\
+_FIXTURE_HTML = f"""\
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>MYTUBE-433 — body design-token fixture</title>
   <style id="globals-css">
-    /* ─── Light theme design tokens ───────────────────────────────── */
-    :root {
-      --bg-page:    #f8f9fa;
-      --bg-content: #ffffff;
-      --bg-header:  #ffffff;
-      --bg-card:    #f3f4f8;
-
-      --text-primary:   #222222;
-      --text-secondary: #666666;
-      --text-subtle:    #6e6e78;
-      --text-cta:       #ffffff;
-      --text-pill:      #6d40cb;
-
-      --accent-cta:         #62c235;
-      --accent-cta-end:     #62c235;
-      --accent-pill-bg:     #e5daf6;
-      --accent-login-border:#a189db;
-      --accent-logo:        #6d40cb;
-
-      --border-light:  #dcdcdc;
-      --shadow-main:   0 8px 24px rgba(0, 0, 0, 0.06);
-      --shadow-card:   0 8px 20px rgba(0, 0, 0, 0.08);
-
-      --star-color: #ff6666;
-
-      --gradient-hero: linear-gradient(135deg, #6d40cb 0%, #62c235 100%);
-      --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
-    }
-
-    /* ─── Dark theme overrides ─────────────────────────────────────── */
-    body[data-theme="dark"] {
-      --bg-page:    #0f0f11;
-      --text-primary:   #f0f0f0;
-    }
-
-    /* ─── Base typography ──────────────────────────────────────────── */
-    html, body {
-      font-family: "Roboto", "Open Sans", sans-serif;
-    }
-
-    body {
-      background: var(--bg-page);
-      color: var(--text-primary);
-    }
+{_load_globals_css()}
   </style>
 </head>
 <body id="test-body">
