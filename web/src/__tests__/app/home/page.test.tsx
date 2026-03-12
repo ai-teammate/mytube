@@ -18,9 +18,31 @@ jest.mock("next/image", () => ({
     [key: string]: unknown;
   }) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { fill: _fill, ...rest } = props;
+    const { fill: _fill, unoptimized: _unoptimized, ...rest } = props;
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={src} alt={alt} {...rest} />;
+  },
+}));
+
+// ─── Mock next/link ───────────────────────────────────────────────────────────
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: function MockLink({
+    href,
+    children,
+    className,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    className?: string;
+    [key: string]: unknown;
+  }) {
+    return (
+      <a href={href} className={className} {...rest}>
+        {children}
+      </a>
+    );
   },
 }));
 
@@ -264,5 +286,57 @@ describe("HomePage", () => {
       const section = document.getElementById("video-grid");
       expect(section).not.toBeNull();
     });
+  });
+
+  it("renders 'Upload Your First Video' link in the hero", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    render(<HomePage repository={repo} />);
+    const link = screen.getByRole("link", { name: /upload your first video/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/upload");
+  });
+
+  it("passes first recent video thumbnail to the visual panel after load", async () => {
+    const videoWithThumb = { ...makeVideo("v1", "Thumb Video"), thumbnailUrl: "https://cdn.example.com/thumb.jpg" };
+    const repo = makeRepo(
+      () => Promise.resolve([videoWithThumb]),
+      () => Promise.resolve([])
+    );
+
+    render(<HomePage repository={repo} />);
+
+    await waitFor(() => {
+      const img = screen.getByAltText("Video preview");
+      expect(img).toHaveAttribute("src", "https://cdn.example.com/thumb.jpg");
+    });
+  });
+
+  it("shows canvas placeholder in visual panel when no videos have thumbnails", async () => {
+    const repo = makeRepo(
+      () => Promise.resolve([makeVideo("v1", "No Thumb")]),
+      () => Promise.resolve([])
+    );
+
+    render(<HomePage repository={repo} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("canvas-placeholder")).toBeInTheDocument();
+    });
+  });
+
+  it("renders all three stat cards in the hero", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    render(<HomePage repository={repo} />);
+    expect(screen.getByText("100% Private")).toBeInTheDocument();
+    expect(screen.getByText("HLS Quality")).toBeInTheDocument();
+    expect(screen.getByText("Free Forever")).toBeInTheDocument();
   });
 });
