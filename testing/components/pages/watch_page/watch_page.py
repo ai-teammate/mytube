@@ -469,3 +469,32 @@ class WatchPage:
     def has_login_to_rate_prompt(self) -> bool:
         """Return True if the 'Log in to rate this video.' link is visible."""
         return self._page.get_by_text("to rate this video.").count() > 0
+
+    # ------------------------------------------------------------------
+    # Computed style queries (CSS visual attributes)
+    # ------------------------------------------------------------------
+
+    def get_computed_style(self, css_selector: str, css_property: str) -> Optional[str]:
+        """Return the computed value of *css_property* for the first element matching
+        *css_selector*, or None if no element is found.
+
+        The selector is matched using ``document.querySelector`` so CSS Module
+        class names should be supplied as attribute-contains patterns, e.g.
+        ``[class*="player"]``.
+        """
+        return self._page.evaluate(
+            """([sel, prop]) => {
+                const el = document.querySelector(sel);
+                if (!el) return null;
+                return window.getComputedStyle(el)[prop];
+            }""",
+            [css_selector, css_property],
+        )
+
+    def get_player_computed_style(self, css_property: str) -> Optional[str]:
+        """Return the computed value of *css_property* for the .player container."""
+        return self.get_computed_style('[class*="player"]', css_property)
+
+    def get_video_title_computed_style(self, css_property: str) -> Optional[str]:
+        """Return the computed value of *css_property* for the .videoTitle element."""
+        return self.get_computed_style('[class*="videoTitle"]', css_property)
