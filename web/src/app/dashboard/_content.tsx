@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -17,6 +17,8 @@ import type {
 } from "@/domain/dashboard";
 import type { PlaylistRepository, PlaylistSummary } from "@/domain/playlist";
 import { CATEGORIES } from "@/domain/categories";
+import DashboardVideoCard from "@/components/DashboardVideoCard";
+import styles from "./_content.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -42,29 +44,6 @@ interface EditFormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STATUS_DISPLAY_NAMES: Record<DashboardVideo["status"], string> = {
-  ready: "Ready",
-  processing: "Processing",
-  pending: "Pending",
-  failed: "Failed",
-};
-
-/** Returns Tailwind classes for a status badge pill. */
-function statusBadgeClasses(status: DashboardVideo["status"]): string {
-  switch (status) {
-    case "ready":
-      return "bg-green-100 text-green-800";
-    case "processing":
-      return "bg-yellow-100 text-yellow-800";
-    case "pending":
-      return "bg-gray-100 text-gray-700";
-    case "failed":
-      return "bg-red-100 text-red-800";
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
-}
-
 function parseTags(raw: string): string[] {
   return raw
     .split(",")
@@ -74,20 +53,6 @@ function parseTags(raw: string): string[] {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-interface StatusBadgeProps {
-  status: DashboardVideo["status"];
-}
-
-function StatusBadge({ status }: StatusBadgeProps) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadgeClasses(status)}`}
-    >
-      {STATUS_DISPLAY_NAMES[status]}
-    </span>
-  );
-}
 
 interface EditModalProps {
   video: DashboardVideo;
@@ -290,10 +255,16 @@ export function DashboardContent({
   // Returning from upload — show a "processing" banner for the new video.
   const uploadedId = searchParams.get("uploaded");
 
+  // ─── Toolbar filter state ────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  /** videoId → array of playlist IDs it belongs to; built via parallel getByID calls. */
+  const [videoPlaylistMap, setVideoPlaylistMap] = useState<Record<string, string[]>>({});
+
   // ─── Playlist state ─────────────────────────────────────────────────────────
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const [playlistsLoading, setPlaylistsLoading] = useState(false);
-  const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
   const [playlistsError, setPlaylistsError] = useState<string | null>(null);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
@@ -336,6 +307,21 @@ export function DashboardContent({
     try {
       const data = await playlistRepo.listMine(token);
       setPlaylists(data);
+      // Build video→playlist map in parallel for chip filtering (Option A).
+      if (data.length > 0) {
+        const details = await Promise.all(
+          data.map((pl) => playlistRepo.getByID(pl.id).catch(() => null))
+        );
+        const map: Record<string, string[]> = {};
+        for (const detail of details) {
+          if (!detail) continue;
+          for (const video of detail.videos) {
+            if (!map[video.id]) map[video.id] = [];
+            map[video.id].push(detail.id);
+          }
+        }
+        setVideoPlaylistMap(map);
+      }
     } catch (err: unknown) {
       setPlaylistsError(
         err instanceof Error ? err.message : "Failed to load playlists."
@@ -348,15 +334,27 @@ export function DashboardContent({
   useEffect(() => {
     if (user && !loading) {
       fetchVideos();
+      fetchPlaylists();
     }
-  }, [user, loading, fetchVideos]);
+  }, [user, loading, fetchVideos, fetchPlaylists]);
 
-  // Lazy-load playlists — only on first activation of the "My playlists" tab.
-  useEffect(() => {
-    if (activeTab !== "playlists" || playlistsLoaded || !user || loading) return;
-    setPlaylistsLoaded(true);
-    fetchPlaylists();
-  }, [activeTab, playlistsLoaded, user, loading, fetchPlaylists]);
+  // ─── Derived state — must be before any early return ─────────────────────
+  const filteredVideos = useMemo(() => {
+    let result = videos;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((v) => v.title.toLowerCase().includes(q));
+    }
+    if (categoryFilter) {
+      result = result.filter((v) => String(v.categoryId) === categoryFilter);
+    }
+    if (activePlaylistId) {
+      result = result.filter((v) =>
+        (videoPlaylistMap[v.id] ?? []).includes(activePlaylistId)
+      );
+    }
+    return result;
+  }, [videos, searchQuery, categoryFilter, activePlaylistId, videoPlaylistMap]);
 
   // Return null during auth loading to prevent flash.
   if (loading) {
@@ -368,6 +366,12 @@ export function DashboardContent({
   }
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
+
+  function handleResetFilters() {
+    setSearchQuery("");
+    setCategoryFilter("");
+    setActivePlaylistId(null);
+  }
 
   function handleEditClick(video: DashboardVideo) {
     setEditingVideo(video);
@@ -523,7 +527,7 @@ export function DashboardContent({
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">My studio</h1>
+          <h1 className={styles.sectionHeading}>My Videos</h1>
           <Link
             href="/upload"
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
@@ -560,7 +564,7 @@ export function DashboardContent({
 
         {/* Videos tab content */}
         {activeTab === "videos" && (
-          <>
+          <div className={styles.videosSection}>
             {/* Upload success banner */}
             {uploadedId && (
               <div
@@ -592,126 +596,105 @@ export function DashboardContent({
               </div>
             )}
 
-            {/* Loading / empty / table */}
-            {fetching ? (
-              <p className="text-gray-500">Loading your videos…</p>
-            ) : videos.length === 0 ? (
-              <div className="rounded-2xl bg-white shadow-sm p-8 text-center">
-                <p className="text-gray-500 mb-4">You haven&apos;t uploaded any videos yet.</p>
-                <Link
-                  href="/upload"
-                  className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            {/* Toolbar card + Playlist chips — only shown when videos exist */}
+            {videos.length > 0 && (
+              <>
+            <div className={styles.toolbar}>
+              <div className={styles.toolbarGrid}>
+                <input
+                  type="search"
+                  aria-label="Search videos"
+                  placeholder="Search videos…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={styles.toolbarInput}
+                />
+                <select
+                  aria-label="Filter by category"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className={styles.toolbarSelect}
                 >
-                  Upload your first video
-                </Link>
+                  <option value="">All categories</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleResetFilters}
+                  className={styles.btnReset}
+                >
+                  Reset filters
+                </button>
               </div>
-            ) : (
-              <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-left">
-                      <th className="px-4 py-3 font-medium text-gray-500 w-16">Thumb</th>
-                      <th className="px-4 py-3 font-medium text-gray-500">Title</th>
-                      <th className="px-4 py-3 font-medium text-gray-500">Status</th>
-                      <th className="px-4 py-3 font-medium text-gray-500 text-right">Views</th>
-                      <th className="px-4 py-3 font-medium text-gray-500">Date</th>
-                      <th className="px-4 py-3 font-medium text-gray-500 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {videos.map((video) => (
-                      <tr
-                        key={video.id}
-                        className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
-                      >
-                        {/* Thumbnail */}
-                        <td className="px-4 py-3">
-                          {video.thumbnailUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={video.thumbnailUrl}
-                              alt={`${video.title} thumbnail`}
-                              className="w-14 h-9 object-cover rounded"
-                            />
-                          ) : (
-                            <div className="w-14 h-9 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">
-                              —
-                            </div>
-                          )}
-                        </td>
+            </div>
 
-                        {/* Title */}
-                        <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">
-                          {video.status === "ready" ? (
-                            <Link
-                              href={`/v/${video.id}`}
-                              className="hover:text-blue-600 transition-colors"
-                            >
-                              {video.title}
-                            </Link>
-                          ) : (
-                            video.title
-                          )}
-                        </td>
-
-                        {/* Status badge */}
-                        <td className="px-4 py-3">
-                          <StatusBadge status={video.status} />
-                        </td>
-
-                        {/* View count */}
-                        <td className="px-4 py-3 text-right text-gray-500">
-                          {video.viewCount.toLocaleString()}
-                        </td>
-
-                        {/* Created date */}
-                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                          {new Date(video.createdAt).toLocaleDateString()}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <button
-                            onClick={() => handleEditClick(video)}
-                            className="text-blue-600 hover:text-blue-800 font-medium mr-3"
-                            aria-label={`Edit ${video.title}`}
-                          >
-                            Edit
-                          </button>
-                          {deletingId === video.id ? (
-                            <span className="inline-flex gap-2">
-                              <button
-                                onClick={() => handleDeleteConfirm()}
-                                disabled={deleting}
-                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {deleting ? "Deleting..." : "Confirm"}
-                              </button>
-                              <button
-                                onClick={handleDeleteCancel}
-                                disabled={deleting}
-                                className="text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Cancel
-                              </button>
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleDeleteClick(video.id)}
-                              className="text-red-600 hover:text-red-800 font-medium"
-                              aria-label={`Delete ${video.title}`}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Playlist chips */}
+            {playlists.length > 0 && (
+              <div className={styles.playlistRow} role="group" aria-label="Filter by playlist">
+                <button
+                  onClick={() => setActivePlaylistId(null)}
+                  className={`${styles.chip} ${!activePlaylistId ? styles.chipActive : styles.chipInactive}`}
+                >
+                  All
+                </button>
+                {playlists.map((pl) => (
+                  <button
+                    key={pl.id}
+                    onClick={() =>
+                      setActivePlaylistId(
+                        activePlaylistId === pl.id ? null : pl.id
+                      )
+                    }
+                    className={`${styles.chip} ${activePlaylistId === pl.id ? styles.chipActive : styles.chipInactive}`}
+                  >
+                    {pl.title}
+                  </button>
+                ))}
               </div>
             )}
-          </>
+              </>
+            )}
+
+            {/* Loading / empty / grid */}
+            {fetching ? (
+              <p className="text-gray-500">Loading your videos…</p>
+            ) : filteredVideos.length === 0 ? (
+              <div className={styles.emptyState}>
+                {videos.length === 0 ? (
+                  <>
+                    <p className={styles.emptyText}>
+                      You haven&apos;t uploaded any videos yet.
+                    </p>
+                    <Link href="/upload" className={styles.btnUploadCta}>
+                      Upload your first video
+                    </Link>
+                  </>
+                ) : (
+                  <p className={styles.emptyText}>
+                    No videos match your filters.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className={styles.videoGrid}>
+                {filteredVideos.map((video) => (
+                  <DashboardVideoCard
+                    key={video.id}
+                    video={video}
+                    onEdit={handleEditClick}
+                    onDelete={handleDeleteClick}
+                    isDeleting={deletingId === video.id && deleting}
+                    isConfirmingDelete={deletingId === video.id}
+                    onConfirmDelete={handleDeleteConfirm}
+                    onCancelDelete={handleDeleteCancel}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Playlists tab content */}
