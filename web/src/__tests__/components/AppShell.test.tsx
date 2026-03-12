@@ -22,6 +22,11 @@ jest.mock("@/context/AuthContext", () => ({
   }),
 }));
 
+// ─── Mock ThemeContext ────────────────────────────────────────────────────────
+jest.mock("@/context/ThemeContext", () => ({
+  useTheme: () => ({ theme: "light", toggleTheme: jest.fn() }),
+}));
+
 import AppShell from "@/components/AppShell";
 
 const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;

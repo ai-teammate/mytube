@@ -46,6 +46,10 @@ jest.mock("@/context/AuthContext", () => ({
   useAuth: () => ({ user: null, loading: false, signOut: jest.fn() }),
 }));
 
+jest.mock("@/context/ThemeContext", () => ({
+  useTheme: () => ({ theme: "light", toggleTheme: jest.fn() }),
+}));
+
 import SiteHeader from "@/components/SiteHeader";
 
 // ─── 1. globals.css must pin form-element text colour ─────────────────────────
