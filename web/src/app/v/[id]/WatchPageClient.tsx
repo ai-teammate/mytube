@@ -15,6 +15,7 @@ import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
 import CommentSection from "@/components/CommentSection";
 import SaveToPlaylist from "@/components/SaveToPlaylist";
+import styles from "./WatchPageClient.module.css";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
 import dynamic from "next/dynamic";
@@ -147,24 +148,24 @@ export default function WatchPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
+      <div className={styles.stateContainer}>
+        <p className={styles.stateText}>Loading…</p>
       </div>
     );
   }
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Video not found.</p>
+      <div className={styles.stateContainer}>
+        <p className={styles.stateText}>Video not found.</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p role="alert" className="text-red-600">
+      <div className={styles.stateContainer}>
+        <p role="alert" className={styles.stateText}>
           {error}
         </p>
       </div>
@@ -174,10 +175,11 @@ export default function WatchPage({
   if (!video) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        {/* Video player */}
-        <div className="w-full bg-black rounded-lg overflow-hidden mb-4">
+    <div className={styles.watchLayout}>
+      {/* Main content: player + metadata (left column) */}
+      <main>
+        {/* Player container */}
+        <div className={styles.player}>
           {video.hlsManifestUrl ? (
             <VideoPlayer
               src={video.hlsManifestUrl}
@@ -190,13 +192,11 @@ export default function WatchPage({
           )}
         </div>
 
-        {/* Video metadata */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          {video.title}
-        </h1>
+        {/* Video title */}
+        <h1 className={styles.videoTitle}>{video.title}</h1>
 
-        {/* Uploader and view count row */}
-        <div className="flex items-center gap-3 mb-4">
+        {/* Uploader row */}
+        <div className={styles.uploaderRow}>
           {video.uploader.avatarUrl ? (
             <Image
               src={video.uploader.avatarUrl}
@@ -207,7 +207,7 @@ export default function WatchPage({
             />
           ) : (
             <div
-              className="w-9 h-9 rounded-full bg-gray-300 flex items-center justify-center text-sm font-bold text-gray-600"
+              className={styles.uploaderInitials}
               aria-label={`${video.uploader.username}'s avatar`}
             >
               {video.uploader.username.charAt(0).toUpperCase()}
@@ -215,18 +215,32 @@ export default function WatchPage({
           )}
           <Link
             href={`/u/${video.uploader.username}`}
-            className="text-sm font-medium text-gray-900 hover:underline"
+            className={styles.uploaderName}
           >
             {video.uploader.username}
           </Link>
-          <span className="text-sm text-gray-500 ml-auto">
-            {video.viewCount.toLocaleString()} views ·{" "}
-            {new Date(video.createdAt).toLocaleDateString()}
-          </span>
         </div>
 
-        {/* Actions row: ratings + save to playlist */}
-        <div className="flex items-center gap-4 mb-4 flex-wrap">
+        {/* Meta line: views · date */}
+        <div className={styles.metaLine}>
+          <span>{video.viewCount.toLocaleString()} views</span>
+          <span aria-hidden="true">·</span>
+          <span>{new Date(video.createdAt).toLocaleDateString()}</span>
+        </div>
+
+        {/* Tags */}
+        {video.tags.length > 0 && (
+          <div className={styles.tagsRow}>
+            {video.tags.map((tag) => (
+              <span key={tag} className={styles.tagPill}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Actions row: star rating + save to playlist */}
+        <div className={styles.actionsRow}>
           <StarRating
             videoID={id}
             repository={ratingRepository}
@@ -241,25 +255,9 @@ export default function WatchPage({
           />
         </div>
 
-        {/* Tags */}
-        {video.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {video.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
         {/* Description */}
         {video.description && (
-          <div className="bg-white rounded-lg p-4 text-sm text-gray-700 whitespace-pre-wrap">
-            {video.description}
-          </div>
+          <div className={styles.description}>{video.description}</div>
         )}
 
         {/* Comment section */}
@@ -269,7 +267,16 @@ export default function WatchPage({
           getToken={getToken}
           authLoading={authLoading}
         />
-      </div>
+      </main>
+
+      {/* Sidebar: recommendations placeholder (right column at lg+) */}
+      <aside className={styles.sidebar}>
+        <div className={styles.sidebarCard}>
+          <p className={styles.sidebarPlaceholderText}>
+            Recommendations coming soon
+          </p>
+        </div>
+      </aside>
     </div>
   );
 }

@@ -167,3 +167,33 @@ body {
     color: var(--text-primary);
   }
 }
+
+/* ─── Global button utilities ────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s ease;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.cta {
+  background: var(--gradient-cta);
+  color: var(--text-cta);
+}
+
+.btn.cta:hover:not(:disabled) {
+  opacity: 0.9;
+}
