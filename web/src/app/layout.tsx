@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import AppShell from "@/components/AppShell";
+import { themeInitScript } from "@/lib/themeInitScript";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -15,6 +17,7 @@ export const metadata: Metadata = {
   description: "Personal video platform",
 };
 
+/** Root layout — wraps every page with providers, fonts, and theme initialisation. */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -23,8 +26,15 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="antialiased">
+        {/* FOUC prevention: must run before React hydration */}
+        {
+          // eslint-disable-next-line react/no-danger
+          <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        }
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <ThemeProvider>
+            <AppShell>{children}</AppShell>
+          </ThemeProvider>
         </AuthProvider>
       </body>
     </html>

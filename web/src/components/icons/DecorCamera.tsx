@@ -4,8 +4,8 @@ import type { IconBaseProps } from "./types";
 /**
  * DecorCamera — decorative camera/triangle shape.
  * Uses fill="currentColor". Intended as a background decoration.
- * NOTE: Inner detail shapes (lens circles) use fill="white". This icon is designed for
- * light / white backgrounds only.
+ * Inner detail shapes (lens circles) use fill="var(--bg-content)" so they
+ * remain correct in both light and dark themes.
  * Defaults to aria-hidden="true".
  */
 export default function DecorCamera({
@@ -27,9 +27,9 @@ export default function DecorCamera({
       {/* Camera body */}
       <rect x="10" y="38" width="80" height="56" rx="8" />
       {/* Camera lens circle */}
-      <circle cx="50" cy="66" r="18" fill="white" />
+      <circle cx="50" cy="66" r="18" fill="var(--bg-content)" />
       <circle cx="50" cy="66" r="12" />
-      <circle cx="50" cy="66" r="5" fill="white" />
+      <circle cx="50" cy="66" r="5" fill="var(--bg-content)" />
       {/* Viewfinder notch */}
       <rect x="28" y="30" width="24" height="12" rx="4" />
       {/* Decorative triangle accent (side lens cap) */}

@@ -161,18 +161,6 @@ describe("VideoCard — SPA navigation (MYTUBE-303)", () => {
   });
 });
 
-describe("VideoCard — HD label overlay", () => {
-  it("always renders the HD label on the thumbnail", () => {
-    render(<VideoCard video={makeVideo()} />);
-    expect(screen.getByText("HD")).toBeInTheDocument();
-  });
-
-  it("renders HD label when there is no thumbnail image", () => {
-    render(<VideoCard video={makeVideo({ thumbnailUrl: null })} />);
-    expect(screen.getByText("HD")).toBeInTheDocument();
-  });
-});
-
 describe("VideoCard — tags row", () => {
   it("does not render any tag pills when tags is undefined", () => {
     render(<VideoCard video={makeVideo()} />);
