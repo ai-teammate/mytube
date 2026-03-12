@@ -43,8 +43,8 @@ PLAYWRIGHT_SLOW_MO       Slow-motion delay in ms (default: 0).
 from __future__ import annotations
 
 import os
+import pathlib
 import sys
-import time
 
 import pytest
 from playwright.sync_api import sync_playwright, Page
@@ -79,70 +79,24 @@ _PAGE_LOAD_TIMEOUT = 30_000  # ms
 def _get_fixture_html() -> str:
     """Return a self-contained HTML page reproducing the dashboard toolbar.
 
-    The CSS variable values mirror ``globals.css`` ``:root`` and the class
-    rules are copied verbatim from ``_content.module.css`` so that computed
-    style assertions are equivalent to what the browser would report on the
-    production page.
+    Loads the actual production CSS files (``globals.css`` and
+    ``_content.module.css``) from the repository at runtime so that the
+    fixture reflects real CSS changes and can detect regressions.
     """
-    return """<!DOCTYPE html>
+    repo_root = pathlib.Path(__file__).parents[3]
+    css_globals = (repo_root / "web/src/app/globals.css").read_text()
+    css_content = (repo_root / "web/src/app/dashboard/_content.module.css").read_text()
+    # Strip @import directives that cannot be resolved in a plain HTML context
+    css_globals_clean = "\n".join(
+        line for line in css_globals.splitlines() if not line.strip().startswith("@import")
+    )
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>MYTUBE-519 toolbar fixture</title>
-  <style>
-    /* ---- globals.css :root variables (light theme) ---- */
-    :root {
-      --bg-page:    #f8f9fa;
-      --bg-content: #ffffff;
-      --bg-header:  #ffffff;
-      --bg-card:    #f3f4f8;
-      --text-primary:   #222222;
-      --text-secondary: #666666;
-      --accent-logo: #6d40cb;
-      --border-light: #e0e0e8;
-    }
-
-    /* ---- _content.module.css rules ---- */
-    .toolbar {
-      background: var(--bg-card);
-      border-radius: 16px;
-      padding: 16px;
-    }
-
-    .toolbarGrid {
-      display: grid;
-      grid-template-columns: 1fr 220px auto;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .toolbarInput,
-    .toolbarSelect {
-      background: var(--bg-content);
-      border: none;
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-size: 14px;
-      color: var(--text-primary);
-      outline: none;
-      width: 100%;
-    }
-
-    .toolbarInput:focus,
-    .toolbarSelect:focus {
-      box-shadow: 0 0 0 2px var(--accent-logo);
-    }
-
-    .toolbarSelect {
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 12px center;
-      background-size: 16px;
-      padding-right: 36px;
-      cursor: pointer;
-    }
-  </style>
+  <style>{css_globals_clean}</style>
+  <style>{css_content}</style>
 </head>
 <body>
   <div class="toolbar">
@@ -325,8 +279,15 @@ class TestToolbarStyling:
         """Clicking the search input must apply a focus box-shadow containing --accent-logo color."""
         selector = "input[aria-label='Search videos']"
         browser_page.locator(selector).click()
-        # Allow style to apply
-        time.sleep(0.1)
+        browser_page.wait_for_function(
+            """([sel, partial]) => {
+                const el = document.querySelector(sel);
+                if (!el) return false;
+                return getComputedStyle(el).getPropertyValue('box-shadow').includes(partial);
+            }""",
+            arg=[selector, _EXPECTED_BOX_SHADOW_PARTIAL],
+            timeout=5_000,
+        )
         box_shadow = _get_computed(browser_page, selector, "box-shadow")
         assert _EXPECTED_BOX_SHADOW_PARTIAL in box_shadow, (
             f"Search input focus box-shadow: expected to contain {_EXPECTED_BOX_SHADOW_PARTIAL!r}, "
@@ -344,8 +305,8 @@ class TestToolbarStyling:
 
         # Check appearance: none (native dropdown arrow removed)
         appearance = _get_computed(browser_page, selector, "appearance")
-        assert appearance in ("none", "auto"), (
-            f"Category select appearance: expected 'none' (custom arrow), got {appearance!r}. "
+        assert appearance == "none", (
+            f"Category select appearance: expected 'none' (custom arrow removed), got {appearance!r}. "
             "The .toolbarSelect class must set 'appearance: none'."
         )
 
