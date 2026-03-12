@@ -84,3 +84,13 @@ class SiteHeader:
         """
         locator = self._page.locator(self._SIGN_IN_LINK_SELECTOR)
         return locator.count() > 0 and locator.first.is_visible()
+
+    # ------------------------------------------------------------------
+    # Search input
+    # ------------------------------------------------------------------
+
+    _SEARCH_INPUT_SELECTOR = "header input[type='search']"
+
+    def search_input_locator(self):
+        """Return the Playwright Locator for the search input inside <header>."""
+        return self._page.locator(self._SEARCH_INPUT_SELECTOR)

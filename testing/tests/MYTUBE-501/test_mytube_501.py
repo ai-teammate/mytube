@@ -25,7 +25,7 @@ Architecture
 ------------
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - SiteHeader page object from testing/components/pages/site_header/site_header.py
-  provides selector constants; raw locator access is used for style inspection.
+  exposes search_input_locator(); all locator access is encapsulated there.
 - Tests use computed CSS values obtained via element.evaluate() to avoid
   Tailwind class-name brittleness.
 """
@@ -40,6 +40,7 @@ from playwright.sync_api import sync_playwright, Page
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.site_header.site_header import SiteHeader
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -102,6 +103,11 @@ def browser_page(config: WebConfig):
         browser.close()
 
 
+@pytest.fixture(scope="module")
+def site_header(browser_page: Page) -> SiteHeader:
+    return SiteHeader(browser_page)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -114,11 +120,11 @@ class TestSiteHeaderSearchInputStyling:
     # Step 2: locate the search input
     # ------------------------------------------------------------------
 
-    def test_search_input_is_visible(self, browser_page: Page) -> None:
+    def test_search_input_is_visible(self, browser_page: Page, site_header: SiteHeader) -> None:
         """
         Step 2: The search input inside <header> must be present and visible.
         """
-        search_input = browser_page.locator("header input[type='search']")
+        search_input = site_header.search_input_locator()
         assert search_input.count() > 0, (
             "No search input (input[type='search']) found inside <header>. "
             "The search form was not rendered in the SiteHeader. "
@@ -130,7 +136,7 @@ class TestSiteHeaderSearchInputStyling:
     # Step 3: pill shape — left border-radius
     # ------------------------------------------------------------------
 
-    def test_search_input_has_pill_shape(self, browser_page: Page) -> None:
+    def test_search_input_has_pill_shape(self, site_header: SiteHeader) -> None:
         """
         Step 3: The input must have fully-rounded left corners (pill shape).
 
@@ -139,7 +145,7 @@ class TestSiteHeaderSearchInputStyling:
         We assert each is at least _MIN_PILL_RADIUS_PX (500 px) to be robust
         against sub-pixel rounding by the browser.
         """
-        search_input = browser_page.locator("header input[type='search']").first
+        search_input = site_header.search_input_locator().first
         search_input.wait_for(state="visible", timeout=5_000)
 
         radii: dict = search_input.evaluate(
@@ -174,7 +180,7 @@ class TestSiteHeaderSearchInputStyling:
     # Steps 4 & 5: focus ring with purple accent color
     # ------------------------------------------------------------------
 
-    def test_search_input_focus_ring_is_purple(self, browser_page: Page) -> None:
+    def test_search_input_focus_ring_is_purple(self, browser_page: Page, site_header: SiteHeader) -> None:
         """
         Steps 4–5: Clicking the input triggers focus, and the border color
         changes to the purple --accent-logo value.
@@ -184,7 +190,7 @@ class TestSiteHeaderSearchInputStyling:
         We click the input, then read the computed border-color and convert
         it to hex for a deterministic comparison.
         """
-        search_input = browser_page.locator("header input[type='search']").first
+        search_input = site_header.search_input_locator().first
         search_input.wait_for(state="visible", timeout=5_000)
 
         # Step 4: click into the input to trigger focus
