@@ -14,6 +14,8 @@
   --text-secondary: #666666;
   /* #6e6e78 gives ≈4.78:1 contrast on --bg-page, meeting WCAG AA for normal text */
   --text-subtle:    #6e6e78;
+  /* #5a5a62 gives ≈5.3:1 contrast on --bg-card, meeting WCAG AA for small (12px) hint text */
+  --text-hint:      #5a5a62;
   --text-cta:       #ffffff;
   --text-pill:      #6d40cb;
 
@@ -49,6 +51,8 @@ body[data-theme="dark"] {
   --text-secondary: #a0a0ab;
   /* #84848e gives ≈5.17:1 contrast on #0f0f11, meeting WCAG AA for normal text */
   --text-subtle:    #84848e;
+  /* #8a8a94 gives sufficient contrast on dark card background for small hint text */
+  --text-hint:      #8a8a94;
   --text-cta:       #ffffff;
   --text-pill:      #b39ce8;
 
