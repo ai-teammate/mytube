@@ -1,0 +1,182 @@
+/* ─── CommentSection ─────────────────────────────────────────────────────── */
+
+.section {
+  margin-top: 24px;
+}
+
+.heading {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px;
+}
+
+/* ─── Comment form ───────────────────────────────────────────────────────── */
+
+.commentForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.commentInput {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 14px;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  resize: none;
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--border-light);
+  transition: box-shadow 0.15s ease;
+  font-family: inherit;
+}
+
+.commentInput:focus {
+  box-shadow: inset 0 0 0 2px var(--accent-logo);
+}
+
+.commentInput:disabled {
+  opacity: 0.5;
+}
+
+.commentInput::placeholder {
+  color: var(--text-subtle);
+}
+
+.charCounter {
+  font-size: 12px;
+  color: var(--text-subtle);
+  text-align: right;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submitError {
+  font-size: 13px;
+  color: #e53e3e;
+}
+
+/* ─── Login prompt ───────────────────────────────────────────────────────── */
+
+.loginPrompt {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.loginLink {
+  color: var(--accent-logo);
+  text-decoration: none;
+}
+
+.loginLink:hover {
+  text-decoration: underline;
+}
+
+/* ─── Load error ─────────────────────────────────────────────────────────── */
+
+.loadError {
+  font-size: 13px;
+  color: #e53e3e;
+  margin-bottom: 16px;
+}
+
+/* ─── Empty state ────────────────────────────────────────────────────────── */
+
+.emptyText {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ─── Comment list ───────────────────────────────────────────────────────── */
+
+.commentList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ─── Comment item ───────────────────────────────────────────────────────── */
+
+.commentItem {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.commentInner {
+  display: flex;
+  gap: 12px;
+}
+
+/* ─── Avatar ─────────────────────────────────────────────────────────────── */
+
+.avatarInitials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  /* Brand gradient: --accent-logo purple → --accent-cta green */
+  background: linear-gradient(135deg, var(--accent-logo) 0%, var(--accent-cta) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-cta);
+  flex-shrink: 0;
+}
+
+.avatarImage {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* ─── Comment content ────────────────────────────────────────────────────── */
+
+.commentContent {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Meta line: username · timestamp */
+.metaLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.authorLink {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.authorLink:hover {
+  text-decoration: underline;
+}
+
+.timestamp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.commentBody {
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-words;
+  margin: 0;
+}
