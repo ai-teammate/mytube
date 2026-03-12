@@ -15,7 +15,7 @@ Steps
 
 Expected Result
 ---------------
-The grid uses ``grid-template-columns: repeat(auto-fill, minmin(220px, 1fr))``
+The grid uses ``grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))``
 and has a ``gap: 16px``.
 
 Test Approach
@@ -34,9 +34,11 @@ Architecture
 ------------
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - DashboardPage from testing/components/pages/dashboard_page/dashboard_page.py
-  is used for navigation.
-- Tests use page.evaluate for stylesheet inspection and getComputedStyle.
+  encapsulates all locators and CSS-inspection logic (get_video_grid_styles,
+  get_live_grid_rule, is_video_grid_present, is_toolbar_present).
 - Local fixture server used as fallback to guarantee deterministic results.
+- Fixture HTML loads the actual CSS from web/src/app/dashboard/_content.module.css
+  at import time, so changes to the real CSS file propagate to fixture tests.
 
 Environment Variables
 ---------------------
@@ -72,34 +74,35 @@ _EXPECTED_GRID_TEMPLATE_COLUMNS = "repeat(auto-fill, minmax(220px, 1fr))"
 _EXPECTED_GAP = "16px"
 
 # ---------------------------------------------------------------------------
-# Fixture HTML — replicates the dashboard grid structure with the exact CSS
-# taken from web/src/app/dashboard/_content.module.css
+# Fixture HTML — injects the *actual* CSS from _content.module.css so that
+# fixture tests reflect real application styles rather than a hardcoded copy.
 # ---------------------------------------------------------------------------
 
-_FIXTURE_HTML = """\
+def _build_fixture_html() -> str:
+    """Load the real dashboard CSS from disk and embed it in the fixture HTML.
+
+    Loading from disk (rather than copying CSS as a string literal) means that
+    if a developer changes or removes the grid rule in _content.module.css, the
+    fixture tests will detect the regression immediately.
+    """
+    css_path = os.path.normpath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..", "..", "..",
+            "web", "src", "app", "dashboard", "_content.module.css",
+        )
+    )
+    with open(css_path, encoding="utf-8") as f:
+        css = f.read()
+
+    return f"""\
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <title>MYTUBE-522 Fixture — Dashboard Video Grid</title>
   <style>
-    /* Replicates web/src/app/dashboard/_content.module.css */
-    .toolbar {
-      background: #1e1e2e;
-      border-radius: 16px;
-      padding: 16px;
-    }
-    .toolbarGrid {
-      display: grid;
-      grid-template-columns: 1fr 220px auto;
-      gap: 12px;
-      align-items: center;
-    }
-    .videoGrid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 16px;
-    }
+{css}
   </style>
 </head>
 <body>
@@ -121,6 +124,9 @@ _FIXTURE_HTML = """\
 </body>
 </html>
 """
+
+
+_FIXTURE_HTML = _build_fixture_html()
 
 
 # ---------------------------------------------------------------------------
@@ -147,87 +153,6 @@ def _start_fixture_server() -> tuple[HTTPServer, int]:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, _FIXTURE_PORT
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _scan_stylesheets_for_grid(page: Page) -> dict | None:
-    """
-    Scan all loaded document.styleSheets for a CSS rule that contains
-    ``repeat(auto-fill, minmax(220px, 1fr))``.
-
-    Returns a dict with ``gridTemplateColumns`` and ``gap`` values if found,
-    or None if no matching rule exists.
-    """
-    return page.evaluate(
-        """() => {
-            for (const sheet of document.styleSheets) {
-                let rules;
-                try {
-                    rules = sheet.cssRules || sheet.rules;
-                } catch (e) {
-                    continue;
-                }
-                if (!rules) continue;
-                for (const rule of rules) {
-                    if (!(rule instanceof CSSStyleRule)) continue;
-                    const gtc = rule.style.gridTemplateColumns;
-                    if (
-                        gtc &&
-                        gtc.includes('auto-fill') &&
-                        gtc.includes('220px')
-                    ) {
-                        return {
-                            gridTemplateColumns: gtc,
-                            gap: rule.style.gap || rule.style.rowGap || ''
-                        };
-                    }
-                }
-            }
-            return null;
-        }"""
-    )
-
-
-def _get_authored_grid_styles(page: Page, selector: str) -> dict:
-    """
-    Return the *authored* (not computed) gridTemplateColumns and gap for the element.
-
-    Computed gridTemplateColumns resolves ``repeat(auto-fill, minmax(220px, 1fr))``
-    to absolute pixel values, so we scan the loaded stylesheets for the rule that
-    applies to the element and return the rule's authored property values instead.
-    Gap is an absolute value so it is safe to read from computed style.
-    """
-    return page.evaluate(
-        """(sel) => {
-            const el = document.querySelector(sel);
-            if (!el) return null;
-            // gap from computed style (absolute value, safe to use)
-            const cs = window.getComputedStyle(el);
-            const computedGap = cs.gap || cs.rowGap || '';
-
-            // authored grid-template-columns from the matched stylesheet rule
-            let authoredGtc = '';
-            for (const sheet of document.styleSheets) {
-                let rules;
-                try { rules = sheet.cssRules || sheet.rules; } catch (e) { continue; }
-                if (!rules) continue;
-                for (const rule of rules) {
-                    if (!(rule instanceof CSSStyleRule)) continue;
-                    try {
-                        if (el.matches(rule.selectorText)) {
-                            const gtc = rule.style.gridTemplateColumns;
-                            if (gtc) { authoredGtc = gtc; }
-                        }
-                    } catch (e) {}
-                }
-            }
-            return { gridTemplateColumns: authoredGtc, gap: computedGap };
-        }""",
-        selector,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -302,15 +227,14 @@ class TestDashboardVideoGridLayout:
         Step 2 (fixture): The video grid container must be present in the DOM
         below the toolbar element.
         """
-        grid = fixture_page.locator('[data-testid="video-grid"]')
-        assert grid.count() > 0, (
+        dashboard = DashboardPage(fixture_page)
+        assert dashboard.is_video_grid_present(), (
             "Video grid container ([data-testid='video-grid']) not found in the "
             "fixture page. Expected the grid to be rendered below the toolbar."
         )
-        grid.first.wait_for(state="visible", timeout=5_000)
+        dashboard.wait_for_video_grid_visible()
 
-        toolbar = fixture_page.locator('[data-testid="dashboard-toolbar"]')
-        assert toolbar.count() > 0, (
+        assert dashboard.is_toolbar_present(), (
             "Dashboard toolbar ([data-testid='dashboard-toolbar']) not found. "
             "Expected the toolbar to be present above the video grid."
         )
@@ -320,7 +244,8 @@ class TestDashboardVideoGridLayout:
         Step 2 (fixture): The video grid container must use
         ``grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))``.
         """
-        styles = _get_authored_grid_styles(fixture_page, '[data-testid="video-grid"]')
+        dashboard = DashboardPage(fixture_page)
+        styles = dashboard.get_video_grid_styles()
         assert styles is not None, (
             "Could not retrieve computed styles for the video grid element. "
             "Selector '[data-testid=\"video-grid\"]' did not match any element."
@@ -339,7 +264,8 @@ class TestDashboardVideoGridLayout:
         """
         Step 2 (fixture): The video grid container must have ``gap: 16px``.
         """
-        styles = _get_authored_grid_styles(fixture_page, '[data-testid="video-grid"]')
+        dashboard = DashboardPage(fixture_page)
+        styles = dashboard.get_video_grid_styles()
         assert styles is not None, (
             "Could not retrieve computed styles for the video grid element."
         )
@@ -366,7 +292,8 @@ class TestDashboardVideoGridLayout:
         This scan works regardless of authentication state because Next.js loads
         the page's CSS bundle before RequireAuth redirects the user.
         """
-        result = _scan_stylesheets_for_grid(live_page)
+        dashboard = DashboardPage(live_page)
+        result = dashboard.get_live_grid_rule()
         assert result is not None, (
             "No CSS rule containing "
             "'grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))' "
