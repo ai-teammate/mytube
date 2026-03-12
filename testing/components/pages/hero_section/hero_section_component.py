@@ -14,6 +14,10 @@ from playwright.sync_api import Locator, Page
 class HeroSectionComponent:
     """Page Object for the homepage hero section responsive grid."""
 
+    # Canonical selector for the hero section element (also the grid container).
+    # The <section aria-label="Hero"> element carries display:grid directly.
+    _HERO_SECTION = "section[aria-label='Hero']"
+
     _HERO_GRID = "[data-testid='hero-grid']"
     _TEXT_COL = "[data-testid='hero-text-column']"
     _VISUAL = "[data-testid='hero-visual-panel']"
@@ -26,6 +30,87 @@ class HeroSectionComponent:
 
     def __init__(self, page: Page) -> None:
         self._page = page
+
+    def is_hero_visible(self, timeout: int = 10_000) -> bool:
+        """Return True if the hero section is rendered and visible."""
+        loc = self._page.locator(self._HERO_SECTION)
+        if loc.count() == 0:
+            return False
+        loc.first.wait_for(state="visible", timeout=timeout)
+        return True
+
+    def get_declared_grid_template_columns(self) -> str | None:
+        """
+        Scan all loaded CSS stylesheets for a rule applied to the hero section
+        that declares ``grid-template-columns``.
+
+        Returns the raw authored value (e.g. ``"1.05fr 0.95fr"``) or ``None``
+        if no matching rule is found.  Works with CSS-Modules mangled class names
+        by testing each rule's selector via ``element.matches()``.
+        """
+        return self._page.evaluate(
+            """
+            (selector) => {
+                const el = document.querySelector(selector);
+                if (!el) return null;
+
+                for (const sheet of document.styleSheets) {
+                    let rules;
+                    try {
+                        rules = sheet.cssRules || sheet.rules;
+                    } catch (e) {
+                        // Cross-origin stylesheet — skip
+                        continue;
+                    }
+                    if (!rules) continue;
+
+                    for (const rule of rules) {
+                        if (rule.type !== 1) continue;  // CSSStyleRule only
+                        let matches = false;
+                        try {
+                            matches = el.matches(rule.selectorText);
+                        } catch (e) {
+                            continue;
+                        }
+                        if (matches && rule.style.gridTemplateColumns) {
+                            return rule.style.gridTemplateColumns.trim();
+                        }
+                    }
+                }
+                return null;
+            }
+            """,
+            self._HERO_SECTION,
+        )
+
+    def get_computed_column_gap(self) -> str:
+        """Return the computed column-gap of the hero grid element."""
+        return self._page.eval_on_selector(
+            self._HERO_SECTION,
+            "el => window.getComputedStyle(el).columnGap",
+        )
+
+    def get_computed_column_widths(self) -> "tuple[float, float] | None":
+        """
+        Return the rendered pixel widths of the two grid columns by reading the
+        computed ``grid-template-columns`` value (e.g. ``"672px 608px"``).
+
+        Returns a ``(col1_px, col2_px)`` tuple, or ``None`` if the resolved value
+        cannot be parsed as exactly two pixel measurements.
+        """
+        raw: str = self._page.eval_on_selector(
+            self._HERO_SECTION,
+            "el => window.getComputedStyle(el).gridTemplateColumns",
+        )
+        parts = raw.strip().split()
+        if len(parts) != 2:
+            return None
+        try:
+            w1 = float(parts[0].rstrip("px"))
+            w2 = float(parts[1].rstrip("px"))
+            return w1, w2
+        except ValueError:
+            return None
 
     # ------------------------------------------------------------------
     # Upload CTA button — "Upload Your First Video"
@@ -74,8 +159,15 @@ class HeroSectionComponent:
     # ------------------------------------------------------------------
 
     def get_grid_template_columns(self, selector: str | None = None) -> str:
-        """Return the computed grid-template-columns value for the hero grid."""
-        sel = selector or self._HERO_GRID
+        """Return the computed grid-template-columns value for the hero grid.
+
+        Note: the default selector was changed from ``_HERO_GRID``
+        (``[data-testid='hero-grid']``) to ``_HERO_SECTION``
+        (``section[aria-label='Hero']``) because the ``data-testid="hero-grid"``
+        attribute does not exist in the live DOM — the ``<section aria-label="Hero">``
+        element is the actual CSS grid container.
+        """
+        sel = selector or self._HERO_SECTION
         return self._page.eval_on_selector(
             sel,
             "el => window.getComputedStyle(el).gridTemplateColumns",
