@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { RatingSummary, RatingRepository } from "@/domain/rating";
+import styles from "./StarRating.module.css";
 
 interface StarRatingProps {
   videoID: string;
@@ -95,10 +96,11 @@ export default function StarRating({
   const activeStars = hovered ?? myRating ?? 0;
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
+    <div className={styles.container}>
+      <p className={styles.heading}>Rate this video</p>
+      <div className={styles.ratingRow}>
         <div
-          className="flex items-center gap-0.5"
+          className={styles.starsGroup}
           role="group"
           aria-label="Star rating"
         >
@@ -112,15 +114,7 @@ export default function StarRating({
               onClick={() => handleStarClick(star)}
               onMouseEnter={() => setHovered(star)}
               onMouseLeave={() => setHovered(null)}
-              className={`text-2xl leading-none focus:outline-none disabled:cursor-default ${
-                star <= activeStars
-                  ? "text-yellow-400"
-                  : "text-gray-300"
-              } ${
-                !authLoading && !submitting
-                  ? "cursor-pointer hover:scale-110 transition-transform"
-                  : ""
-              }`}
+              className={`${styles.starButton} ${star <= activeStars ? styles.starFilled : ""}`}
             >
               ★
             </button>
@@ -128,7 +122,7 @@ export default function StarRating({
         </div>
 
         {summary !== null && (
-          <span className="text-sm text-gray-600">
+          <span className={styles.ratingSummary}>
             {displayCount > 0
               ? `${displayRating.toFixed(1)} / 5 (${displayCount.toLocaleString()})`
               : "No ratings yet"}
@@ -137,8 +131,8 @@ export default function StarRating({
       </div>
 
       {!isAuthenticated && !authLoading && (
-        <p className="text-xs text-gray-500">
-          <a href="/login" className="text-blue-600 hover:underline">
+        <p className={styles.loginPrompt}>
+          <a href="/login" className={styles.loginLink}>
             Log in
           </a>{" "}
           to rate this video.
@@ -146,7 +140,7 @@ export default function StarRating({
       )}
 
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className={styles.errorText}>
           {error}
         </p>
       )}
