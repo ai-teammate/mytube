@@ -57,19 +57,6 @@ from testing.components.pages.register_page.register_page import RegisterPage
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 
-# JavaScript that checks for shell-like styles while excluding .auth-card.
-# The .auth-card element legitimately uses border-radius for its card design;
-# we only care about shell-specific layout elements (max-width + border-radius).
-_CHECK_SHELL_STYLES_JS = """() => {
-    for (const el of document.querySelectorAll('body *')) {
-        if (el.closest('.auth-card')) continue;
-        const s = window.getComputedStyle(el);
-        if (s.borderRadius === '24px' && s.maxWidth === '1320px')
-            return el.className || el.tagName;
-    }
-    return null;
-}"""
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -151,7 +138,7 @@ class TestAuthRoutesGitHubPagesBasePathExclusion:
             login = LoginPage(page)
             login.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
-            shell_like = page.evaluate(_CHECK_SHELL_STYLES_JS)
+            shell_like = login.has_shell_like_styles_excluding_auth_card()
             assert shell_like is None, (
                 f"Found an element on {url} with shell-like styles "
                 f"(borderRadius=24px, maxWidth=1320px) outside .auth-card: {shell_like!r}. "
@@ -172,7 +159,7 @@ class TestAuthRoutesGitHubPagesBasePathExclusion:
         try:
             url = config.register_url()
             register = RegisterPage(page)
-            page.goto(url, wait_until="domcontentloaded")
+            register.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
             assert not register.has_shell_class(), (
                 f"Expected no .shell element on {url}, but found {page.locator('.shell').count()}. "
@@ -189,7 +176,7 @@ class TestAuthRoutesGitHubPagesBasePathExclusion:
         try:
             url = config.register_url()
             register = RegisterPage(page)
-            page.goto(url, wait_until="domcontentloaded")
+            register.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
             assert not register.has_page_wrap_class(), (
                 f"Expected no .page-wrap element on {url}, but found {page.locator('.page-wrap').count()}. "
@@ -207,9 +194,9 @@ class TestAuthRoutesGitHubPagesBasePathExclusion:
         try:
             url = config.register_url()
             register = RegisterPage(page)
-            page.goto(url, wait_until="domcontentloaded")
+            register.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
-            shell_like = page.evaluate(_CHECK_SHELL_STYLES_JS)
+            shell_like = register.has_shell_like_styles_excluding_auth_card()
             assert shell_like is None, (
                 f"Found an element on {url} with shell-like styles "
                 f"(borderRadius=24px, maxWidth=1320px) outside .auth-card: {shell_like!r}. "
