@@ -214,6 +214,9 @@ class TestTagPillMatchesVideoCard:
         watch_block = _extract_rule_block(watch_css, "tagPill")
         vc_block = _extract_rule_block(vc_css, "tagPill")
 
+        assert watch_block, "'.tagPill' not found in WatchPageClient.module.css"
+        assert vc_block, "'.tagPill' not found in VideoCard.module.css"
+
         watch_decls = _parse_declarations(watch_block)
         vc_decls = _parse_declarations(vc_block)
 
@@ -231,6 +234,9 @@ class TestTagPillMatchesVideoCard:
 
         watch_block = _extract_rule_block(watch_css, "tagPill")
         vc_block = _extract_rule_block(vc_css, "tagPill")
+
+        assert watch_block, "'.tagPill' not found in WatchPageClient.module.css"
+        assert vc_block, "'.tagPill' not found in VideoCard.module.css"
 
         watch_decls = _parse_declarations(watch_block)
         vc_decls = _parse_declarations(vc_block)
@@ -318,7 +324,11 @@ class TestMetaLineStylingLive:
             "(el) => window.getComputedStyle(el).borderRadius",
             first_pill.element_handle(),
         )
-        # 999px computes to a very large value but Playwright may simplify it
+        # 999px computes to a large value; require at least 50px to guard against design drift
         assert border_radius not in ("", "0px"), (
             f"Expected tag pill to have rounded border-radius, got: {border_radius!r}"
+        )
+        numeric = re.match(r"(\d+(?:\.\d+)?)px", border_radius)
+        assert numeric and float(numeric.group(1)) >= 50, (
+            f"Expected tag pill border-radius >= 50px for pill shape, got: {border_radius!r}"
         )
