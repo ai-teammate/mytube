@@ -91,63 +91,30 @@ class TestCustomSelectChevron:
 
     def test_category_select_is_present(self, upload_page: UploadPage) -> None:
         """Step 2: The category select dropdown must be visible on the upload page."""
-        page = upload_page._page
-        select = page.locator(UploadPage._CATEGORY_SELECT)
-        assert select.count() > 0, (
-            "Category select element (select[id='categoryId']) not found on the upload page. "
-            f"Current URL: {page.url}"
+        assert upload_page.is_category_select_visible(), (
+            "Category select element (select[id='categoryId']) not found or not visible "
+            "on the upload page."
         )
-        select.first.wait_for(state="visible", timeout=5_000)
 
     def test_category_select_has_svg_data_uri_background_image(
         self, upload_page: UploadPage
     ) -> None:
         """Step 3: CSS background-image must be a custom SVG data URI."""
-        page = upload_page._page
-        select = page.locator(UploadPage._CATEGORY_SELECT).first
-        select.wait_for(state="visible", timeout=5_000)
-
-        styles: dict = select.evaluate(
-            """(el) => {
-                const s = window.getComputedStyle(el);
-                return {
-                    backgroundImage: s.backgroundImage,
-                    appearance: s.appearance,
-                    webkitAppearance: s.webkitAppearance,
-                };
-            }"""
-        )
-
+        styles: dict = upload_page.get_category_select_computed_styles()
         bg_image: str = styles.get("backgroundImage", "")
-        appearance: str = styles.get("appearance", "")
-        webkit_appearance: str = styles.get("webkitAppearance", "")
 
         assert "data:image/svg+xml" in bg_image, (
             "Expected the category select's CSS background-image to contain an "
             "SVG data URI (custom branded chevron), but it does not.\n"
             f"  Actual background-image : '{bg_image}'\n"
-            f"  Expected                : contains 'data:image/svg+xml'\n"
-            f"  Current URL             : {page.url}"
+            f"  Expected                : contains 'data:image/svg+xml'"
         )
 
     def test_category_select_hides_browser_default_chevron(
         self, upload_page: UploadPage
     ) -> None:
         """Step 3: CSS appearance must be 'none' to suppress the browser default chevron."""
-        page = upload_page._page
-        select = page.locator(UploadPage._CATEGORY_SELECT).first
-        select.wait_for(state="visible", timeout=5_000)
-
-        styles: dict = select.evaluate(
-            """(el) => {
-                const s = window.getComputedStyle(el);
-                return {
-                    appearance: s.appearance,
-                    webkitAppearance: s.webkitAppearance,
-                };
-            }"""
-        )
-
+        styles: dict = upload_page.get_category_select_computed_styles()
         appearance: str = styles.get("appearance", "")
         webkit_appearance: str = styles.get("webkitAppearance", "")
 
@@ -156,6 +123,5 @@ class TestCustomSelectChevron:
             "(to hide the browser default dropdown chevron), but it is not.\n"
             f"  Actual appearance         : '{appearance}'\n"
             f"  Actual -webkit-appearance : '{webkit_appearance}'\n"
-            f"  Expected                  : 'none' (in either property)\n"
-            f"  Current URL               : {page.url}"
+            f"  Expected                  : 'none' (in either property)"
         )
