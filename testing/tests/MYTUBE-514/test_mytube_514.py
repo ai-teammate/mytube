@@ -267,31 +267,35 @@ def _discover_watch_url(config: WebConfig) -> str | None:
         with urllib.request.urlopen(url, timeout=8) as resp:
             data = json.loads(resp.read().decode())
         for v in data.get("videos", []):
-            if v.get("status") == "ready" or "id" in v:
+            if v.get("status") == "ready":
                 return f"{config.base_url}/v/{v['id']}/"
     except Exception:
         pass
     return None
 
 
+@pytest.fixture(scope="session")
+def web_config() -> WebConfig:
+    """Single WebConfig instance shared across the test session."""
+    return WebConfig()
+
+
 class TestMetaLineStylingLive:
     """Live Playwright tests — skipped when no APP_URL/WEB_BASE_URL is set."""
 
     @pytest.fixture(scope="class")
-    def watch_url(self) -> str:
+    def watch_url(self, web_config: WebConfig) -> str:
         if not _should_use_live_mode():
             pytest.skip("Live mode disabled: APP_URL/WEB_BASE_URL not set.")
-        config = WebConfig()
-        url = _discover_watch_url(config)
+        url = _discover_watch_url(web_config)
         if not url:
             pytest.skip("Could not discover a live video URL from the API.")
         return url
 
     @pytest.fixture(scope="class")
-    def loaded_page(self, watch_url: str):
-        config = WebConfig()
+    def loaded_page(self, watch_url: str, web_config: WebConfig):
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=config.headless, slow_mo=config.slow_mo)
+            browser = pw.chromium.launch(headless=web_config.headless, slow_mo=web_config.slow_mo)
             page = browser.new_page(viewport={"width": 1280, "height": 720})
             page.goto(watch_url, timeout=_PAGE_LOAD_TIMEOUT, wait_until="networkidle")
             yield page
