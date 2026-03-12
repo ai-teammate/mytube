@@ -9,6 +9,7 @@ export interface VideoCardItem {
   viewCount: number;
   uploaderUsername: string;
   createdAt: string; // ISO-8601
+  tags?: string[];
 }
 
 /** A category as returned by GET /api/categories. */
