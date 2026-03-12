@@ -44,20 +44,19 @@ import os
 import sys
 
 import pytest
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.login_page.login_page import LoginPage
+from testing.components.pages.register_page.register_page import RegisterPage
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
-
-# Auth routes under test
-_AUTH_ROUTES = ["/login", "/register"]
 
 
 # ---------------------------------------------------------------------------
@@ -84,28 +83,6 @@ def browser_context(config: WebConfig):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _navigate_and_wait(page: Page, url: str) -> None:
-    """Navigate to *url* and wait for DOM to be ready."""
-    page.goto(url, wait_until="domcontentloaded", timeout=_PAGE_LOAD_TIMEOUT)
-    # Give Next.js a moment to hydrate (client-side routing resolves AppShell)
-    page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
-
-
-def _shell_element_count(page: Page) -> int:
-    """Return the number of elements with class 'shell' on the current page."""
-    return page.locator(".shell").count()
-
-
-def _page_wrap_element_count(page: Page) -> int:
-    """Return the number of elements with class 'page-wrap' on the current page."""
-    return page.locator(".page-wrap").count()
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -124,10 +101,11 @@ class TestAuthRoutesShellExclusion:
         page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
         try:
             url = config.login_url()
-            _navigate_and_wait(page, url)
-            count = _shell_element_count(page)
-            assert count == 0, (
-                f"Expected no .shell element on {url}, but found {count}. "
+            login = LoginPage(page)
+            login.navigate(url)
+            page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+            assert not login.has_shell_class(), (
+                f"Expected no .shell element on {url}, but shell class was found. "
                 "AppShell should bypass the shell wrapper for auth routes."
             )
         finally:
@@ -140,10 +118,11 @@ class TestAuthRoutesShellExclusion:
         page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
         try:
             url = config.login_url()
-            _navigate_and_wait(page, url)
-            count = _page_wrap_element_count(page)
-            assert count == 0, (
-                f"Expected no .page-wrap element on {url}, but found {count}. "
+            login = LoginPage(page)
+            login.navigate(url)
+            page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+            assert not login.has_page_wrap_class(), (
+                f"Expected no .page-wrap element on {url}, but page-wrap class was found. "
                 "AppShell should return children directly for auth routes."
             )
         finally:
@@ -157,24 +136,10 @@ class TestAuthRoutesShellExclusion:
         page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
         try:
             url = config.login_url()
-            _navigate_and_wait(page, url)
-
-            # Evaluate via JS: check that no element has both borderRadius
-            # and maxWidth consistent with the shell definition (24px radius,
-            # max-width 1320px).
-            shell_like = page.evaluate("""() => {
-                const allEls = document.querySelectorAll('body *');
-                for (const el of allEls) {
-                    const s = window.getComputedStyle(el);
-                    if (
-                        s.borderRadius === '24px' &&
-                        s.maxWidth === '1320px'
-                    ) {
-                        return el.className || el.tagName;
-                    }
-                }
-                return null;
-            }""")
+            login = LoginPage(page)
+            login.navigate(url)
+            page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+            shell_like = login.has_shell_like_styles()
             assert shell_like is None, (
                 f"Found an element on {url} with shell-like styles "
                 f"(borderRadius=24px, maxWidth=1320px): {shell_like!r}. "
@@ -194,10 +159,11 @@ class TestAuthRoutesShellExclusion:
         page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
         try:
             url = config.register_url()
-            _navigate_and_wait(page, url)
-            count = _shell_element_count(page)
-            assert count == 0, (
-                f"Expected no .shell element on {url}, but found {count}. "
+            register = RegisterPage(page)
+            register.navigate(config.base_url)
+            page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+            assert not register.has_shell_class(), (
+                f"Expected no .shell element on {url}, but shell class was found. "
                 "AppShell should bypass the shell wrapper for auth routes."
             )
         finally:
@@ -210,10 +176,11 @@ class TestAuthRoutesShellExclusion:
         page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
         try:
             url = config.register_url()
-            _navigate_and_wait(page, url)
-            count = _page_wrap_element_count(page)
-            assert count == 0, (
-                f"Expected no .page-wrap element on {url}, but found {count}. "
+            register = RegisterPage(page)
+            register.navigate(config.base_url)
+            page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+            assert not register.has_page_wrap_class(), (
+                f"Expected no .page-wrap element on {url}, but page-wrap class was found. "
                 "AppShell should return children directly for auth routes."
             )
         finally:
@@ -227,21 +194,10 @@ class TestAuthRoutesShellExclusion:
         page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
         try:
             url = config.register_url()
-            _navigate_and_wait(page, url)
-
-            shell_like = page.evaluate("""() => {
-                const allEls = document.querySelectorAll('body *');
-                for (const el of allEls) {
-                    const s = window.getComputedStyle(el);
-                    if (
-                        s.borderRadius === '24px' &&
-                        s.maxWidth === '1320px'
-                    ) {
-                        return el.className || el.tagName;
-                    }
-                }
-                return null;
-            }""")
+            register = RegisterPage(page)
+            register.navigate(config.base_url)
+            page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+            shell_like = register.has_shell_like_styles()
             assert shell_like is None, (
                 f"Found an element on {url} with shell-like styles "
                 f"(borderRadius=24px, maxWidth=1320px): {shell_like!r}. "

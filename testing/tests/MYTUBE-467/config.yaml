@@ -1,0 +1,5 @@
+test_id: MYTUBE-467
+type: ui-e2e
+framework: playwright
+platform: chromium
+dependencies: []
