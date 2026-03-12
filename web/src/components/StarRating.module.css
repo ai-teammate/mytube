@@ -40,6 +40,11 @@
   outline: none;
 }
 
+.starButton:focus-visible {
+  outline: 2px solid var(--accent-logo);
+  outline-offset: 2px;
+}
+
 .starButton:not(:disabled):hover {
   transform: scale(1.15);
 }

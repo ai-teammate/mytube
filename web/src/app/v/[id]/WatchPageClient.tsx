@@ -165,7 +165,7 @@ export default function WatchPage({
   if (error) {
     return (
       <div className={styles.stateContainer}>
-        <p role="alert" className={styles.stateText}>
+        <p role="alert" className={styles.stateError}>
           {error}
         </p>
       </div>

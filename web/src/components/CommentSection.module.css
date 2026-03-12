@@ -136,6 +136,12 @@
   flex-shrink: 0;
 }
 
+.avatarImage {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 /* ─── Comment content ────────────────────────────────────────────────────── */
 
 .commentContent {
