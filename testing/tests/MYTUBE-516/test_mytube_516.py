@@ -281,7 +281,6 @@ class TestBtnCtaGlobalStyles:
 # ---------------------------------------------------------------------------
 
 
-_PURPLE_HEX_RE = re.compile(r"#[6-9a-f][0-9a-f]{5}", re.IGNORECASE)
 _GREEN_GRADIENT_RE = re.compile(
     r"linear-gradient\(\s*90deg\s*,\s*#62c235\s+0%\s*,\s*#4fa82b\s+100%\s*\)"
 )
