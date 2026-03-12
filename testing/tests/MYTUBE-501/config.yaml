@@ -1,0 +1,4 @@
+ticket: MYTUBE-501
+type: web
+framework: playwright
+description: SiteHeader search input — pill shape and focus ring styling
