@@ -126,6 +126,9 @@ body[data-theme="dark"] {
   background: var(--bg-content);
   box-shadow: var(--shadow-main);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 48px); /* 48px = 2 × 24px page-wrap padding */
 }
 
 /* Mobile (below sm = 640 px): full-bleed shell, no padding or rounded corners */

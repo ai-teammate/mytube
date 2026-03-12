@@ -131,6 +131,15 @@ describe("AppShell", () => {
     expect(shell).toContainElement(screen.getByTestId("page-content"));
   });
 
+  it("places SiteFooter inside the shell container", () => {
+    mockPathname = "/";
+    const { container } = render(<AppShell><div>content</div></AppShell>);
+    const shell = container.querySelector(".shell");
+    expect(shell).toContainElement(
+      screen.getByRole("navigation", { name: /footer navigation/i }).closest("footer")
+    );
+  });
+
   // ── Decorative elements ───────────────────────────────────────────────────────
 
   it("renders four decor elements for non-auth routes", () => {

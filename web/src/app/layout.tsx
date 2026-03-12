@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import AppShell from "@/components/AppShell";
+import { themeInitScript } from "@/lib/themeInitScript";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -21,8 +22,6 @@ export const metadata: Metadata = {
  * localStorage and applies it to <body> before first paint, preventing
  * a flash of unstyled content (FOUC) when dark mode is active.
  */
-const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark')document.body.setAttribute('data-theme','dark')}catch(e){}})()`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,8 +31,10 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body className="antialiased">
         {/* FOUC prevention: must run before React hydration */}
-        {/* eslint-disable-next-line react/no-danger */}
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {
+          // eslint-disable-next-line react/no-danger
+          <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        }
         <AuthProvider>
           <ThemeProvider>
             <AppShell>{children}</AppShell>
