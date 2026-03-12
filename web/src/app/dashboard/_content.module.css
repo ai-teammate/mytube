@@ -1,0 +1,157 @@
+.videosSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionHeading {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ─── Toolbar ────────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.toolbarGrid {
+  display: grid;
+  grid-template-columns: 1fr 220px auto;
+  gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .toolbarGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.toolbarInput,
+.toolbarSelect {
+  background: var(--bg-content);
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+}
+
+.toolbarInput:focus,
+.toolbarSelect:focus {
+  box-shadow: 0 0 0 2px var(--accent-logo);
+}
+
+.toolbarSelect {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+.btnReset {
+  background: none;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.btnReset:hover {
+  background: var(--bg-content);
+  color: var(--text-primary);
+}
+
+/* ─── Playlist chips ──────────────────────────────────────────────────────────── */
+
+.playlistRow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.playlistRow::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+  transition: background 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.chipActive {
+  background: var(--accent-logo);
+  color: #fff;
+}
+
+.chipInactive {
+  background: var(--bg-content);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.chipInactive:hover {
+  background: var(--bg-card);
+}
+
+/* ─── Video grid ──────────────────────────────────────────────────────────────── */
+
+.videoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────────────────── */
+
+.emptyState {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border-radius: 16px;
+}
+
+.emptyText {
+  font-size: 15px;
+  margin: 0 0 16px;
+}
+
+.btnUploadCta {
+  display: inline-block;
+  background: var(--accent-logo);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.btnUploadCta:hover {
+  opacity: 0.88;
+}
