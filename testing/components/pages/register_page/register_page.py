@@ -47,14 +47,17 @@ class RegisterPage(ShellInspectionMixin):
     # Navigation
     # ------------------------------------------------------------------
 
-    def navigate(self, base_url: str) -> None:
-        """Navigate to the /register page and wait until it is loaded.
+    def navigate(self, url: str) -> None:
+        """Navigate to the register page URL and wait until it is loaded.
+
+        Accepts a full URL (e.g. ``https://example.com/register/``) so that
+        the signature is consistent with ``LoginPage.navigate()``.
 
         Waits for the Firebase auth loading state to resolve before returning,
         so that the registration form is visible and interactive.
         """
-        url = base_url.rstrip("/") + "/register/"
-        self._page.goto(url, wait_until="networkidle")
+        self._page.goto(url, wait_until="domcontentloaded")
+        self._page.wait_for_load_state("networkidle")
         # Wait for the loading spinner to disappear (Firebase auth resolves)
         # and the form heading to become visible.
         self._page.wait_for_selector("h1", timeout=20_000)
