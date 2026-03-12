@@ -64,7 +64,6 @@ export default function VideoCard({ video }: VideoCardProps) {
             No thumbnail
           </div>
         )}
-        <span className={styles.thumbLabel}>HD</span>
       </Link>
 
       <div className={styles.body}>
