@@ -1,0 +1,27 @@
+test_id: MYTUBE-524
+type: ui
+framework: playwright
+platform: web
+browser: chromium
+
+# Default mode when live prerequisites are absent
+default_mode: fixture
+
+# Fixture server
+fixture_port: 19524
+
+# Timeouts (milliseconds)
+page_load_timeout: 30000
+network_idle_timeout: 10000
+element_timeout: 10000
+cta_timeout: 8000
+
+# Environment
+base_url_env: APP_URL
+fallback_base_url: https://ai-teammate.github.io/mytube
+email_env: FIREBASE_TEST_EMAIL
+password_env: FIREBASE_TEST_PASSWORD
+headless_env: PLAYWRIGHT_HEADLESS
+slow_mo_env: PLAYWRIGHT_SLOW_MO
+
+dependencies: []
