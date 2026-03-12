@@ -51,6 +51,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.core.config.api_config import APIConfig
+from testing.components.pages.watch_page.watch_page import WatchPage
+from testing.components.services.video_api_service import VideoApiService
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -238,113 +241,81 @@ def config() -> WebConfig:
 @pytest.fixture(scope="module")
 def live_watch_page(config: WebConfig):
     """
-    Yields a Playwright Page already navigated to a watch page.
+    Yields a WatchPage already navigated to a watch page.
     Skips if no live URL is configured.
+
+    Video discovery delegates to VideoApiService (service layer) rather than
+    making raw HTTP calls inline.  Browser setup delegates to the WatchPage
+    Page Object rather than calling sync_playwright() directly in the test.
     """
     if not _should_use_live_mode():
         pytest.skip("Live mode skipped: APP_URL/WEB_BASE_URL not set")
 
     from playwright.sync_api import sync_playwright
 
-    # Fetch a real video ID from the API
-    import urllib.request
-    import json as _json
-
-    video_id: str | None = None
-    try:
-        api_url = os.getenv("API_BASE_URL", "").rstrip("/") or config.base_url.rstrip("/")
-        with urllib.request.urlopen(f"{api_url}/api/videos?limit=1", timeout=5) as resp:
-            payload = _json.loads(resp.read())
-            videos = payload.get("videos", payload) if isinstance(payload, dict) else payload
-            if videos:
-                video_id = str(videos[0].get("id", videos[0]) if isinstance(videos[0], dict) else videos[0])
-    except Exception:
-        pass
-
-    if not video_id:
-        # Fall back to a well-known stub UUID
-        video_id = "11111111-1111-1111-1111-111111111111"
-
-    headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-    slow_mo = int(os.getenv("PLAYWRIGHT_SLOW_MO", "0"))
+    # Discover a real video ID via the typed service object
+    api_config = APIConfig()
+    video_svc = VideoApiService(api_config)
+    result = video_svc.find_ready_video()
+    video_id = result[0] if result else "11111111-1111-1111-1111-111111111111"
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=headless, slow_mo=slow_mo)
+        browser = pw.chromium.launch(headless=config.headless, slow_mo=config.slow_mo)
         page = browser.new_page()
-        url = f"{config.base_url}/v/{video_id}"
-        page.goto(url, timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
+        watch = WatchPage(page)
+        watch.navigate_to_video(config.base_url, video_id)
         try:
-            page.wait_for_selector(".player", timeout=15_000)
+            page.wait_for_selector('[class*="player"]', timeout=15_000)
         except Exception:
             pass
-        yield page
+        yield watch
         browser.close()
 
 
 class TestPlayerStylingLive:
     """MYTUBE-513 (Live): Verify .player computed styles in the deployed app."""
 
-    def test_player_border_radius_live(self, live_watch_page) -> None:
+    def test_player_border_radius_live(self, live_watch_page: WatchPage) -> None:
         """
         Step 2 (live) — .player computed border-radius must be 16px.
         """
-        styles = live_watch_page.evaluate("""() => {
-            const el = document.querySelector('[class*="player"]');
-            if (!el) return null;
-            return window.getComputedStyle(el).borderRadius;
-        }""")
-        assert styles == "16px", (
-            f".player computed border-radius is '{styles}', expected '16px'."
+        value = live_watch_page.get_player_computed_style("borderRadius")
+        assert value == "16px", (
+            f".player computed border-radius is '{value}', expected '16px'."
         )
 
-    def test_player_overflow_live(self, live_watch_page) -> None:
+    def test_player_overflow_live(self, live_watch_page: WatchPage) -> None:
         """
         Step 2 (live) — .player computed overflow must be hidden.
         """
-        styles = live_watch_page.evaluate("""() => {
-            const el = document.querySelector('[class*="player"]');
-            if (!el) return null;
-            return window.getComputedStyle(el).overflow;
-        }""")
-        assert styles == "hidden", (
-            f".player computed overflow is '{styles}', expected 'hidden'."
+        value = live_watch_page.get_player_computed_style("overflow")
+        assert value == "hidden", (
+            f".player computed overflow is '{value}', expected 'hidden'."
         )
 
-    def test_player_background_live(self, live_watch_page) -> None:
+    def test_player_background_live(self, live_watch_page: WatchPage) -> None:
         """
         Step 2 (live) — .player computed background-color must be rgb(0, 0, 0).
         """
-        styles = live_watch_page.evaluate("""() => {
-            const el = document.querySelector('[class*="player"]');
-            if (!el) return null;
-            return window.getComputedStyle(el).backgroundColor;
-        }""")
-        assert styles == "rgb(0, 0, 0)", (
-            f".player computed backgroundColor is '{styles}', expected 'rgb(0, 0, 0)' (#000)."
+        value = live_watch_page.get_player_computed_style("backgroundColor")
+        assert value == "rgb(0, 0, 0)", (
+            f".player computed backgroundColor is '{value}', expected 'rgb(0, 0, 0)' (#000)."
         )
 
-    def test_title_font_size_live(self, live_watch_page) -> None:
+    def test_title_font_size_live(self, live_watch_page: WatchPage) -> None:
         """
         Step 3 (live) — .videoTitle computed font-size must be 22px.
         """
-        styles = live_watch_page.evaluate("""() => {
-            const el = document.querySelector('[class*="videoTitle"]');
-            if (!el) return null;
-            return window.getComputedStyle(el).fontSize;
-        }""")
-        assert styles == "22px", (
-            f".videoTitle computed fontSize is '{styles}', expected '22px'."
+        value = live_watch_page.get_video_title_computed_style("fontSize")
+        assert value == "22px", (
+            f".videoTitle computed fontSize is '{value}', expected '22px'."
         )
 
-    def test_title_font_weight_live(self, live_watch_page) -> None:
+    def test_title_font_weight_live(self, live_watch_page: WatchPage) -> None:
         """
         Step 3 (live) — .videoTitle computed font-weight must be 700.
         """
-        styles = live_watch_page.evaluate("""() => {
-            const el = document.querySelector('[class*="videoTitle"]');
-            if (!el) return null;
-            return window.getComputedStyle(el).fontWeight;
-        }""")
-        assert styles == "700", (
-            f".videoTitle computed fontWeight is '{styles}', expected '700'."
+        value = live_watch_page.get_video_title_computed_style("fontWeight")
+        assert value == "700", (
+            f".videoTitle computed fontWeight is '{value}', expected '700'."
         )
