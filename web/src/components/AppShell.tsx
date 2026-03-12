@@ -26,7 +26,12 @@ interface AppShellProps {
  */
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
-  const isAuthRoute = AUTH_ROUTES.includes(pathname);
+  // Strip basePath prefix (present on GitHub Pages static export) and
+  // trailing slash so "/mytube/login/" normalises to "/login".
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const stripped = pathname.startsWith(basePath) ? pathname.slice(basePath.length) : pathname;
+  const normalizedPathname = stripped.replace(/\/$/, "") || "/";
+  const isAuthRoute = AUTH_ROUTES.includes(normalizedPathname);
 
   if (isAuthRoute) {
     return <>{children}</>;
