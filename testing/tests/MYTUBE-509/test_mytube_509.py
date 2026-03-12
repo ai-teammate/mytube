@@ -19,67 +19,24 @@ Expected Result
 
 Test Approach
 -------------
-Static analysis — reads the CSS module (upload.module.css) and globals.css
-directly to assert the correct values are in place.  This verifies the
-implementation without requiring a running server.
+Static analysis — delegates to UploadCSSModule (for upload.module.css) and
+CSSGlobalsPage (for globals.css) components.  This verifies the implementation
+without requiring a running server.
 
 Run from repo root:
     pytest testing/tests/MYTUBE-509/test_mytube_509.py -v
 """
 from __future__ import annotations
 
-import re
 import sys
 import os
-from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_WEB_SRC = _REPO_ROOT / "web" / "src"
-_UPLOAD_CSS = _WEB_SRC / "app" / "upload" / "upload.module.css"
-_GLOBALS_CSS = _WEB_SRC / "app" / "globals.css"
-
-# ---------------------------------------------------------------------------
-# Expected values (from redesign specification)
-# ---------------------------------------------------------------------------
-
-_EXPECTED_SHELL_BG = "rgba(127, 127, 127, 0.18)"
-_EXPECTED_SHELL_BG_ALT = "rgba(127,127,127,0.18)"   # compact form also acceptable
-_EXPECTED_HEIGHT = "10px"
-_EXPECTED_BORDER_RADIUS = "999px"
-_EXPECTED_GRADIENT = "linear-gradient(90deg, var(--accent-cta)"
-_EXPECTED_GRADIENT_END = "var(--accent-cta-end)"
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _extract_rule(css: str, selector_fragment: str) -> str:
-    """Return the body of the first CSS rule whose selector contains *selector_fragment*."""
-    pattern = rf"\.{re.escape(selector_fragment)}\s*\{{([^}}]*)\}}"
-    match = re.search(pattern, css, re.DOTALL | re.IGNORECASE)
-    if not match:
-        raise AssertionError(
-            f"CSS rule for '.{selector_fragment}' not found in {_UPLOAD_CSS.name}."
-        )
-    return match.group(1)
-
-
-def _normalise(value: str) -> str:
-    """Strip whitespace and lowercase for loose comparison."""
-    return re.sub(r"\s+", " ", value).strip().lower()
+from testing.components.pages.upload_page.upload_css_module import UploadCSSModule
+from testing.components.pages.css_globals_page.css_globals_page import CSSGlobalsPage
 
 
 # ---------------------------------------------------------------------------
@@ -94,118 +51,87 @@ class TestProgressBarCSSModule:
 
     def test_upload_css_exists(self) -> None:
         """upload.module.css must exist at the expected path."""
-        assert _UPLOAD_CSS.exists(), (
-            f"upload.module.css not found at {_UPLOAD_CSS}. "
+        css = UploadCSSModule()
+        assert css.file_exists(), (
+            "upload.module.css not found at the expected path. "
             "The progress bar styles are expected to live in this file."
         )
 
     def test_progress_shell_background(self) -> None:
-        """
-        Step 1 — .progressShell background must be rgba(127,127,127,0.18).
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressShell")
-        norm = _normalise(rule)
-        # Accept either spacing variant
+        """Step 1 — .progressShell background must be rgba(127,127,127,0.18)."""
+        css = UploadCSSModule()
+        rule = css.get_rule_body("progressShell")
         assert (
-            "rgba(127, 127, 127, 0.18)" in norm or "rgba(127,127,127,0.18)" in norm
+            "rgba(127, 127, 127, 0.18)" in rule or "rgba(127,127,127,0.18)" in rule
         ), (
             f".progressShell background is not set to rgba(127,127,127,0.18).\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{rule}"
         )
 
     def test_progress_shell_height(self) -> None:
-        """
-        Step 1 — .progressShell height must be exactly 10px.
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressShell")
-        norm = _normalise(rule)
-        assert "height: 10px" in norm, (
+        """Step 1 — .progressShell height must be exactly 10px."""
+        css = UploadCSSModule()
+        assert css.rule_contains("progressShell", "height: 10px"), (
             f".progressShell height is not '10px'.\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{css.get_rule_body('progressShell')}"
         )
 
     def test_progress_shell_border_radius(self) -> None:
-        """
-        Step 1 — .progressShell border-radius must be 999px.
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressShell")
-        norm = _normalise(rule)
-        assert "border-radius: 999px" in norm, (
+        """Step 1 — .progressShell border-radius must be 999px."""
+        css = UploadCSSModule()
+        assert css.rule_contains("progressShell", "border-radius: 999px"), (
             f".progressShell border-radius is not '999px'.\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{css.get_rule_body('progressShell')}"
         )
 
     # -- Step 2: progress fill / gradient --------------------------------------
 
     def test_progress_fill_uses_gradient(self) -> None:
-        """
-        Step 2 — .progressFill background must use a linear-gradient.
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressFill")
-        norm = _normalise(rule)
-        assert "linear-gradient" in norm, (
+        """Step 2 — .progressFill background must use a linear-gradient."""
+        css = UploadCSSModule()
+        assert css.rule_contains("progressFill", "linear-gradient"), (
             f".progressFill background does not use linear-gradient.\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{css.get_rule_body('progressFill')}"
         )
 
     def test_progress_fill_gradient_uses_accent_cta(self) -> None:
-        """
-        Step 2 — .progressFill gradient must start with var(--accent-cta).
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressFill")
-        norm = _normalise(rule)
-        assert "var(--accent-cta)" in norm, (
+        """Step 2 — .progressFill gradient must reference var(--accent-cta)."""
+        css = UploadCSSModule()
+        assert css.rule_contains("progressFill", "var(--accent-cta)"), (
             f".progressFill gradient does not reference var(--accent-cta).\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{css.get_rule_body('progressFill')}"
         )
 
     def test_progress_fill_gradient_uses_accent_cta_end(self) -> None:
-        """
-        Step 2 — .progressFill gradient must end with var(--accent-cta-end).
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressFill")
-        norm = _normalise(rule)
-        assert "var(--accent-cta-end)" in norm, (
+        """Step 2 — .progressFill gradient must reference var(--accent-cta-end)."""
+        css = UploadCSSModule()
+        assert css.rule_contains("progressFill", "var(--accent-cta-end)"), (
             f".progressFill gradient does not reference var(--accent-cta-end).\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{css.get_rule_body('progressFill')}"
         )
 
     def test_progress_fill_height_full(self) -> None:
-        """
-        Step 2 — .progressFill height must be 100% (fills the shell).
-        """
-        css = _read(_UPLOAD_CSS)
-        rule = _extract_rule(css, "progressFill")
-        norm = _normalise(rule)
-        assert "height: 100%" in norm, (
+        """Step 2 — .progressFill height must be 100% (fills the shell)."""
+        css = UploadCSSModule()
+        assert css.rule_contains("progressFill", "height: 100%"), (
             f".progressFill height is not '100%'.\n"
-            f"Rule body found:\n{rule.strip()}"
+            f"Rule body found:\n{css.get_rule_body('progressFill')}"
         )
 
     # -- globals.css CSS variable definitions ----------------------------------
 
     def test_globals_css_defines_accent_cta(self) -> None:
-        """
-        globals.css :root must define --accent-cta used by the fill gradient.
-        """
-        css = _read(_GLOBALS_CSS)
-        assert "--accent-cta" in css, (
+        """globals.css :root must define --accent-cta used by the fill gradient."""
+        css_globals = CSSGlobalsPage()
+        assert css_globals.get_light_token("--accent-cta") is not None, (
             "globals.css does not define --accent-cta. "
             "This CSS variable is required by the progress fill gradient."
         )
 
     def test_globals_css_defines_accent_cta_end(self) -> None:
-        """
-        globals.css :root must define --accent-cta-end used by the fill gradient.
-        """
-        css = _read(_GLOBALS_CSS)
-        assert "--accent-cta-end" in css, (
+        """globals.css :root must define --accent-cta-end used by the fill gradient."""
+        css_globals = CSSGlobalsPage()
+        assert css_globals.get_light_token("--accent-cta-end") is not None, (
             "globals.css does not define --accent-cta-end. "
             "This CSS variable is required by the progress fill gradient."
         )
