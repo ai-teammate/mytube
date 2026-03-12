@@ -114,9 +114,6 @@ class TestBrowseLibraryButtonRendering:
           - A visible border (border-color is not transparent).
           - Text color is not transparent.
         """
-        page = home._page
-
-        # Use eval_on_selector which supports Playwright-specific selectors (has-text)
         btn_locator = home.browse_library_button().first
         btn_locator.wait_for(state="visible", timeout=5_000)
 
