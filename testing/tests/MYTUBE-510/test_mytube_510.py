@@ -42,6 +42,7 @@ After navigation the test:
 
 Architecture
 ------------
+- LibraryToolbarPage component encapsulates all browser interactions.
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest module-scoped fixtures.
 - No hardcoded URLs, credentials, or environment values.
@@ -50,14 +51,14 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 import pytest
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from playwright.sync_api import sync_playwright, Browser
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.upload_page.library_toolbar_page import LibraryToolbarPage
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -66,10 +67,9 @@ from testing.core.config.web_config import WebConfig
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 _TOOLBAR_WAIT_TIMEOUT = 15_000  # ms — time to wait for the toolbar to appear
 
-# Stable aria-based selectors that survive CSS module name mangling
+# Stable aria-based selectors (referenced only for error messages)
 _SEARCH_INPUT_SELECTOR = '[aria-label="search videos"]'
 _CATEGORY_SELECT_SELECTOR = '[aria-label="filter by category"]'
-_RESET_BUTTON_SELECTOR = 'button[type="button"]'
 
 # Expected computed CSS values for the toolbar row (CSS grid)
 _EXPECTED_DISPLAY = "grid"
@@ -127,72 +127,6 @@ _FAKE_USER_INJECT_SCRIPT = """
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _computed_style_of_parent(page: Page, child_selector: str, prop: str) -> str:
-    """Return a computed CSS property of the *parent* element of child_selector."""
-    return page.eval_on_selector(
-        child_selector,
-        f"el => window.getComputedStyle(el.parentElement).{prop}",
-    )
-
-
-def _parent_element_tag(page: Page, child_selector: str) -> str:
-    """Return the tag name of the parent element of child_selector."""
-    return page.eval_on_selector(
-        child_selector,
-        "el => el.parentElement.tagName.toLowerCase()",
-    )
-
-
-def _siblings_share_parent(page: Page, selector_a: str, selector_b: str) -> bool:
-    """Return True if two elements share the same immediate parent."""
-    return page.evaluate(
-        """([selA, selB]) => {
-            const a = document.querySelector(selA);
-            const b = document.querySelector(selB);
-            return a !== null && b !== null && a.parentElement === b.parentElement;
-        }""",
-        [selector_a, selector_b],
-    )
-
-
-def _get_toolbar_css(page: Page) -> dict:
-    """Return key computed CSS values for the toolbar row."""
-    return page.eval_on_selector(
-        _SEARCH_INPUT_SELECTOR,
-        """el => {
-            const row = el.parentElement;
-            const cs = window.getComputedStyle(row);
-            return {
-                display: cs.display,
-                gridTemplateColumns: cs.gridTemplateColumns,
-                gap: cs.gap,
-                columnGap: cs.columnGap,
-                alignItems: cs.alignItems,
-                childCount: row.children.length,
-                tagName: row.tagName.toLowerCase(),
-            };
-        }""",
-    )
-
-
-def _reset_button_in_toolbar(page: Page) -> bool:
-    """Return True if there is a 'Reset' button that shares the toolbar parent."""
-    return page.evaluate(
-        """([searchSel]) => {
-            const searchInput = document.querySelector(searchSel);
-            if (!searchInput) return false;
-            const row = searchInput.parentElement;
-            const buttons = row ? Array.from(row.querySelectorAll('button')) : [];
-            return buttons.some(btn => (btn.textContent || '').trim() === 'Reset');
-        }""",
-        [_SEARCH_INPUT_SELECTOR],
-    )
-
-
-# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -203,58 +137,69 @@ def config() -> WebConfig:
 
 
 @pytest.fixture(scope="module")
-def upload_page(config: WebConfig) -> Page:
+def browser(config: WebConfig) -> Browser:
+    """Launch a Chromium browser instance shared across all tests in this module."""
+    with sync_playwright() as pw:
+        br: Browser = pw.chromium.launch(
+            headless=config.headless,
+            slow_mo=config.slow_mo,
+        )
+        yield br
+        br.close()
+
+
+@pytest.fixture(scope="module")
+def upload_page(browser: Browser, config: WebConfig) -> LibraryToolbarPage:
     """Navigate to /upload with a fake (or real) authenticated user.
 
-    Uses the fake-user injection init script if no real Firebase credentials
-    are configured; otherwise performs a real login first.
+    Returns a LibraryToolbarPage component that encapsulates all toolbar
+    interactions.  Uses the fake-user injection init script if no real
+    Firebase credentials are configured; otherwise performs a real login first.
     """
     firebase_api_key = os.getenv("FIREBASE_API_KEY", "")
     email = config.test_email
     password = config.test_password
     has_credentials = bool(firebase_api_key and email and password)
 
-    with sync_playwright() as pw:
-        browser: Browser = pw.chromium.launch(
-            headless=config.headless,
-            slow_mo=config.slow_mo,
-        )
-        context: BrowserContext = browser.new_context()
-        context.set_default_timeout(_PAGE_LOAD_TIMEOUT)
+    context = browser.new_context()
+    context.set_default_timeout(_PAGE_LOAD_TIMEOUT)
 
-        # Always inject the fake-user script so the toolbar renders even when
-        # real credentials are unavailable.
-        context.add_init_script(script=_FAKE_USER_INJECT_SCRIPT)
+    # Always inject the fake-user script so the toolbar renders even when
+    # real credentials are unavailable.
+    context.add_init_script(script=_FAKE_USER_INJECT_SCRIPT)
 
-        page: Page = context.new_page()
-        page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
+    page = context.new_page()
+    page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
 
-        if has_credentials:
-            # Real login path
-            page.goto(config.login_url(), wait_until="domcontentloaded")
-            try:
-                page.wait_for_selector('input[id="email"]', timeout=15_000)
-                page.fill('input[id="email"]', email)
-                page.fill('input[id="password"]', password)
-                page.click('button[type="submit"]:not([aria-label="Submit search"])')
-                page.wait_for_url(lambda url: "/login" not in url, timeout=20_000)
-            except Exception:
-                pass
-
-        # Navigate to /upload (fake user makes the page render its content)
-        page.goto(config.upload_url(), wait_until="domcontentloaded")
-
-        # Wait for the toolbar search input to confirm the library area rendered
+    if has_credentials:
+        # Real login path
+        page.goto(config.login_url(), wait_until="domcontentloaded")
         try:
-            page.wait_for_selector(
-                _SEARCH_INPUT_SELECTOR,
-                timeout=_TOOLBAR_WAIT_TIMEOUT,
-            )
+            page.wait_for_selector('input[id="email"]', timeout=15_000)
+            page.fill('input[id="email"]', email)
+            page.fill('input[id="password"]', password)
+            page.click('button[type="submit"]:not([aria-label="Submit search"])')
+            page.wait_for_url(lambda url: "/login" not in url, timeout=20_000)
         except Exception:
             pass
 
-        yield page
-        browser.close()
+    # Navigate to /upload (fake user makes the page render its content)
+    page.goto(config.upload_url(), wait_until="domcontentloaded")
+
+    # Wait for the toolbar search input to confirm the library area rendered
+    try:
+        page.wait_for_selector(
+            _SEARCH_INPUT_SELECTOR,
+            timeout=_TOOLBAR_WAIT_TIMEOUT,
+        )
+    except Exception:
+        pass
+
+    toolbar = LibraryToolbarPage(page)
+
+    yield toolbar
+
+    context.close()
 
 
 # ---------------------------------------------------------------------------
@@ -265,81 +210,73 @@ def upload_page(config: WebConfig) -> Page:
 class TestLibraryToolbarGridLayout:
     """MYTUBE-510 — Toolbar in the library area uses CSS grid layout."""
 
-    def test_search_input_is_present(self, upload_page: Page) -> None:
+    def test_search_input_is_present(self, upload_page: LibraryToolbarPage) -> None:
         """The search input with aria-label='search videos' must be present."""
-        locator = upload_page.locator(_SEARCH_INPUT_SELECTOR)
-        assert locator.count() >= 1, (
+        count = upload_page.search_input_count()
+        assert count >= 1, (
             f"Search input ({_SEARCH_INPUT_SELECTOR}) not found in the library toolbar. "
             "The /upload page may not have rendered the authenticated content. "
             "Check that the fake-user injection script activated correctly."
         )
 
-    def test_category_select_is_present(self, upload_page: Page) -> None:
+    def test_category_select_is_present(self, upload_page: LibraryToolbarPage) -> None:
         """The category filter select with aria-label='filter by category' must be present."""
-        locator = upload_page.locator(_CATEGORY_SELECT_SELECTOR)
-        assert locator.count() >= 1, (
+        count = upload_page.category_select_count()
+        assert count >= 1, (
             f"Category select ({_CATEGORY_SELECT_SELECTOR}) not found in the library toolbar."
         )
 
-    def test_reset_button_is_present_in_toolbar(self, upload_page: Page) -> None:
+    def test_reset_button_is_present_in_toolbar(self, upload_page: LibraryToolbarPage) -> None:
         """A 'Reset' button must be present inside the toolbar row."""
-        found = _reset_button_in_toolbar(upload_page)
+        found = upload_page.reset_button_in_toolbar()
         assert found, (
             "No 'Reset' button found as a sibling of the search input inside the toolbar row. "
             "Expected a <button> with text 'Reset' as a direct child of the toolbar grid row."
         )
 
-    def test_search_and_select_share_parent(self, upload_page: Page) -> None:
+    def test_search_and_select_share_parent(self, upload_page: LibraryToolbarPage) -> None:
         """The search input and category select must be direct children of the same parent."""
-        shared = _siblings_share_parent(
-            upload_page,
-            _SEARCH_INPUT_SELECTOR,
-            _CATEGORY_SELECT_SELECTOR,
-        )
+        shared = upload_page.search_and_select_share_parent()
         assert shared, (
             "The search input and category select do not share the same parent element. "
             "Both must be direct children of the toolbar grid row."
         )
 
-    def test_toolbar_row_is_css_grid(self, upload_page: Page) -> None:
+    def test_toolbar_row_is_css_grid(self, upload_page: LibraryToolbarPage) -> None:
         """The toolbar row container must use display: grid."""
-        css = _get_toolbar_css(upload_page)
+        css = upload_page.get_toolbar_css()
         display = css.get("display", "")
         assert display == _EXPECTED_DISPLAY, (
             f"Toolbar row has display='{display}', expected 'grid'. "
             f"Full CSS snapshot: {css}"
         )
 
-    def test_toolbar_grid_has_three_columns(self, upload_page: Page) -> None:
+    def test_toolbar_grid_has_three_columns(self, upload_page: LibraryToolbarPage) -> None:
         """The toolbar grid must define three columns (1fr + two auto columns)."""
-        css = _get_toolbar_css(upload_page)
+        css = upload_page.get_toolbar_css()
         grid_cols: str = css.get("gridTemplateColumns", "")
         # getComputedStyle resolves the three columns to pixel values like
         # "NNNpx NNNpx NNNpx"; split and count.
         parts = [p.strip() for p in grid_cols.split() if p.strip()]
-        # Each column value is a px measurement or track keyword.
-        # 3 separate column values expected.
         assert len(parts) == 3, (
             f"Toolbar grid has {len(parts)} column track(s) ({grid_cols!r}), "
             "expected 3 columns (1fr auto auto) as defined in upload.module.css. "
             f"Full CSS snapshot: {css}"
         )
 
-    def test_toolbar_row_align_items_center(self, upload_page: Page) -> None:
+    def test_toolbar_row_align_items_center(self, upload_page: LibraryToolbarPage) -> None:
         """The toolbar grid row must align children to center on the cross axis."""
-        css = _get_toolbar_css(upload_page)
+        css = upload_page.get_toolbar_css()
         align = css.get("alignItems", "")
         assert align == _EXPECTED_ALIGN_ITEMS, (
             f"Toolbar row has align-items='{align}', expected 'center'. "
             f"Full CSS snapshot: {css}"
         )
 
-    def test_toolbar_row_has_gap(self, upload_page: Page) -> None:
+    def test_toolbar_row_has_gap(self, upload_page: LibraryToolbarPage) -> None:
         """The toolbar grid row must have a non-zero column gap between elements."""
-        css = _get_toolbar_css(upload_page)
-        # gap / column-gap is resolved to a px value by the browser
+        css = upload_page.get_toolbar_css()
         col_gap: str = css.get("columnGap", css.get("gap", "0px"))
-        # Parse numeric value
         numeric = col_gap.replace("px", "").strip()
         try:
             gap_px = float(numeric)
@@ -350,9 +287,9 @@ class TestLibraryToolbarGridLayout:
             f"Full CSS snapshot: {css}"
         )
 
-    def test_toolbar_has_exactly_three_children(self, upload_page: Page) -> None:
+    def test_toolbar_has_exactly_three_children(self, upload_page: LibraryToolbarPage) -> None:
         """The toolbar grid row must contain exactly three direct children."""
-        css = _get_toolbar_css(upload_page)
+        css = upload_page.get_toolbar_css()
         child_count = css.get("childCount", 0)
         assert child_count == 3, (
             f"Toolbar grid row has {child_count} direct child element(s), expected 3 "
