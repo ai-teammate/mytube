@@ -326,3 +326,68 @@ class DashboardPage:
         if badge.count() == 0:
             return None
         return badge.first.get_attribute("class")
+
+    # ------------------------------------------------------------------
+    # Playlist chip interactions (card-grid layout)
+    # ------------------------------------------------------------------
+
+    _PLAYLIST_CHIP_GROUP = '[role="group"][aria-label="Filter by playlist"]'
+    _VIDEO_GRID = "[class*='videoGrid']"
+
+    def wait_for_playlist_chips(self, timeout: int = 15_000) -> None:
+        """Wait until the playlist chip row is visible."""
+        self._page.wait_for_selector(self._PLAYLIST_CHIP_GROUP, timeout=timeout)
+
+    def click_playlist_chip(self, playlist_name: str) -> None:
+        """Click the playlist filter chip with the given *playlist_name*."""
+        chip = self._page.locator(self._PLAYLIST_CHIP_GROUP).get_by_role(
+            "button", name=playlist_name, exact=True
+        )
+        chip.click()
+
+    def click_all_chip(self) -> None:
+        """Click the 'All' filter chip to reset the playlist filter."""
+        chip = self._page.locator(self._PLAYLIST_CHIP_GROUP).get_by_role(
+            "button", name="All", exact=True
+        )
+        chip.click()
+
+    def get_video_card_count(self, timeout: int = 5_000) -> int:
+        """Return the number of video cards currently visible in the card grid."""
+        grid = self._page.locator(self._VIDEO_GRID)
+        try:
+            grid.wait_for(state="visible", timeout=timeout)
+        except Exception:
+            return 0
+        return grid.locator("> div").count()
+
+    def get_video_card_titles(self) -> list[str]:
+        """Return the text of each title element in the video card grid."""
+        grid = self._page.locator(self._VIDEO_GRID)
+        if grid.count() == 0:
+            return []
+        titles: list[str] = []
+        cards = grid.locator("> div")
+        for i in range(cards.count()):
+            card = cards.nth(i)
+            title_el = card.locator("a, span").first
+            text = (title_el.text_content() or "").strip()
+            if text:
+                titles.append(text)
+        return titles
+
+    def is_video_card_visible_by_title(self, title: str, timeout: int = 3_000) -> bool:
+        """Return True if a video card containing *title* is visible in the grid."""
+        try:
+            card = self._page.locator(self._VIDEO_GRID).locator(
+                f"a:has-text('{title}'), span:has-text('{title}')"
+            ).first
+            card.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def wait_for_video_card_count(self, expected: int, timeout: int = 5_000) -> None:
+        """Wait until the card grid contains exactly *expected* cards."""
+        grid = self._page.locator(self._VIDEO_GRID)
+        expect(grid.locator("> div")).to_have_count(expected, timeout=timeout)
