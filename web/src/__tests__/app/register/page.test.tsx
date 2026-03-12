@@ -2,7 +2,7 @@
  * Unit tests for src/app/register/page.tsx
  */
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // ─── Mock next/navigation ─────────────────────────────────────────────────────
@@ -61,16 +61,36 @@ describe("RegisterPage", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
+  it("renders the auth card with logo and heading", () => {
+    render(<RegisterPage />);
+    expect(screen.getByText("MYTUBE")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /welcome to mytube/i })
+    ).toBeInTheDocument();
+  });
+
   it("renders the registration form when not loading and no user", () => {
     render(<RegisterPage />);
-    expect(
-      screen.getByRole("heading", { name: /create an account/i })
-    ).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /create account/i })
     ).toBeInTheDocument();
+  });
+
+  it("renders Google and GitHub social buttons as disabled placeholders", () => {
+    render(<RegisterPage />);
+    expect(
+      screen.getByRole("button", { name: /sign up with google/i })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /sign up with github/i })
+    ).toBeDisabled();
+  });
+
+  it("shows password helper text for minimum characters", () => {
+    render(<RegisterPage />);
+    expect(screen.getByText(/minimum 6 characters/i)).toBeInTheDocument();
   });
 
   it("redirects to / when user is already authenticated", async () => {
@@ -176,8 +196,6 @@ describe("RegisterPage", () => {
   });
 
   it("shows error for invalid email reported by Firebase", async () => {
-    // Use a structurally valid email so HTML5 form validation passes, but
-    // have Firebase reject it with auth/invalid-email.
     const error = Object.assign(new Error("Invalid email"), {
       code: "auth/invalid-email",
     });
@@ -213,6 +231,20 @@ describe("RegisterPage", () => {
     });
   });
 
+  it("shows generic error for non-object errors", async () => {
+    mockCreateUserWithEmailAndPassword.mockRejectedValue("string error");
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+
+    await user.type(screen.getByLabelText(/email/i), "alice@example.com");
+    await user.type(screen.getByLabelText(/password/i), "password123");
+    await user.click(screen.getByRole("button", { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/unexpected error/i);
+    });
+  });
+
   it("has a link to the login page", () => {
     render(<RegisterPage />);
     expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
@@ -220,4 +252,24 @@ describe("RegisterPage", () => {
       "/login"
     );
   });
+
+  it("submit button shows submitting state while registering", async () => {
+    let resolveCreate!: () => void;
+    mockCreateUserWithEmailAndPassword.mockReturnValue(
+      new Promise<void>((resolve) => { resolveCreate = resolve; })
+    );
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+
+    await user.type(screen.getByLabelText(/email/i), "alice@example.com");
+    await user.type(screen.getByLabelText(/password/i), "password123");
+    await user.click(screen.getByRole("button", { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /creating account/i })).toBeDisabled();
+    });
+
+    await act(async () => { resolveCreate(); });
+  });
 });
+
