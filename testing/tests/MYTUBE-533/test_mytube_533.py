@@ -45,7 +45,7 @@ import os
 import sys
 
 import pytest
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -57,11 +57,10 @@ from testing.components.pages.hero_section.hero_section_component import HeroSec
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
-_HERO_SELECTOR = "section[aria-label='Hero']"
 
 # Expected declared values (as authored in HeroSection.module.css)
 _EXPECTED_GAP_PX = "30px"
-# Ratio  expected: 1.05 / 0.95 ≈ 1.1053
+# Ratio expected: 1.05 / 0.95 ≈ 1.1053
 _EXPECTED_COL_RATIO = 1.05 / 0.95
 _COL_RATIO_TOLERANCE = 0.02  # ±2 %
 
@@ -89,98 +88,16 @@ def browser_page(config: WebConfig):
         )
         page = browser.new_page(viewport=_VIEWPORT)
         page.goto(config.home_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="networkidle")
-        page.wait_for_selector(_HERO_SELECTOR, timeout=_PAGE_LOAD_TIMEOUT)
+        page.wait_for_selector(
+            HeroSectionComponent._HERO_SECTION, timeout=_PAGE_LOAD_TIMEOUT
+        )
         yield page
         browser.close()
 
 
 @pytest.fixture(scope="module")
-def hero(browser_page: Page) -> HeroSectionComponent:
+def hero(browser_page) -> HeroSectionComponent:
     return HeroSectionComponent(browser_page)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_declared_grid_template_columns(page: Page, element_selector: str) -> str | None:
-    """
-    Scan all loaded CSS style sheets for a rule whose selector matches the
-    hero element and that declares a ``grid-template-columns`` property.
-
-    Returns the raw declared value (e.g. ``"1.05fr 0.95fr"``) or ``None``
-    if no matching rule is found.
-
-    Because Next.js CSS Modules mangle class names at build time we cannot
-    know the exact class name ahead of time.  Instead we look for a rule
-    that applies to the element by testing each rule's selector against
-    the element using ``element.matches()``.
-    """
-    return page.evaluate(
-        """
-        (selector) => {
-            const el = document.querySelector(selector);
-            if (!el) return null;
-
-            for (const sheet of document.styleSheets) {
-                let rules;
-                try {
-                    rules = sheet.cssRules || sheet.rules;
-                } catch (e) {
-                    // Cross-origin stylesheet — skip
-                    continue;
-                }
-                if (!rules) continue;
-
-                for (const rule of rules) {
-                    if (rule.type !== 1) continue;  // CSSStyleRule only
-                    let matches = false;
-                    try {
-                        matches = el.matches(rule.selectorText);
-                    } catch (e) {
-                        continue;
-                    }
-                    if (matches && rule.style.gridTemplateColumns) {
-                        return rule.style.gridTemplateColumns.trim();
-                    }
-                }
-            }
-            return null;
-        }
-        """,
-        element_selector,
-    )
-
-
-def _get_computed_column_gap(page: Page, element_selector: str) -> str:
-    """Return the computed column-gap of the hero grid element."""
-    return page.eval_on_selector(
-        element_selector,
-        "el => window.getComputedStyle(el).columnGap",
-    )
-
-
-def _get_computed_column_widths(page: Page, element_selector: str) -> tuple[float, float] | None:
-    """
-    Return the computed pixel widths of the two grid columns by reading the
-    ``grid-template-columns`` resolved value (e.g. ``"672px 608px"``) and
-    splitting it into two floats.  Returns ``None`` if the value cannot be
-    parsed as two pixel measurements.
-    """
-    raw: str = page.eval_on_selector(
-        element_selector,
-        "el => window.getComputedStyle(el).gridTemplateColumns",
-    )
-    parts = raw.strip().split()
-    if len(parts) != 2:
-        return None
-    try:
-        w1 = float(parts[0].rstrip("px"))
-        w2 = float(parts[1].rstrip("px"))
-        return w1, w2
-    except ValueError:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -191,19 +108,17 @@ def _get_computed_column_widths(page: Page, element_selector: str) -> tuple[floa
 class TestHeroDesktopGridLayout:
     """MYTUBE-533: Verify the hero grid uses 1.05fr 0.95fr columns with 30px gap."""
 
-    def test_hero_section_is_visible(self, browser_page: Page) -> None:
+    def test_hero_section_is_visible(self, hero: HeroSectionComponent) -> None:
         """
         Step 1 / Pre-condition: the hero section must be rendered and visible
         at a desktop viewport (width ≥ 768 px).
         """
-        hero_loc = browser_page.locator(_HERO_SELECTOR)
-        assert hero_loc.count() > 0, (
-            f"Hero section element ('{_HERO_SELECTOR}') not found on the homepage. "
-            f"URL: {browser_page.url!r}"
+        assert hero.is_hero_visible(), (
+            "Hero section element not found or not visible on the homepage. "
+            f"Selector: '{HeroSectionComponent._HERO_SECTION}'"
         )
-        hero_loc.first.wait_for(state="visible", timeout=10_000)
 
-    def test_declared_grid_template_columns(self, browser_page: Page) -> None:
+    def test_declared_grid_template_columns(self, hero: HeroSectionComponent) -> None:
         """
         Step 3 (primary assertion): the CSS rule applied to the hero element
         must declare ``grid-template-columns: 1.05fr 0.95fr``.
@@ -212,10 +127,11 @@ class TestHeroDesktopGridLayout:
         resolved pixel representation — so it faithfully validates the design
         specification.
         """
-        declared = _get_declared_grid_template_columns(browser_page, _HERO_SELECTOR)
+        declared = hero.get_declared_grid_template_columns()
 
         assert declared is not None, (
-            f"No CSS rule with 'grid-template-columns' found for '{_HERO_SELECTOR}'. "
+            f"No CSS rule with 'grid-template-columns' found for "
+            f"'{HeroSectionComponent._HERO_SECTION}'. "
             "Either the hero section is not using a CSS-grid layout or the "
             "stylesheet could not be read (cross-origin restriction)."
         )
@@ -226,14 +142,14 @@ class TestHeroDesktopGridLayout:
             "The hero section CSS does not match the 2-column specification."
         )
 
-    def test_computed_column_gap_is_30px(self, browser_page: Page) -> None:
+    def test_computed_column_gap_is_30px(self, hero: HeroSectionComponent) -> None:
         """
         Step 3: the computed column-gap of the hero grid must be 30 px.
 
         ``gap: 30px`` in the CSS resolves to ``column-gap: 30px`` and
         ``row-gap: 30px``; we assert the column gap specifically.
         """
-        gap = _get_computed_column_gap(browser_page, _HERO_SELECTOR)
+        gap = hero.get_computed_column_gap()
 
         assert gap == _EXPECTED_GAP_PX, (
             f"Expected computed column-gap to be '{_EXPECTED_GAP_PX}', "
@@ -241,7 +157,7 @@ class TestHeroDesktopGridLayout:
             "The hero section 'gap' CSS property may not be set to 30px."
         )
 
-    def test_column_width_ratio_matches_specification(self, browser_page: Page) -> None:
+    def test_column_width_ratio_matches_specification(self, hero: HeroSectionComponent) -> None:
         """
         Step 3 (geometric sanity): the rendered column widths must reflect the
         1.05 : 0.95 ratio within a ±2 % tolerance.
@@ -249,11 +165,11 @@ class TestHeroDesktopGridLayout:
         This test complements the stylesheet check and catches cases where an
         inline style or a more-specific rule overrides the module CSS.
         """
-        widths = _get_computed_column_widths(browser_page, _HERO_SELECTOR)
+        widths = hero.get_computed_column_widths()
 
         assert widths is not None, (
             "Could not parse computed grid-template-columns as two pixel values. "
-            f"Raw value: {browser_page.eval_on_selector(_HERO_SELECTOR, 'el => window.getComputedStyle(el).gridTemplateColumns')!r}"
+            "The grid may not be active at this viewport width."
         )
 
         w1, w2 = widths
