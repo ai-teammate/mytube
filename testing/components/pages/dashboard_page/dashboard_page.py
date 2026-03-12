@@ -27,7 +27,7 @@ class DashboardPage:
     _NOT_FOUND = "text=404"
     _TABLE = "table"
     _TABLE_ROWS = "table tbody tr"
-    _UPLOAD_CTA_TEXT = "Upload new video"
+    _UPLOAD_CTA_TEXT = "Upload your first video"
     _UPLOAD_CTA_LINK = "a[href*='upload']"
 
     def __init__(self, page: Page) -> None:
