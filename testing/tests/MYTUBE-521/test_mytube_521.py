@@ -46,7 +46,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
 from testing.components.pages.dashboard_page.dashboard_page import DashboardPage
-from testing.components.pages.login_page.login_page import LoginPage
 
 # ---------------------------------------------------------------------------
 # Constants
