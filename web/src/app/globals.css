@@ -5,6 +5,7 @@
   /* Backgrounds */
   --bg-page:    #f8f9fa;
   --bg-content: #ffffff;
+  --bg-login:   #ffffff;
   --bg-header:  #ffffff;
   --bg-card:    #f3f4f8;
 
@@ -40,6 +41,7 @@
 body[data-theme="dark"] {
   --bg-page:    #0f0f11;
   --bg-content: #1a1a1f;
+  --bg-login:   #1a1a1f;
   --bg-header:  #1a1a1f;
   --bg-card:    #242428;
 
