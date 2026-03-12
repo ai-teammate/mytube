@@ -1,0 +1,164 @@
+/* ─── Watch page layout ──────────────────────────────────────────────────── */
+
+.watchLayout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  padding: 24px 16px;
+}
+
+@media (min-width: 1024px) {
+  .watchLayout {
+    grid-template-columns: 1fr 360px;
+    align-items: start;
+  }
+}
+
+/* ─── Player container ───────────────────────────────────────────────────── */
+
+.player {
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: var(--shadow-card);
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+/* ─── Title ──────────────────────────────────────────────────────────────── */
+
+.videoTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+  line-height: 1.3;
+}
+
+/* ─── Uploader row ───────────────────────────────────────────────────────── */
+
+.uploaderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.uploaderInitials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gradient-hero);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-cta);
+  flex-shrink: 0;
+}
+
+.uploaderName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.uploaderName:hover {
+  text-decoration: underline;
+}
+
+/* ─── Meta line ──────────────────────────────────────────────────────────── */
+
+.metaLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+/* ─── Tags row ───────────────────────────────────────────────────────────── */
+
+.tagsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tagPill {
+  background: var(--accent-pill-bg);
+  color: var(--text-pill);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ─── Actions row (ratings + save) ──────────────────────────────────────── */
+
+.actionsRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* ─── Description ────────────────────────────────────────────────────────── */
+
+.description {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-words;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebarCard {
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.sidebarPlaceholderText {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* ─── Loading / error / not-found states ─────────────────────────────────── */
+
+.stateContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stateText {
+  color: var(--text-secondary);
+}
+
+.stateError {
+  color: #e53e3e;
+}
