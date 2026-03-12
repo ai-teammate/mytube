@@ -28,6 +28,11 @@ class VisualPanelPage:
     _THUMBNAIL = ".visual-panel__thumbnail, .visual-panel [class*='thumbnail']"
     _BADGE = ".quality-badge, .visual-panel [class*='badge'], .visual-panel [class*='pill']"
 
+    # Visual-canvas / thumbnail-fallback selectors (MYTUBE-534)
+    _VISUAL_CANVAS = "[class*='visualCanvas']"
+    _THUMBNAIL_IMG = "img[alt='Video preview']"
+    _CANVAS_PLACEHOLDER = "[data-testid='canvas-placeholder']"
+
     def __init__(self, page: Page) -> None:
         self._page = page
 
@@ -49,6 +54,21 @@ class VisualPanelPage:
 
     def thumbnail_locator(self):
         return self._page.locator(self._THUMBNAIL)
+
+    @property
+    def visual_canvas(self):
+        """Locator for the visual canvas wrapper element."""
+        return self._page.locator(self._VISUAL_CANVAS)
+
+    @property
+    def thumbnail_image(self):
+        """Locator for the runtime thumbnail img (alt='Video preview')."""
+        return self._page.locator(self._THUMBNAIL_IMG)
+
+    @property
+    def placeholder(self):
+        """Locator for the canvas-placeholder div (shown when no thumbnailUrl)."""
+        return self._page.locator(self._CANVAS_PLACEHOLDER)
 
     def panel_has_title_text(self, expected: str) -> bool:
         """Return True if the panel contains *expected* title text anywhere."""
