@@ -1,0 +1,8 @@
+test_id: MYTUBE-513
+type: web
+framework: playwright
+platform: chromium
+mode: dual  # static (always) + live (when APP_URL is set)
+dependencies:
+  - WEB_BASE_URL
+  - API_BASE_URL
