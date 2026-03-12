@@ -12,8 +12,10 @@ Architecture notes
 """
 from playwright.sync_api import Page, expect
 
+from testing.components.pages.mixins.shell_inspection_mixin import ShellInspectionMixin
 
-class LoginPage:
+
+class LoginPage(ShellInspectionMixin):
     """Page Object for the MyTube login page."""
 
     # Selectors
@@ -254,6 +256,10 @@ class LoginPage:
             }""",
             raw_value,
         )
+
+    # ------------------------------------------------------------------
+    # Shell / layout inspection (inherited from ShellInspectionMixin)
+    # ------------------------------------------------------------------
 
     def _computed_dimension(self, selector: str, prop: str) -> float:
         """Return the computed CSS *prop* (e.g. 'width') as a float in pixels."""

@@ -10,6 +10,8 @@ from typing import Optional
 
 from playwright.sync_api import Page, Request, Response
 
+from testing.components.pages.mixins.shell_inspection_mixin import ShellInspectionMixin
+
 
 @dataclass
 class RegistrationResult:
@@ -31,7 +33,7 @@ class RegistrationResult:
     """The URL of the page after the registration attempt completes."""
 
 
-class RegisterPage:
+class RegisterPage(ShellInspectionMixin):
     """Page Object for the registration form at /register.
 
     All selectors and form interactions are encapsulated here.
@@ -56,6 +58,10 @@ class RegisterPage:
         # Wait for the loading spinner to disappear (Firebase auth resolves)
         # and the form heading to become visible.
         self._page.wait_for_selector("h1", timeout=20_000)
+
+    # ------------------------------------------------------------------
+    # Shell / layout inspection (inherited from ShellInspectionMixin)
+    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Assertions (state queries)
