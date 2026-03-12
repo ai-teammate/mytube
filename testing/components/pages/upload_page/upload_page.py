@@ -411,3 +411,37 @@ class UploadPage:
             timeout=timeout,
         )
         return self._page.url
+
+    # ------------------------------------------------------------------
+    # Category select helpers (MYTUBE-511)
+    # ------------------------------------------------------------------
+
+    def is_category_select_visible(self, timeout: float = 5_000) -> bool:
+        """Return True when the category select element is present and visible."""
+        locator = self._page.locator(self._CATEGORY_SELECT)
+        if locator.count() == 0:
+            return False
+        try:
+            locator.first.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def get_category_select_computed_styles(self) -> dict:
+        """Return computed CSS styles for the category select element.
+
+        Waits for the element to be visible before evaluating styles.
+        Returns a dict with keys: backgroundImage, appearance, webkitAppearance.
+        """
+        select = self._page.locator(self._CATEGORY_SELECT).first
+        select.wait_for(state="visible", timeout=5_000)
+        return select.evaluate(
+            """(el) => {
+                const s = window.getComputedStyle(el);
+                return {
+                    backgroundImage: s.backgroundImage,
+                    appearance: s.appearance,
+                    webkitAppearance: s.webkitAppearance,
+                };
+            }"""
+        )
