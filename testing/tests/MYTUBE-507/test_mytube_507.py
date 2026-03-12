@@ -60,8 +60,10 @@ from __future__ import annotations
 import os
 import sys
 
+import pathlib
+
 import pytest
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -94,74 +96,34 @@ _CARD_SELECTOR = "section"  # The card is rendered as <section> with uploadCard 
 # HTML Fixture
 # ---------------------------------------------------------------------------
 
+def _load_css(relative_path: str) -> str:
+    """Load a CSS file from the repository by path relative to the repo root."""
+    root = pathlib.Path(__file__).parents[3]  # repo root
+    return (root / relative_path).read_text()
+
+
 def _get_upload_card_html_fixture() -> str:
     """
-    Return a self-contained HTML page that replicates the upload card's
-    exact CSS structure from upload.module.css and globals.css.
+    Return a self-contained HTML page that loads the actual CSS from the
+    repository source files (upload.module.css and globals.css) so that any
+    regression in those files will cause these tests to fail.
 
-    The fixture:
-    - Defines the CSS custom properties from globals.css (light-mode :root).
-    - Applies the .upload-card and .card-heading rules from upload.module.css.
-    - Renders the <section> and <h2> exactly as _content.tsx does.
-
-    This allows getComputedStyle assertions without requiring authentication
-    or a deployed app.
+    The fixture renders the <section> and <h2> using the same CSS Module class
+    names (.uploadCard, .cardHeading) as _content.tsx, with IDs for selection.
     """
-    return """<!DOCTYPE html>
+    globals_css = _load_css("web/src/app/globals.css")
+    module_css = _load_css("web/src/app/upload/upload.module.css")
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Upload Card Fixture — MYTUBE-507</title>
-  <style>
-    /* ── globals.css: light-mode design tokens ─────────────────────────── */
-    :root {
-      --bg-page:       #f0f1f5;
-      --bg-card:       #f3f4f8;
-      --bg-panel:      #e8eaf0;
-      --bg-input:      #eceef4;
-
-      --text-primary:  #1a1b22;
-      --text-secondary:#4a4b55;
-      --text-subtle:   #6e6f7e;
-      --text-hint:     #5a5a62;
-      --text-cta:      #ffffff;
-
-      --border-light:  rgba(127,127,127,0.20);
-      --border-focus:  rgba(109, 64, 203, 0.4);
-
-      --accent-logo:   #6d40cb;
-      --accent-cta:    #6d40cb;
-      --accent-cta-end:#8b5cf6;
-      --accent-hover:  #5a32a3;
-
-      --shadow-card:   0 8px 20px rgba(0, 0, 0, 0.08);
-      --shadow-panel:  0 4px 12px rgba(0, 0, 0, 0.06);
-    }
-
-    /* ── upload.module.css: .uploadCard ────────────────────────────────── */
-    .upload-card {
-      background:    var(--bg-card);
-      border-radius: 16px;
-      border:        1px solid rgba(127, 127, 127, 0.16);
-      box-shadow:    var(--shadow-card);
-      padding:       20px;
-      display:       flex;
-      flex-direction: column;
-      gap:           16px;
-    }
-
-    /* ── upload.module.css: .cardHeading ────────────────────────────────── */
-    .card-heading {
-      font-size:   20px;
-      font-weight: 700;
-      color:       var(--text-primary);
-      margin:      0;
-    }
-  </style>
+  <style>{globals_css}</style>
+  <style>{module_css}</style>
 </head>
 <body>
-  <section class="card upload-card" id="upload-card">
-    <h2 class="card-heading" id="card-heading">Personal Video Upload</h2>
+  <section class="uploadCard" id="upload-card">
+    <h2 class="cardHeading" id="card-heading">Personal Video Upload</h2>
   </section>
 </body>
 </html>"""
@@ -177,19 +139,15 @@ def config() -> WebConfig:
 
 
 @pytest.fixture(scope="module")
-def fixture_page():
+def fixture_page(browser):
     """Playwright page loaded with the self-contained HTML fixture."""
-    headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-    slow_mo = int(os.getenv("PLAYWRIGHT_SLOW_MO", "0"))
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=headless, slow_mo=slow_mo)
-        page = browser.new_page()
-        page.set_content(
-            _get_upload_card_html_fixture(),
-            wait_until="domcontentloaded",
-        )
-        yield page
-        browser.close()
+    page = browser.new_page()
+    page.set_content(
+        _get_upload_card_html_fixture(),
+        wait_until="domcontentloaded",
+    )
+    yield page
+    page.close()
 
 
 # ---------------------------------------------------------------------------
