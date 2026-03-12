@@ -160,7 +160,7 @@ class TestAuthRoutesShellExclusion:
         try:
             url = config.register_url()
             register = RegisterPage(page)
-            register.navigate(config.base_url)
+            register.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
             assert not register.has_shell_class(), (
                 f"Expected no .shell element on {url}, but shell class was found. "
@@ -177,7 +177,7 @@ class TestAuthRoutesShellExclusion:
         try:
             url = config.register_url()
             register = RegisterPage(page)
-            register.navigate(config.base_url)
+            register.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
             assert not register.has_page_wrap_class(), (
                 f"Expected no .page-wrap element on {url}, but page-wrap class was found. "
@@ -195,7 +195,7 @@ class TestAuthRoutesShellExclusion:
         try:
             url = config.register_url()
             register = RegisterPage(page)
-            register.navigate(config.base_url)
+            register.navigate(url)
             page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
             shell_like = register.has_shell_like_styles()
             assert shell_like is None, (
