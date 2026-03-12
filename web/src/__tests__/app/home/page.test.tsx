@@ -219,4 +219,50 @@ describe("HomePage", () => {
       screen.getByText(/your personal space to upload, stream, and discover videos/i)
     ).toBeInTheDocument();
   });
+
+  it("renders the 'Browse Library' CTA button in the hero section", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    render(<HomePage repository={repo} />);
+    const btn = screen.getByRole("button", { name: /browse library/i });
+    expect(btn).toBeInTheDocument();
+  });
+
+  it("clicking 'Browse Library' calls scrollIntoView on the video-grid element", () => {
+    const repo = makeRepo(
+      () => new Promise(() => {}),
+      () => new Promise(() => {})
+    );
+
+    const scrollIntoViewMock = jest.fn();
+    const videoGridDiv = document.createElement("section");
+    videoGridDiv.id = "video-grid";
+    videoGridDiv.scrollIntoView = scrollIntoViewMock;
+    document.body.appendChild(videoGridDiv);
+
+    render(<HomePage repository={repo} />);
+    const btn = screen.getByRole("button", { name: /browse library/i });
+    btn.click();
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+
+    document.body.removeChild(videoGridDiv);
+  });
+
+  it("the video grid section has id='video-grid' as smooth-scroll anchor", async () => {
+    const repo = makeRepo(
+      () => Promise.resolve([]),
+      () => Promise.resolve([])
+    );
+
+    render(<HomePage repository={repo} />);
+
+    await waitFor(() => {
+      const section = document.getElementById("video-grid");
+      expect(section).not.toBeNull();
+    });
+  });
 });
