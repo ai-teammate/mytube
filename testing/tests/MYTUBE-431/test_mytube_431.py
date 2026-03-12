@@ -232,7 +232,10 @@ class TestDarkThemeOverrides:
         ``getComputedStyle(body).backgroundColor`` should resolve to the
         RGB equivalent of ``#0f0f11`` (i.e. ``rgb(15, 15, 17)``).
         """
-        # data-theme="dark" was already set by the previous test (same page fixture)
+        # Explicitly set the dark attribute so this test is self-contained
+        # and can run in isolation or in any order.
+        page.evaluate("document.body.setAttribute('data-theme', 'dark')")
+
         bg_color = page.evaluate(
             "getComputedStyle(document.body).backgroundColor"
         )
