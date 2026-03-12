@@ -297,3 +297,64 @@ class HomePage:
     def wait_for_scroll_animation(self, ms: int = 1_500) -> None:
         """Wait *ms* milliseconds for a smooth-scroll animation to complete."""
         self._page.wait_for_timeout(ms)
+
+    # ------------------------------------------------------------------
+    # Hero CTA — keyboard accessibility
+    # ------------------------------------------------------------------
+
+    def reset_focus_to_document_start(self) -> None:
+        """Blur any focused element and set focus to the document body so that
+        the next Tab press starts the natural tab order from the top."""
+        self._page.evaluate(
+            "() => {"
+            "  if (document.activeElement) document.activeElement.blur();"
+            "  document.body.setAttribute('tabindex', '-1');"
+            "  document.body.focus();"
+            "}"
+        )
+
+    def tab_once(self) -> None:
+        """Press the Tab key once."""
+        self._page.keyboard.press("Tab")
+
+    def get_focused_element_info(self) -> dict:
+        """Return a snapshot of the currently focused element's accessibility info."""
+        data = self._page.evaluate(
+            """() => {
+                const el = document.activeElement;
+                if (!el || el === document.body || el === document.documentElement) {
+                    return { tagName: 'body', textContent: '', focusVisible: false,
+                             outlineWidth: '0px', outlineStyle: 'none' };
+                }
+                const cs = window.getComputedStyle(el);
+                return {
+                    tagName:      el.tagName.toLowerCase(),
+                    textContent:  (el.textContent || '').trim().substring(0, 200),
+                    focusVisible: el.matches(':focus-visible'),
+                    outlineWidth: cs.outlineWidth,
+                    outlineStyle: cs.outlineStyle,
+                };
+            }"""
+        )
+        return data or {}
+
+    def tab_to_element_with_text(self, text: str, max_tabs: int = 40) -> bool:
+        """Tab through focusable elements until one with *text* is focused.
+
+        Returns True if the element was found and focused, False if max_tabs
+        was reached without finding it.
+        """
+        for _ in range(max_tabs):
+            self.tab_once()
+            info = self.get_focused_element_info()
+            if text.lower() in info.get("textContent", "").lower():
+                return True
+        return False
+
+    def press_enter(self) -> None:
+        """Press the Enter key on the currently focused element."""
+        self._page.keyboard.press("Enter")
+
+    def is_focused_element_focus_visible(self) -> bool:
+        """Return True if the currently focused element matches :focus-visible."""
+        return self.get_focused_element_info().get("focusVisible", False)
