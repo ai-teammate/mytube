@@ -143,7 +143,7 @@ export default function SiteHeader() {
           type="button"
           onClick={toggleTheme}
           aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
-          className="w-10 h-10 rounded-full flex items-center justify-center bg-transparent transition-colors hover:bg-[color:var(--bg-card)] focus-visible:outline-2"
+          className="w-10 h-10 rounded-full flex items-center justify-center bg-transparent transition-colors hover:bg-[color:var(--bg-card)] focus-visible:outline focus-visible:outline-2"
           style={{ outlineColor: "var(--accent-logo)" }}
         >
           {theme === "light" ? (
