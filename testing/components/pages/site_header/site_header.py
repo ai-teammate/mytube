@@ -11,7 +11,7 @@ Architecture notes
 """
 from __future__ import annotations
 
-from playwright.sync_api import Page
+from playwright.sync_api import Locator, Page
 
 
 class SiteHeader:
@@ -84,3 +84,40 @@ class SiteHeader:
         """
         locator = self._page.locator(self._SIGN_IN_LINK_SELECTOR)
         return locator.count() > 0 and locator.first.is_visible()
+
+    # ------------------------------------------------------------------
+    # Login button (unauthenticated state)
+    # ------------------------------------------------------------------
+
+    # The pill-shaped branded login button rendered when the user is not
+    # authenticated.  Matches the <Link href="/login"> in SiteHeader.tsx,
+    # which resolves to a path containing "/login/" on deployment.
+    _LOGIN_BUTTON_SELECTOR = "header a[href*='/login/']:not([href*='next'])"
+
+    def login_button(self) -> "Locator":
+        """Return the Playwright Locator for the header login button.
+
+        Only present when the user is *not* authenticated.
+        """
+        return self._page.locator(self._LOGIN_BUTTON_SELECTOR)
+
+    def login_button_computed_styles(self) -> dict:
+        """Return a dict of computed CSS properties for the login button.
+
+        Retrieves borderColor, color, fontWeight, and borderTopLeftRadius so
+        that tests can assert branded pill styling without accessing raw
+        Playwright APIs.
+        """
+        btn = self.login_button().first
+        btn.wait_for(state="visible", timeout=5_000)
+        return btn.evaluate(
+            """(el) => {
+                const s = window.getComputedStyle(el);
+                return {
+                    borderColor:          s.borderColor,
+                    color:                s.color,
+                    fontWeight:           s.fontWeight,
+                    borderTopLeftRadius:  s.borderTopLeftRadius,
+                };
+            }"""
+        )
