@@ -1,0 +1,10 @@
+framework: playwright
+platform: web
+language: python
+dependencies:
+  - pytest
+  - playwright
+ticket: MYTUBE-519
+description: >
+  Verify the styling and focus effects of the search and category controls
+  in the dashboard toolbar — borderless inputs and focus behavior.
