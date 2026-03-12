@@ -1,0 +1,5 @@
+framework: pytest
+type: web-static
+platform: any
+dependencies:
+  - pytest
