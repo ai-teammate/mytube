@@ -88,16 +88,15 @@ def browser_page(config: WebConfig):
         )
         page = browser.new_page(viewport=_VIEWPORT)
         page.goto(config.home_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="networkidle")
-        page.wait_for_selector(
-            HeroSectionComponent._HERO_SECTION, timeout=_PAGE_LOAD_TIMEOUT
-        )
         yield page
         browser.close()
 
 
 @pytest.fixture(scope="module")
 def hero(browser_page) -> HeroSectionComponent:
-    return HeroSectionComponent(browser_page)
+    component = HeroSectionComponent(browser_page)
+    component.is_hero_visible(timeout=_PAGE_LOAD_TIMEOUT)
+    return component
 
 
 # ---------------------------------------------------------------------------

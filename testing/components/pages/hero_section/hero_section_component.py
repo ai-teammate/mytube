@@ -4,10 +4,11 @@ HeroSectionComponent — Page Object for the hero section on the homepage.
 Encapsulates selectors and interactions for the hero section responsive grid:
   - grid-template-columns computed-style inspection
   - bounding-box geometry assertions (stacked vs side-by-side layout)
+  - CTA button ("Upload Your First Video") styling and navigation
 """
 from __future__ import annotations
 
-from playwright.sync_api import Page
+from playwright.sync_api import Locator, Page
 
 
 class HeroSectionComponent:
@@ -23,6 +24,9 @@ class HeroSectionComponent:
 
     # Fallback selectors for live app (no data-testid attributes)
     _HERO_GRID_FALLBACK = "[data-testid='hero-grid'], .hero-grid"
+
+    # Hero CTA — "Upload Your First Video" link rendered as .btn.cta
+    _UPLOAD_CTA = "a.btn.cta, a:has-text('Upload Your First Video')"
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -108,8 +112,61 @@ class HeroSectionComponent:
         except ValueError:
             return None
 
+    # ------------------------------------------------------------------
+    # Upload CTA button — "Upload Your First Video"
+    # ------------------------------------------------------------------
+
+    def upload_cta_button(self) -> Locator:
+        """Return a Playwright Locator for the 'Upload Your First Video' CTA button."""
+        return self._page.locator(self._UPLOAD_CTA).first
+
+    def is_upload_cta_visible(self) -> bool:
+        """Return True if the Upload CTA button is visible on the page."""
+        btn = self.upload_cta_button()
+        return btn.count() > 0 and btn.is_visible()
+
+    def upload_cta_computed_styles(self) -> dict:
+        """Return computed CSS properties for the Upload CTA button.
+
+        Inspects backgroundImage, boxShadow, borderRadius, and color so that
+        tests can assert green-gradient pill styling without accessing Playwright directly.
+        """
+        btn = self.upload_cta_button()
+        btn.wait_for(state="visible", timeout=10_000)
+        return btn.evaluate(
+            """(el) => {
+                const s = window.getComputedStyle(el);
+                return {
+                    backgroundImage:     s.backgroundImage,
+                    backgroundColor:     s.backgroundColor,
+                    boxShadow:           s.boxShadow,
+                    borderTopLeftRadius: s.borderTopLeftRadius,
+                    color:               s.color,
+                };
+            }"""
+        )
+
+    def upload_cta_href(self) -> str:
+        """Return the href attribute of the Upload CTA button."""
+        return self.upload_cta_button().get_attribute("href") or ""
+
+    def click_upload_cta(self) -> None:
+        """Click the 'Upload Your First Video' CTA button."""
+        self.upload_cta_button().click()
+
+    # ------------------------------------------------------------------
+    # Grid layout
+    # ------------------------------------------------------------------
+
     def get_grid_template_columns(self, selector: str | None = None) -> str:
-        """Return the computed grid-template-columns value for the hero grid."""
+        """Return the computed grid-template-columns value for the hero grid.
+
+        Note: the default selector was changed from ``_HERO_GRID``
+        (``[data-testid='hero-grid']``) to ``_HERO_SECTION``
+        (``section[aria-label='Hero']``) because the ``data-testid="hero-grid"``
+        attribute does not exist in the live DOM — the ``<section aria-label="Hero">``
+        element is the actual CSS grid container.
+        """
         sel = selector or self._HERO_SECTION
         return self._page.eval_on_selector(
             sel,
