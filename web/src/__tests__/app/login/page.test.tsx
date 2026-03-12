@@ -62,19 +62,38 @@ describe("LoginPage", () => {
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
+  it("renders the auth card with logo and heading", () => {
+    render(<LoginPage />);
+    expect(screen.getByText("MYTUBE")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /welcome to mytube/i })
+    ).toBeInTheDocument();
+  });
+
   it("renders the sign-in form when not loading and no user", () => {
     render(<LoginPage />);
-    expect(
-      screen.getByRole("heading", { name: /sign in/i })
-    ).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /sign in$/i })
+      screen.getByRole("button", { name: /^sign in$/i })
+    ).toBeInTheDocument();
+  });
+
+  it("renders Google and GitHub social login buttons", () => {
+    render(<LoginPage />);
+    expect(
+      screen.getByRole("button", { name: /continue with google/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /sign in with google/i })
+      screen.getByRole("button", { name: /continue with github/i })
     ).toBeInTheDocument();
+  });
+
+  it("GitHub button is disabled (placeholder)", () => {
+    render(<LoginPage />);
+    expect(
+      screen.getByRole("button", { name: /continue with github/i })
+    ).toBeDisabled();
   });
 
   it("redirects to / when user is already authenticated and no next param", async () => {
@@ -101,7 +120,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "alice@example.com");
     await user.type(screen.getByLabelText(/password/i), "password123");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(mockSignInWithEmailAndPassword).toHaveBeenCalledWith(
@@ -119,7 +138,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "alice@example.com");
     await user.type(screen.getByLabelText(/password/i), "password123");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(mockRouterReplace).toHaveBeenCalledWith("/");
@@ -134,7 +153,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "alice@example.com");
     await user.type(screen.getByLabelText(/password/i), "pass");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(mockRouterReplace).toHaveBeenCalledWith("/dashboard");
@@ -147,7 +166,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(mockRouterReplace).toHaveBeenCalledWith("/settings");
@@ -164,7 +183,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "wrong@example.com");
     await user.type(screen.getByLabelText(/password/i), "wrongpass");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(
@@ -183,7 +202,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "alice@example.com");
     await user.type(screen.getByLabelText(/password/i), "pass");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/too many/i);
@@ -200,7 +219,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "alice@example.com");
     await user.type(screen.getByLabelText(/password/i), "pass");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/sign-in failed/i);
@@ -214,7 +233,7 @@ describe("LoginPage", () => {
 
     await user.type(screen.getByLabelText(/email/i), "alice@example.com");
     await user.type(screen.getByLabelText(/password/i), "pass");
-    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/unexpected error/i);
@@ -226,7 +245,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(mockSignInWithPopup).toHaveBeenCalledTimes(1);
@@ -238,7 +257,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(mockRouterReplace).toHaveBeenCalledWith("/");
@@ -253,7 +272,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/popup was closed/i);
@@ -274,12 +293,31 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
-    await user.click(screen.getByRole("button", { name: /sign in with google/i }));
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(mockGetIdToken).toBeDefined();
       expect(typeof mockGetIdToken).toBe("function");
     });
+  });
+
+  it("sign-in button shows submitting state while signing in", async () => {
+    let resolveSignIn!: () => void;
+    mockSignInWithEmailAndPassword.mockReturnValue(
+      new Promise<void>((resolve) => { resolveSignIn = resolve; })
+    );
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.type(screen.getByLabelText(/email/i), "alice@example.com");
+    await user.type(screen.getByLabelText(/password/i), "pass");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /signing in/i })).toBeDisabled();
+    });
+
+    await act(async () => { resolveSignIn(); });
   });
 });
 
@@ -314,3 +352,4 @@ describe("getSafeNextUrl", () => {
     expect(getSafeNextUrl("upload")).toBe("/");
   });
 });
+
