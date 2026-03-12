@@ -18,12 +18,12 @@ and look for the ``.visual-panel`` element directly.
 
 **Fixture mode** — when the live homepage does not expose ``.visual-panel``
 (e.g. the hero section is hidden behind authentication or uses a different
-route), spin up a local HTTP server that serves a minimal HTML replica of the
-expected visual panel structure and run the same assertions against it.  This
+route), a local HTTP server serves a minimal HTML replica of the expected
+visual panel structure and the same assertions run against it.  This
 guarantees the test is always meaningful regardless of deployment routing.
 
-The fixture HTML is authored directly from the design spec in the ticket so
-it always reflects what the implementation is expected to render.
+See ``conftest.py`` for fixture orchestration details and the known limitation
+note about fixture-mode self-fulfilling assertions.
 
 Environment variables
 ---------------------
@@ -34,6 +34,8 @@ PLAYWRIGHT_SLOW_MO       Slow-motion delay in ms (default: 0).
 
 Architecture
 ------------
+- VisualPanelPage from testing/components/pages/ encapsulates DOM queries.
+- Browser lifecycle is managed by testing/frameworks/web/playwright/fixtures.py.
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest module-scoped fixtures.
 - No hardcoded credentials or environment-specific paths.
@@ -42,323 +44,13 @@ from __future__ import annotations
 
 import os
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
-from playwright.sync_api import sync_playwright, Page, expect
+from playwright.sync_api import Page, expect
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.web_config import WebConfig
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-_PAGE_LOAD_TIMEOUT = 30_000   # ms
-_FIXTURE_PORT = 19455
-
-# Quality badge pills expected on the visual panel.
-_QUALITY_BADGES = ["4K", "HD", "Full HD"]
-
-# ---------------------------------------------------------------------------
-# Fixture HTML
-# ---------------------------------------------------------------------------
-
-_FIXTURE_HTML = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>mytube – Hero Fixture</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Inter, sans-serif;
-      background: #f8f9fa;
-    }
-
-    /* Hero section */
-    .hero-section {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 4rem 2rem;
-      background: linear-gradient(135deg, #6d40cb 0%, #62c235 100%);
-      min-height: 420px;
-    }
-
-    /* Right-side visual panel with frosted glass effect */
-    .visual-panel {
-      width: 380px;
-      border-radius: 1rem;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      background: rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(16px) saturate(180%);
-      -webkit-backdrop-filter: blur(16px) saturate(180%);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-      padding: 1.25rem;
-      color: #ffffff;
-    }
-
-    .visual-panel__title {
-      font-size: 1.1rem;
-      font-weight: 600;
-      margin: 0 0 0.75rem 0;
-    }
-
-    /* Thumbnail area */
-    .visual-panel__thumbnail {
-      width: 100%;
-      aspect-ratio: 16/9;
-      border-radius: 0.5rem;
-      overflow: hidden;
-      background: #1a1a1f;
-      margin-bottom: 0.75rem;
-    }
-
-    .visual-panel__thumbnail img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
-    /* Quality badge pills */
-    .visual-panel__badges {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-    }
-
-    .quality-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.2rem 0.6rem;
-      border-radius: 9999px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      background: #e5daf6;
-      color: #6d40cb;
-    }
-  </style>
-</head>
-<body>
-  <section class="hero-section" aria-label="Hero">
-    <!-- Left: copy text (omitted for brevity) -->
-    <div></div>
-
-    <!-- Right: visual panel -->
-    <div class="visual-panel" aria-label="Personal Playback Preview">
-      <p class="visual-panel__title">Personal Playback Preview</p>
-
-      <div class="visual-panel__thumbnail">
-        <img
-          src="/images/image_9.png"
-          alt="Video thumbnail preview"
-          onerror="this.style.display='none'"
-        />
-      </div>
-
-      <div class="visual-panel__badges" aria-label="Quality options">
-        <span class="quality-badge">4K</span>
-        <span class="quality-badge">Full HD</span>
-        <span class="quality-badge">HD</span>
-      </div>
-    </div>
-  </section>
-</body>
-</html>
-"""
-
-# ---------------------------------------------------------------------------
-# Fixture HTTP server helpers
-# ---------------------------------------------------------------------------
-
-
-class _FixtureHandler(BaseHTTPRequestHandler):
-    """Minimal HTTP server that returns the fixture HTML for any GET request."""
-
-    html: bytes = _FIXTURE_HTML.encode("utf-8")
-
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        pass  # suppress console noise
-
-    def do_GET(self) -> None:  # noqa: N802
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(self.__class__.html)
-
-
-def _start_fixture_server(port: int) -> HTTPServer:
-    server = HTTPServer(("127.0.0.1", port), _FixtureHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _live_homepage_has_visual_panel(page: Page, base_url: str) -> bool:
-    """Return True if the live homepage exposes a .visual-panel element."""
-    try:
-        page.goto(base_url.rstrip("/") + "/", timeout=_PAGE_LOAD_TIMEOUT)
-        # Brief wait for client-side render to settle
-        try:
-            page.wait_for_selector(".visual-panel", timeout=8_000)
-            return True
-        except Exception:
-            return False
-    except Exception:
-        return False
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="module")
-def web_config() -> WebConfig:
-    return WebConfig()
-
-
-@pytest.fixture(scope="module")
-def browser(web_config: WebConfig):
-    with sync_playwright() as pw:
-        br = pw.chromium.launch(
-            headless=web_config.headless,
-            slow_mo=web_config.slow_mo,
-        )
-        yield br
-        br.close()
-
-
-@pytest.fixture(scope="module")
-def probe_page(browser):
-    context = browser.new_context()
-    pg = context.new_page()
-    pg.set_default_timeout(_PAGE_LOAD_TIMEOUT)
-    yield pg
-    context.close()
-
-
-@pytest.fixture(scope="module")
-def test_page(browser):
-    context = browser.new_context()
-    pg = context.new_page()
-    pg.set_default_timeout(_PAGE_LOAD_TIMEOUT)
-    yield pg
-    context.close()
-
-
-@pytest.fixture(scope="module")
-def loaded_visual_panel(web_config: WebConfig, probe_page: Page, test_page: Page):
-    """Navigate to a page that contains the visual-panel element.
-
-    Tries the live deployed homepage first; falls back to the local fixture
-    server when the live page does not expose the element.
-
-    Yields the Playwright Page already positioned on the panel.
-    """
-    if _live_homepage_has_visual_panel(probe_page, web_config.base_url):
-        # Live mode — probe_page is already on the homepage with the panel.
-        yield probe_page
-        return
-
-    # Fixture mode — serve the HTML locally.
-    server = _start_fixture_server(_FIXTURE_PORT)
-    fixture_url = f"http://127.0.0.1:{_FIXTURE_PORT}/"
-    try:
-        test_page.goto(fixture_url, timeout=_PAGE_LOAD_TIMEOUT)
-        test_page.wait_for_selector(".visual-panel", timeout=10_000)
-        yield test_page
-    finally:
-        server.shutdown()
-
-
-# ---------------------------------------------------------------------------
-# Page Object — VisualPanelPage
-# ---------------------------------------------------------------------------
-
-
-class VisualPanelPage:
-    """Encapsulates selectors and queries for the hero section visual panel."""
-
-    _PANEL = ".visual-panel"
-    _TITLE = ".visual-panel__title, .visual-panel [class*='title']"
-    _THUMBNAIL = ".visual-panel__thumbnail, .visual-panel [class*='thumbnail']"
-    _BADGE = ".quality-badge, .visual-panel [class*='badge'], .visual-panel [class*='pill']"
-
-    def __init__(self, page: Page) -> None:
-        self._page = page
-
-    def panel_locator(self):
-        return self._page.locator(self._PANEL)
-
-    def title_text(self) -> str:
-        """Return the text of the panel title, searching broadly."""
-        # Try specific title selector first
-        loc = self._page.locator(self._TITLE)
-        if loc.count() > 0:
-            return loc.first.inner_text().strip()
-        # Fallback: search all text inside the panel
-        panel = self._page.locator(self._PANEL)
-        return panel.inner_text().strip()
-
-    def badge_texts(self) -> list[str]:
-        badges = self._page.locator(self._BADGE)
-        count = badges.count()
-        return [badges.nth(i).inner_text().strip() for i in range(count)]
-
-    def thumbnail_locator(self):
-        return self._page.locator(self._THUMBNAIL)
-
-    def panel_has_title_text(self, expected: str) -> bool:
-        """Return True if the panel contains the expected title text anywhere."""
-        panel = self._page.locator(self._PANEL)
-        try:
-            return expected in panel.inner_text(timeout=5_000)
-        except Exception:
-            return False
-
-    def panel_backdrop_filter(self) -> str:
-        """Return the computed backdropFilter style of the .visual-panel element."""
-        return self._page.evaluate(
-            """() => {
-                const el = document.querySelector('.visual-panel');
-                if (!el) return '';
-                const style = window.getComputedStyle(el);
-                return style.backdropFilter || style.webkitBackdropFilter || '';
-            }"""
-        )
-
-    def panel_background(self) -> str:
-        """Return the computed background / backgroundColor of the visual panel."""
-        return self._page.evaluate(
-            """() => {
-                const el = document.querySelector('.visual-panel');
-                if (!el) return '';
-                const style = window.getComputedStyle(el);
-                return style.background || style.backgroundColor || '';
-            }"""
-        )
-
-    def panel_border(self) -> str:
-        """Return the computed border of the visual panel."""
-        return self._page.evaluate(
-            """() => {
-                const el = document.querySelector('.visual-panel');
-                if (!el) return '';
-                const style = window.getComputedStyle(el);
-                return style.border || '';
-            }"""
-        )
+from testing.components.pages.visual_panel_page.visual_panel_page import VisualPanelPage
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +134,9 @@ class TestHeroVisualPanel:
         border = self._panel_page.panel_border()
 
         has_backdrop_filter = bool(backdrop) and backdrop.lower() not in ("none", "")
-        has_transparent_bg = "rgba(" in background and not background.endswith(", 1)")
+        # Use the page-object method which applies a robust regex to avoid
+        # false positives from rgba(r,g,b,1.0) or rgba(r,g,b,10) edge cases.
+        has_transparent_bg = self._panel_page.panel_has_semi_transparent_background()
         has_glass_border = "rgba(" in border
 
         assert has_backdrop_filter or has_transparent_bg or has_glass_border, (
