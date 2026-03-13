@@ -155,6 +155,86 @@ class HeroSectionComponent:
         self.upload_cta_button().click()
 
     # ------------------------------------------------------------------
+    # Landing image — selectors and helpers for MYTUBE-573
+    # ------------------------------------------------------------------
+
+    _LANDING_IMAGE_SELECTORS = [
+        "img[alt='Personal Playback Preview']",
+        "img[src*='landing_image']",
+    ]
+
+    _VISUAL_CANVAS_SELECTORS = [
+        "[class*='visualCanvas']",
+        ".visualCanvas",
+    ]
+
+    _VISUAL_PANEL_SELECTORS = [
+        "[class*='visualPanel']",
+        ".visualPanel",
+    ]
+
+    def _find_locator(self, selectors: list[str]) -> "Locator | None":
+        """Return the first locator that matches any of *selectors*, or None."""
+        for selector in selectors:
+            loc = self._page.locator(selector)
+            try:
+                if loc.count() > 0:
+                    return loc.first
+            except Exception:
+                continue
+        return None
+
+    def get_landing_image_box(self, timeout: int = 10_000) -> "dict | None":
+        """Return the bounding box of the landing image element.
+
+        Waits for the element to become visible before measuring it.
+        Returns None only if the element cannot be found.
+        """
+        loc = self._find_locator(self._LANDING_IMAGE_SELECTORS)
+        if loc is None:
+            return None
+        loc.wait_for(state="visible", timeout=timeout)
+        return loc.bounding_box()
+
+    def get_landing_image_object_fit(self) -> str:
+        """Return the computed ``object-fit`` CSS value of the landing image."""
+        for selector in self._LANDING_IMAGE_SELECTORS:
+            result: str = self._page.evaluate(
+                """(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return '';
+                    return window.getComputedStyle(el).objectFit || '';
+                }""",
+                selector,
+            )
+            if result:
+                return result
+        return ""
+
+    def get_visual_canvas_box(self) -> "dict | None":
+        """Return the bounding box of the visual canvas container.
+
+        Tries ``_VISUAL_CANVAS_SELECTORS`` first, then falls back to
+        ``_VISUAL_PANEL_SELECTORS``.  Returns ``None`` only if nothing is found.
+        """
+        for selectors in (self._VISUAL_CANVAS_SELECTORS, self._VISUAL_PANEL_SELECTORS):
+            loc = self._find_locator(selectors)
+            if loc is not None:
+                return loc.bounding_box()
+        return None
+
+    def is_landing_image_visible(self, timeout: int = 10_000) -> bool:
+        """Return True if the landing image is present and visible."""
+        loc = self._find_locator(self._LANDING_IMAGE_SELECTORS)
+        if loc is None:
+            return False
+        try:
+            loc.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------------
     # Visual canvas image
     # ------------------------------------------------------------------
 
