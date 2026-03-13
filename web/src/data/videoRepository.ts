@@ -1,7 +1,8 @@
 // Data layer: HTTP repository implementation for VideoRepository.
 // Depends only on domain types — no React or Next.js imports.
 
-import type { VideoDetail, VideoRepository } from "@/domain/video";
+import type { VideoDetail, VideoRepository, RecommendationRepository } from "@/domain/video";
+import type { VideoCardItem } from "@/domain/search";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -45,5 +46,50 @@ export class ApiVideoRepository implements VideoRepository {
       },
       tags: data.tags ?? [],
     };
+  }
+}
+
+/**
+ * ApiRecommendationRepository fetches video recommendations from the backend API.
+ */
+/** Raw shape of a single item returned by the recommendations API endpoint. */
+interface RecommendationApiItem {
+  id: string;
+  title: string;
+  thumbnail_url: string | null;
+  view_count: number;
+  uploader_username: string;
+  created_at: string;
+}
+
+export class ApiRecommendationRepository implements RecommendationRepository {
+  private readonly baseUrl: string;
+
+  constructor(baseUrl: string = API_URL) {
+    this.baseUrl = baseUrl;
+  }
+
+  async getRecommendations(videoID: string): Promise<VideoCardItem[]> {
+    const res = await fetch(
+      `${this.baseUrl}/api/videos/${encodeURIComponent(videoID)}/recommendations`
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        `Failed to fetch recommendations for ${videoID}: ${res.status}`
+      );
+    }
+
+    const data = await res.json();
+    const items: RecommendationApiItem[] = data.recommendations ?? [];
+
+    return items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      thumbnailUrl: item.thumbnail_url ?? null,
+      viewCount: item.view_count,
+      uploaderUsername: item.uploader_username,
+      createdAt: item.created_at,
+    }));
   }
 }
