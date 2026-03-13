@@ -96,6 +96,7 @@ func main() {
 	// handler so that authenticated POST requests use a separate, unlimited bucket.
 	mux.Handle("/api/videos/{id}/rating", optionalAuthMiddleware(handler.NewRatingHandler(ratingRepo, userRepo, videoRepo)))
 	mux.Handle("/api/videos/{id}/comments", optionalAuthMiddleware(handler.NewVideoCommentsHandler(commentRepo, userRepo, videoRepo)))
+	mux.Handle("/api/videos/{id}/recommendations", handler.NewRecommendationsHandler(videoRepo))
 	// Delete comment: authenticated
 	mux.Handle("/api/comments/", authMiddleware(handler.NewDeleteCommentHandler(commentRepo, userRepo)))
 	// /api/videos/recent and /api/videos/popular must be registered before
