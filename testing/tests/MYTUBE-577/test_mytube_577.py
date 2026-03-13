@@ -40,16 +40,12 @@ Run from repo root:
 """
 from __future__ import annotations
 
-import os
-import sys
 import urllib.request
 from pathlib import Path
 from typing import Generator
 
 import pytest
 from playwright.sync_api import Browser, sync_playwright
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.components.pages.site_header.site_header import SiteHeader
 from testing.core.config.web_config import WebConfig
@@ -79,11 +75,6 @@ _BREAKPOINTS = [
 # Maximum allowed deviation from a perfect 1:1 aspect ratio (unitless ratio)
 # e.g. 0.05 means we accept width/height between 0.95 and 1.05
 _ASPECT_RATIO_TOLERANCE = 0.05
-
-# CSS selector for the LogoIcon SVG inside the site header
-# SiteHeader.tsx: <Link href="/" className="flex items-center gap-2 shrink-0">
-#                   <LogoIcon className="w-11 h-11" …>
-_LOGO_SVG_SELECTOR = "header a.shrink-0 svg"
 
 
 # ---------------------------------------------------------------------------
@@ -286,10 +277,10 @@ class TestLogoAspectRatioBreakpoints:
                 )
 
                 # Also verify the SVG inside the logo is rendered
-                svg_locator = page.locator(_LOGO_SVG_SELECTOR)
+                svg_locator = site_header.logo_svg_locator()
                 assert svg_locator.count() > 0, (
                     f"LogoIcon SVG not found inside the header logo link at "
-                    f"{label} (width={width}px). Selector: {_LOGO_SVG_SELECTOR!r}."
+                    f"{label} (width={width}px)."
                 )
 
                 box = svg_locator.first.bounding_box()
@@ -331,10 +322,10 @@ class TestLogoAspectRatioBreakpoints:
             )
             page.wait_for_selector("header", timeout=10_000)
 
-            svg_locator = page.locator(_LOGO_SVG_SELECTOR)
+            site_header = SiteHeader(page)
+            svg_locator = site_header.logo_svg_locator()
             assert svg_locator.count() > 0, (
                 f"LogoIcon SVG not found in header at {label} (width={width}px). "
-                f"Selector: {_LOGO_SVG_SELECTOR!r}. "
                 "The SiteHeader must render the LogoIcon inside the logo link."
             )
 
