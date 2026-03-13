@@ -72,12 +72,12 @@ export default function SiteHeader() {
       className="min-h-[56px] sm:min-h-[88px] px-4 sm:px-10 py-3 sm:py-4 flex items-center gap-3 sm:gap-6"
     >
       {/* Branded logo: SVG icon + text block */}
-      <Link href="/" className="flex items-center gap-2 shrink-0">
+      <Link href="/" aria-label="MYTUBE — Personal Video Portal" className="flex items-center gap-2 shrink-0">
         <LogoIcon
           className="w-11 h-11"
           style={{ color: "var(--accent-logo)" }}
         />
-        <div className="flex flex-col leading-none gap-0.5">
+        <div className="hidden sm:flex flex-col leading-none gap-0.5">
           <span
             className="text-[22px] font-bold leading-none"
             style={{ color: "var(--accent-logo)" }}
