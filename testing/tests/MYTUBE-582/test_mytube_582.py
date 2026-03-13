@@ -33,13 +33,12 @@ Two complementary modes:
 1. **Fixture mode** (always runs — self-contained):
    - Serves a local HTML page that faithfully reproduces the
      RecommendationSidebar's null-render branch (< 2 results).
-   - Asserts that neither "More like this" nor "Recommendations coming soon"
-     appear in the rendered output.
+   - Uses WatchPage component for DOM assertions.
 
 2. **Live mode** (runs when APP_URL / WEB_BASE_URL is reachable):
    - Discovers a ready video via VideoApiService.
-   - Navigates to /v/_/ on the deployed SPA and intercepts the
-     ``/api/videos/*/recommendations`` call to return an empty list.
+   - Navigates to /v/<id> on the deployed SPA via WatchPage and intercepts the
+     ``/api/videos/*/recommendations`` call to return 0 or 1 result.
    - Asserts the sidebar heading is absent once the fetch settles.
 
 Architecture
@@ -49,7 +48,7 @@ Architecture
 - VideoApiService (testing/components/services/video_api_service.py)
   — discovers a usable ready video without DB access.
 - WatchPage  (testing/components/pages/watch_page/watch_page.py)
-  — page object for navigation to /v/<id>.
+  — page object for navigation, sidebar queries.
 - Playwright sync API with pytest.
 
 Run from repo root:
@@ -66,7 +65,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 
 import pytest
-from playwright.sync_api import sync_playwright, Page, Route
+from playwright.sync_api import sync_playwright, Route
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -80,24 +79,9 @@ from testing.components.pages.watch_page.watch_page import WatchPage
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT = 30_000   # ms
-_SIDEBAR_SETTLE_TIMEOUT = 10_000  # ms — wait for recommendation fetch to complete
 
-# The static Next.js export exposes the watch page under /v/_/ (SPA fallback).
-_SPA_WATCH_PATH = "/v/_/"
-
-# Fake video UUID injected via sessionStorage to satisfy the SPA resolver.
+# Fake video UUID used as a fallback when no ready video is available.
 _FAKE_VIDEO_ID = "00000000-0000-0000-0000-000000000582"
-
-# Selector that uniquely identifies the "More like this" heading rendered by
-# RecommendationSidebar when ≥ 2 results are present.  Its absence proves the
-# sidebar returned null.
-_MORE_LIKE_THIS_SELECTOR = "h2:has-text('More like this')"
-
-# Text phrases that must never appear when the sidebar is hidden.
-_ABSENT_PHRASES = [
-    "More like this",
-    "Recommendations coming soon",
-]
 
 # ---------------------------------------------------------------------------
 # Minimal fixture HTML
@@ -188,7 +172,7 @@ def _app_is_reachable(url: str, timeout: int = 8) -> bool:
         return False
 
 
-def _discover_video(web_config: WebConfig, api_config: APIConfig) -> Optional[str]:
+def _discover_video(api_config: APIConfig) -> Optional[str]:
     """Return a ready video ID discoverable via the VideoApiService, or None."""
     svc = VideoApiService(api_config)
     result = svc.find_ready_video()
@@ -212,6 +196,19 @@ def api_config() -> APIConfig:
     return APIConfig()
 
 
+@pytest.fixture
+def browser_page(web_config: WebConfig):
+    """Yield (context, page) for one test; close both on teardown."""
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=web_config.headless, slow_mo=web_config.slow_mo)
+        context = browser.new_context()
+        page = context.new_page()
+        page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
+        yield context, page
+        context.close()
+        browser.close()
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -224,13 +221,15 @@ class TestRecommendationSidebarHiddenWhenFewResults:
     # ------------------------------------------------------------------
 
     def test_fixture_sidebar_hidden_with_zero_recommendations(
-        self, web_config: WebConfig
+        self, browser_page
     ) -> None:
         """
         A minimal HTML page that reproduces the null-render branch of
         RecommendationSidebar (0 recommendations) must contain neither
         "More like this" nor "Recommendations coming soon".
         """
+        context, page = browser_page
+
         port = _free_port()
         server = HTTPServer(("127.0.0.1", port), _FixtureHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -238,40 +237,24 @@ class TestRecommendationSidebarHiddenWhenFewResults:
 
         fixture_url = f"http://127.0.0.1:{port}/"
 
-        headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-        slow_mo = int(os.getenv("PLAYWRIGHT_SLOW_MO", "0"))
-
         try:
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=headless, slow_mo=slow_mo)
-                context = browser.new_context()
-                page = context.new_page()
-                page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
+            page.goto(fixture_url, wait_until="domcontentloaded")
 
-                page.goto(fixture_url, wait_until="domcontentloaded")
+            # Assert the watch layout rendered (page loaded correctly)
+            assert page.locator("[data-testid='watch-layout']").count() > 0, (
+                "Fixture watch layout not found — fixture page did not load."
+            )
 
-                # Assert the watch layout rendered (page loaded correctly)
-                assert page.locator("[data-testid='watch-layout']").count() > 0, (
-                    "Fixture watch layout not found — fixture page did not load."
-                )
+            watch = WatchPage(page)
 
-                # Assert the "More like this" heading is ABSENT
-                more_like_this = page.locator(_MORE_LIKE_THIS_SELECTOR)
-                assert more_like_this.count() == 0, (
-                    f"Expected 'More like this' heading to be absent when "
-                    f"recommendations < 2, but found {more_like_this.count()} instance(s)."
-                )
-
-                # Assert none of the forbidden phrases appear anywhere in the page
-                for phrase in _ABSENT_PHRASES:
-                    count = page.get_by_text(phrase, exact=False).count()
-                    assert count == 0, (
-                        f"Forbidden phrase '{phrase}' found on page "
-                        f"(expected absent when < 2 recommendations)."
-                    )
-
-                context.close()
-                browser.close()
+            assert not watch.is_recommendation_sidebar_present(), (
+                "Expected 'More like this' heading to be absent when "
+                "recommendations < 2, but it was found."
+            )
+            assert not watch.has_recommendations_placeholder(), (
+                "Expected 'Recommendations coming soon' to be absent when "
+                "recommendations < 2, but it was found."
+            )
         finally:
             server.shutdown()
 
@@ -280,7 +263,7 @@ class TestRecommendationSidebarHiddenWhenFewResults:
     # ------------------------------------------------------------------
 
     def test_live_sidebar_hidden_when_recommendations_api_returns_zero(
-        self, web_config: WebConfig, api_config: APIConfig
+        self, web_config: WebConfig, api_config: APIConfig, browser_page
     ) -> None:
         """
         On the live deployed app, intercept the recommendations API response to
@@ -289,90 +272,42 @@ class TestRecommendationSidebarHiddenWhenFewResults:
         if not _app_is_reachable(web_config.base_url):
             pytest.skip(f"Deployed app not reachable at {web_config.base_url!r}")
 
-        video_id = _discover_video(web_config, api_config)
-        if video_id is None:
-            # Fall back to the SPA placeholder ID — the watch page will show
-            # "Video not found" but the recommendation sidebar still fetches
-            # and returns nothing, giving us what we need to assert.
-            video_id = _FAKE_VIDEO_ID
+        video_id = _discover_video(api_config) or _FAKE_VIDEO_ID
 
-        headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-        slow_mo = int(os.getenv("PLAYWRIGHT_SLOW_MO", "0"))
+        context, page = browser_page
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=headless, slow_mo=slow_mo)
-            context = browser.new_context()
-            page = context.new_page()
-            page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
-
-            # Intercept the recommendations API and return an empty list (0 results).
-            # This simulates the precondition: video has 0 matching recommendations.
-            def _handle_recommendations(route: Route) -> None:
-                route.fulfill(
-                    status=200,
-                    content_type="application/json",
-                    body=json.dumps({"recommendations": []}),
-                )
-
-            context.route(
-                f"**/api/videos/*/recommendations",
-                _handle_recommendations,
+        # Intercept the recommendations API and return an empty list (0 results).
+        def _handle_recommendations(route: Route) -> None:
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"recommendations": []}),
             )
 
-            # Use the SPA fallback path: set sessionStorage so the app resolves
-            # the real video ID from the placeholder /v/_/ route.
-            watch_url = f"{web_config.base_url}{_SPA_WATCH_PATH}"
-            page.goto(watch_url, wait_until="domcontentloaded")
+        context.route("**/api/videos/*/recommendations", _handle_recommendations)
 
-            # Inject the video ID into sessionStorage so the SPA watch page
-            # resolves to our target video (mirrors the 404.html SPA pattern).
-            page.evaluate(
-                f"() => {{ sessionStorage.setItem('__spa_video_id', '{video_id}'); }}"
-            )
-            # Reload so the page picks up the sessionStorage value.
-            page.reload(wait_until="domcontentloaded")
+        watch = WatchPage(page)
+        watch.navigate_to_video(web_config.base_url, video_id)
 
-            # Wait for the loading indicator to disappear (page rendered).
-            try:
-                page.wait_for_selector("text=Loading…", state="hidden", timeout=_PAGE_LOAD_TIMEOUT)
-            except Exception:
-                pass  # may not appear if page renders instantly
+        # Wait for loading indicator and recommendation fetch to settle.
+        try:
+            page.wait_for_selector("text=Loading…", state="hidden", timeout=_PAGE_LOAD_TIMEOUT)
+        except Exception:
+            pass
 
-            # Wait for the recommendation fetch to settle.
-            # The sidebar shows a skeleton while loading; once loading=false the
-            # sidebar either renders or returns null.  We wait for the skeleton
-            # to disappear as the signal that fetch is done.
-            try:
-                page.wait_for_selector(
-                    "[aria-label='Loading recommendations']",
-                    state="hidden",
-                    timeout=_SIDEBAR_SETTLE_TIMEOUT,
-                )
-            except Exception:
-                pass  # skeleton may not appear if fetch is instant
+        watch.wait_for_recommendations_to_settle()
 
-            # Assert the "More like this" heading is ABSENT
-            more_like_this = page.locator(_MORE_LIKE_THIS_SELECTOR)
-            assert more_like_this.count() == 0, (
-                f"Expected 'More like this' heading to be absent when API returns "
-                f"0 recommendations, but found {more_like_this.count()} instance(s). "
-                f"Video ID: {video_id}, URL: {watch_url}"
-            )
-
-            # Assert forbidden phrases are absent
-            for phrase in _ABSENT_PHRASES:
-                count = page.get_by_text(phrase, exact=False).count()
-                assert count == 0, (
-                    f"Forbidden phrase '{phrase}' found on watch page "
-                    f"(expected absent when 0 recommendations returned). "
-                    f"Video ID: {video_id}, URL: {watch_url}"
-                )
-
-            context.close()
-            browser.close()
+        assert not watch.is_recommendation_sidebar_present(), (
+            f"Expected 'More like this' heading to be absent when API returns "
+            f"0 recommendations. Video ID: {video_id}, URL: {web_config.base_url}"
+        )
+        assert not watch.has_recommendations_placeholder(), (
+            f"Expected 'Recommendations coming soon' to be absent when API returns "
+            f"0 recommendations. Video ID: {video_id}"
+        )
 
     def test_live_sidebar_hidden_when_recommendations_api_returns_one(
-        self, web_config: WebConfig, api_config: APIConfig
+        self, web_config: WebConfig, api_config: APIConfig, browser_page
     ) -> None:
         """
         When the recommendations API returns exactly 1 result (below the
@@ -381,81 +316,47 @@ class TestRecommendationSidebarHiddenWhenFewResults:
         if not _app_is_reachable(web_config.base_url):
             pytest.skip(f"Deployed app not reachable at {web_config.base_url!r}")
 
-        video_id = _discover_video(web_config, api_config)
-        if video_id is None:
-            video_id = _FAKE_VIDEO_ID
+        video_id = _discover_video(api_config) or _FAKE_VIDEO_ID
 
-        headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false"
-        slow_mo = int(os.getenv("PLAYWRIGHT_SLOW_MO", "0"))
+        context, page = browser_page
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=headless, slow_mo=slow_mo)
-            context = browser.new_context()
-            page = context.new_page()
-            page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
+        _one_recommendation = {
+            "recommendations": [
+                {
+                    "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "title": "Single Related Video",
+                    "thumbnail_url": None,
+                    "view_count": 10,
+                    "uploader_username": "testuser",
+                    "created_at": "2024-01-01T00:00:00Z",
+                }
+            ]
+        }
 
-            # Return exactly 1 recommendation — still below the MIN_RECOMMENDATIONS=2 threshold.
-            _one_recommendation = {
-                "recommendations": [
-                    {
-                        "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                        "title": "Single Related Video",
-                        "thumbnail_url": None,
-                        "view_count": 10,
-                        "uploader_username": "testuser",
-                        "created_at": "2024-01-01T00:00:00Z",
-                    }
-                ]
-            }
-
-            def _handle_recommendations_one(route: Route) -> None:
-                route.fulfill(
-                    status=200,
-                    content_type="application/json",
-                    body=json.dumps(_one_recommendation),
-                )
-
-            context.route(
-                f"**/api/videos/*/recommendations",
-                _handle_recommendations_one,
+        def _handle_recommendations_one(route: Route) -> None:
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(_one_recommendation),
             )
 
-            watch_url = f"{web_config.base_url}{_SPA_WATCH_PATH}"
-            page.goto(watch_url, wait_until="domcontentloaded")
+        context.route("**/api/videos/*/recommendations", _handle_recommendations_one)
 
-            page.evaluate(
-                f"() => {{ sessionStorage.setItem('__spa_video_id', '{video_id}'); }}"
-            )
-            page.reload(wait_until="domcontentloaded")
+        watch = WatchPage(page)
+        watch.navigate_to_video(web_config.base_url, video_id)
 
-            try:
-                page.wait_for_selector("text=Loading…", state="hidden", timeout=_PAGE_LOAD_TIMEOUT)
-            except Exception:
-                pass
+        try:
+            page.wait_for_selector("text=Loading…", state="hidden", timeout=_PAGE_LOAD_TIMEOUT)
+        except Exception:
+            pass
 
-            try:
-                page.wait_for_selector(
-                    "[aria-label='Loading recommendations']",
-                    state="hidden",
-                    timeout=_SIDEBAR_SETTLE_TIMEOUT,
-                )
-            except Exception:
-                pass
+        watch.wait_for_recommendations_to_settle()
 
-            more_like_this = page.locator(_MORE_LIKE_THIS_SELECTOR)
-            assert more_like_this.count() == 0, (
-                f"Expected 'More like this' heading to be absent when API returns "
-                f"1 recommendation (< MIN_RECOMMENDATIONS=2), but found "
-                f"{more_like_this.count()} instance(s). Video ID: {video_id}"
-            )
-
-            for phrase in _ABSENT_PHRASES:
-                count = page.get_by_text(phrase, exact=False).count()
-                assert count == 0, (
-                    f"Forbidden phrase '{phrase}' found on watch page "
-                    f"(expected absent when only 1 recommendation returned). "
-                    f"Video ID: {video_id}"
-                )
-
-            context.close()
-            browser.close()
+        assert not watch.is_recommendation_sidebar_present(), (
+            f"Expected 'More like this' heading to be absent when API returns "
+            f"1 recommendation (< MIN_RECOMMENDATIONS=2). Video ID: {video_id}"
+        )
+        assert not watch.has_recommendations_placeholder(), (
+            f"Expected 'Recommendations coming soon' to be absent when only 1 "
+            f"recommendation returned. Video ID: {video_id}"
+        )
