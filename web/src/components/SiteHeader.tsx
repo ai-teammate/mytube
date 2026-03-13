@@ -141,12 +141,12 @@ export default function SiteHeader() {
       </button>
 
       {/* Branded logo: SVG icon + text block */}
-      <Link href="/" className="flex items-center gap-2 shrink-0">
+      <Link href="/" aria-label="MYTUBE — Personal Video Portal" className="flex items-center gap-2 shrink-0">
         <LogoIcon
           className="w-11 h-11"
           style={{ color: "var(--accent-logo)" }}
         />
-        <div className="flex flex-col leading-none gap-0.5">
+        <div className="hidden sm:flex flex-col leading-none gap-0.5">
           <span
             className="text-[22px] font-bold leading-none"
             style={{ color: "var(--accent-logo)" }}
