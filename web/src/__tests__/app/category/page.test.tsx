@@ -90,14 +90,14 @@ function makeRepo(
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("CategoryPage", () => {
-  it("shows loading state initially", () => {
+  it("shows skeleton loading state initially", () => {
     const repo: CategoryRepository = {
       getAll: () => new Promise(() => {}),
       getVideosByCategory: () => new Promise(() => {}),
     };
 
     render(<CategoryPage params={makeParams("1")} repository={repo} />);
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.getAllByTestId("video-card-skeleton").length).toBeGreaterThan(0);
   });
 
   it("renders category name as heading when category is found", async () => {

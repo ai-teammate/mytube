@@ -28,6 +28,12 @@ export default function LogoIcon({
       aria-hidden={ariaHidden}
       {...rest}
     >
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="var(--logo-grad-start)" />
+          <stop offset="100%" stopColor="var(--logo-grad-end)" />
+        </linearGradient>
+      </defs>
       <rect x="2" y="6" width="36" height="28" rx="10" fill={`url(#${gradId})`} />
       {/* Smile arc */}
       <path
@@ -44,12 +50,6 @@ export default function LogoIcon({
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="var(--logo-grad-start)" />
-          <stop offset="100%" stopColor="var(--logo-grad-end)" />
-        </linearGradient>
-      </defs>
     </svg>
   );
 }

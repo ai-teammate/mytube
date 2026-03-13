@@ -20,6 +20,16 @@
   display: block;
 }
 
+/* Fade-in for the thumbnail image when it loads */
+.thumb img {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.thumb img.loaded {
+  opacity: 1;
+}
+
 .body {
   padding: 12px;
 }

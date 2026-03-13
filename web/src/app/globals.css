@@ -38,6 +38,10 @@
   /* Interactive */
   --star-color: #ff6666;
 
+  /* Skeleton loading */
+  --skeleton-base:      #e8e9ed;
+  --skeleton-highlight: #f3f4f8;
+
   /* Decorative */
   --gradient-hero: linear-gradient(135deg, #6d40cb 0%, #62c235 100%);
   --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
@@ -69,6 +73,9 @@ body[data-theme="dark"] {
   /* Logo gradient stops (same reference gradient, unaffected by dark theme) */
   --logo-grad-start: #9d74ff;
   --logo-grad-end:   #6d40cb;
+
+  --skeleton-base:      #2c2c31;
+  --skeleton-highlight: #363639;
 
   --border-light: #333340;
   --shadow-main:  0 8px 24px rgba(0, 0, 0, 0.25);

@@ -1,0 +1,24 @@
+/* These classes are applied inside VideoCard's .thumb / .body containers */
+
+.thumbFill {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px 12px 0 0;
+}
+
+.titleLine1 {
+  height: 14px;
+  width: 90%;
+  margin-bottom: 6px;
+}
+
+.titleLine2 {
+  height: 14px;
+  width: 65%;
+  margin-bottom: 8px;
+}
+
+.subLine {
+  height: 12px;
+  width: 75%;
+}

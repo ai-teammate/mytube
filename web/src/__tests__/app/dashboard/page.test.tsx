@@ -194,13 +194,13 @@ describe("DashboardPage", () => {
 
   // ─── Loading / empty states ────────────────────────────────────────────────
 
-  it("shows loading text while fetching videos", async () => {
+  it("shows skeleton cards while fetching videos", async () => {
     // Use a never-resolving promise to keep the loading state.
     const repo = makeDashboardRepo(() => new Promise(() => {}));
     renderDashboard(repo);
 
     await waitFor(() => {
-      expect(screen.getByText(/loading your videos/i)).toBeInTheDocument();
+      expect(screen.getAllByTestId("video-card-skeleton").length).toBeGreaterThan(0);
     });
   });
 
