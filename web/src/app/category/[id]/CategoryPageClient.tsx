@@ -4,6 +4,7 @@ import { use, useState, useEffect } from "react";
 import type { VideoCardItem, CategoryRepository, Category } from "@/domain/search";
 import { ApiCategoryRepository } from "@/data/searchRepository";
 import VideoCard from "@/components/VideoCard";
+import VideoCardSkeleton from "@/components/VideoCardSkeleton";
 
 const defaultRepository: CategoryRepository = new ApiCategoryRepository();
 
@@ -90,7 +91,9 @@ export default function CategoryPage({
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {loading && (
-        <p className="text-gray-500 text-center py-16">Loading…</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <VideoCardSkeleton count={6} />
+        </div>
       )}
 
       {error && !loading && (
