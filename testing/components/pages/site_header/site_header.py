@@ -259,6 +259,35 @@ class SiteHeader:
 """
 
     # ------------------------------------------------------------------
+    # Hamburger / mobile-menu button
+    # ------------------------------------------------------------------
+
+    # Selectors tried in priority order to locate the hamburger toggle button.
+    # The button is only visible on viewports ≤640px (Tailwind sm:hidden).
+    _HAMBURGER_ARIA_SELECTORS = [
+        "header button[aria-label*='menu' i]",
+        "header button[aria-label*='hamburger' i]",
+        "header button[aria-label*='nav' i]",
+    ]
+
+    def hamburger_button_locator(self) -> "Locator | None":
+        """Return the first visible hamburger button located by aria-label, or None.
+
+        Iterates ``_HAMBURGER_ARIA_SELECTORS`` in priority order and returns
+        the first locator whose element is present in the DOM and visible.
+        Returns ``None`` when no matching button is found (e.g. desktop viewport
+        where the button is hidden, or the feature is absent).
+        """
+        for selector in self._HAMBURGER_ARIA_SELECTORS:
+            loc = self._page.locator(selector)
+            try:
+                if loc.count() > 0 and loc.first.is_visible():
+                    return loc.first
+            except Exception:
+                continue
+        return None
+
+    # ------------------------------------------------------------------
     # Logo SVG locator
     # ------------------------------------------------------------------
 
