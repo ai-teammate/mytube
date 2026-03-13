@@ -23,7 +23,7 @@ Architecture notes
 - Seeds one test user + 1 target video + 11 candidate videos (all status='ready',
   hls_manifest_path set, same category_id) directly into the DB.
 - Starts the Go API binary via ApiProcessService.
-- Issues GET /api/videos/{id}/recommendations.
+- Issues GET /api/videos/{id}/recommendations via VideoApiService.
 - Asserts that ``body["recommendations"]`` has exactly 8 items (the hard limit).
 - Full teardown removes all seeded rows in FK-safe order.
 
@@ -42,12 +42,9 @@ Run from repo root:
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
-import urllib.request
-import urllib.error
 
 import psycopg2
 import pytest
@@ -55,7 +52,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.db_config import DBConfig
+from testing.core.config.api_config import APIConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.video_api_service import VideoApiService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -285,6 +284,35 @@ def seeded_data(api_server, db_conn):
         )
 
 
+@pytest.fixture(scope="module")
+def video_api_service() -> VideoApiService:
+    """VideoApiService pointed at the local API server on port _PORT."""
+    cfg = APIConfig()
+    cfg.base_url = f"http://localhost:{_PORT}"
+    return VideoApiService(cfg)
+
+
+@pytest.fixture(scope="module")
+def recommendations_response(seeded_data: dict, video_api_service: VideoApiService) -> dict:
+    """Fetch recommendations once and share the parsed body across all tests."""
+    target_id = seeded_data["target_video_id"]
+    status_code, body = video_api_service.get_recommendations(target_id)
+
+    if status_code != 200 or body is None:
+        pytest.fail(
+            f"GET /api/videos/{target_id}/recommendations returned HTTP {status_code}."
+        )
+
+    assert "recommendations" in body, (
+        f"'recommendations' key missing from response: {body}"
+    )
+    assert isinstance(body["recommendations"], list), (
+        f"'recommendations' should be a list, got {type(body['recommendations']).__name__}"
+    )
+
+    return body
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -293,69 +321,23 @@ def seeded_data(api_server, db_conn):
 class TestRecommendationAPIResultLimit:
     """MYTUBE-581: GET /api/videos/{id}/recommendations must return ≤ 8 items."""
 
-    def test_recommendations_capped_at_eight(self, seeded_data: dict) -> None:
+    def test_recommendations_capped_at_eight(self, recommendations_response: dict) -> None:
         """
         Step 1: Send GET /api/videos/{target_id}/recommendations.
         Step 2: Count items in the returned array.
         Expected: exactly 8 video objects (hard limit enforced by the API).
         """
-        target_id = seeded_data["target_video_id"]
-        url = f"http://localhost:{_PORT}/api/videos/{target_id}/recommendations"
-
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                status_code = resp.status
-                body_raw = resp.read().decode()
-        except urllib.error.HTTPError as exc:
-            pytest.fail(
-                f"GET {url} returned HTTP {exc.code}.\n"
-                f"Response body: {exc.read().decode()}"
-            )
-        except Exception as exc:
-            pytest.fail(f"Failed to reach the API at {url}: {exc}")
-
-        assert status_code == 200, (
-            f"Expected HTTP 200, got {status_code}.\nBody: {body_raw}"
-        )
-
-        try:
-            body = json.loads(body_raw)
-        except json.JSONDecodeError as exc:
-            pytest.fail(f"Response is not valid JSON: {exc}\nRaw: {body_raw}")
-
-        assert isinstance(body, dict), (
-            f"Expected JSON object, got {type(body).__name__}: {body_raw}"
-        )
-        assert "recommendations" in body, (
-            f"'recommendations' key missing from response: {body_raw}"
-        )
-
-        recs = body["recommendations"]
-        assert isinstance(recs, list), (
-            f"'recommendations' should be a list, got {type(recs).__name__}: {body_raw}"
-        )
+        recs = recommendations_response["recommendations"]
 
         assert len(recs) == _EXPECTED_LIMIT, (
             f"Expected exactly {_EXPECTED_LIMIT} recommendations (limit enforced by API), "
             f"but got {len(recs)}.\n"
-            f"Seeded {_NUM_CANDIDATES} candidate videos in the same category.\n"
-            f"Full response: {body_raw}"
+            f"Seeded {_NUM_CANDIDATES} candidate videos in the same category."
         )
 
-    def test_each_recommendation_has_required_fields(self, seeded_data: dict) -> None:
+    def test_each_recommendation_has_required_fields(self, recommendations_response: dict) -> None:
         """Each item in the recommendations array must contain the required fields."""
-        target_id = seeded_data["target_video_id"]
-        url = f"http://localhost:{_PORT}/api/videos/{target_id}/recommendations"
-
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                body = json.loads(resp.read().decode())
-        except Exception as exc:
-            pytest.fail(f"Failed to reach the API at {url}: {exc}")
-
-        recs = body.get("recommendations", [])
+        recs = recommendations_response["recommendations"]
         required_fields = {"id", "title", "view_count", "uploader_username", "created_at"}
 
         for i, item in enumerate(recs):
@@ -364,19 +346,12 @@ class TestRecommendationAPIResultLimit:
                 f"Recommendation[{i}] is missing fields {missing}.\nItem: {item}"
             )
 
-    def test_target_video_not_in_recommendations(self, seeded_data: dict) -> None:
+    def test_target_video_not_in_recommendations(
+        self, seeded_data: dict, recommendations_response: dict
+    ) -> None:
         """The target video itself must not appear among its own recommendations."""
         target_id = seeded_data["target_video_id"]
-        url = f"http://localhost:{_PORT}/api/videos/{target_id}/recommendations"
-
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                body = json.loads(resp.read().decode())
-        except Exception as exc:
-            pytest.fail(f"Failed to reach the API at {url}: {exc}")
-
-        recs = body.get("recommendations", [])
+        recs = recommendations_response["recommendations"]
         rec_ids = [r["id"] for r in recs]
 
         assert target_id not in rec_ids, (
