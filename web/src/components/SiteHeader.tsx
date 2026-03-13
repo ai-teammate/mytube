@@ -69,7 +69,7 @@ export default function SiteHeader() {
         background: "var(--bg-header)",
         borderBottom: "1px solid rgba(127,127,127,0.16)",
       }}
-      className="min-h-[88px] px-10 py-4 flex items-center gap-6"
+      className="min-h-[56px] sm:min-h-[88px] px-4 sm:px-10 py-3 sm:py-4 flex items-center gap-3 sm:gap-6"
     >
       {/* Branded logo: SVG icon + text block */}
       <Link href="/" className="flex items-center gap-2 shrink-0">
@@ -115,7 +115,7 @@ export default function SiteHeader() {
       {/* Search form — pill shape with purple focus accent */}
       <form
         onSubmit={handleSubmit}
-        className="flex flex-1 max-w-xl"
+        className="flex flex-1 min-w-0 max-w-xl"
         role="search"
         aria-label="Search videos"
       >
@@ -125,7 +125,7 @@ export default function SiteHeader() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search videos…"
           aria-label="Search query"
-          className="flex-1 border border-gray-300 rounded-l-full px-4 py-2 text-sm focus:outline-none focus:border-[color:var(--accent-logo)]"
+          className="min-w-0 flex-1 border border-gray-300 rounded-l-full px-4 py-2 text-sm focus:outline-none focus:border-[color:var(--accent-logo)]"
         />
         <button
           type="submit"
