@@ -1,0 +1,22 @@
+test_id: MYTUBE-570
+type: ui
+framework: playwright
+platform: web
+browser: chromium
+
+# Primary mode: static source analysis (always runs)
+# Secondary mode: live Playwright skeleton verification (when APP_URL is set)
+default_mode: static
+
+# Timeouts (milliseconds)
+page_load_timeout: 30000
+react_mount_timeout: 10000
+skeleton_settle_timeout: 5000
+
+# Environment
+base_url_env: APP_URL
+fallback_base_url: https://ai-teammate.github.io/mytube
+headless_env: PLAYWRIGHT_HEADLESS
+slow_mo_env: PLAYWRIGHT_SLOW_MO
+
+dependencies: []
