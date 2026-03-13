@@ -57,6 +57,15 @@ describe("SiteHeader — hamburger menu (MYTUBE-566)", () => {
     expect(hamburger).toBeInTheDocument();
   });
 
+  it("hamburger button has data-testid containing 'hamburger' or 'mobile-menu' (MYTUBE-589)", () => {
+    render(<SiteHeader />);
+    const hamburger = screen.getByRole("button", {
+      name: /open navigation menu|hamburger|mobile menu|nav/i,
+    });
+    const testId = hamburger.getAttribute("data-testid") ?? "";
+    expect(testId.toLowerCase()).toMatch(/hamburger|mobile-menu/);
+  });
+
   it("hamburger button has sm:hidden class so it is only visible on mobile", () => {
     render(<SiteHeader />);
     const hamburger = screen.getByRole("button", {

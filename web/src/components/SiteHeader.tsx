@@ -119,6 +119,7 @@ export default function SiteHeader() {
         ref={hamburgerRef}
         type="button"
         className="sm:hidden w-10 h-10 flex items-center justify-center rounded-md bg-transparent transition-colors hover:bg-[color:var(--bg-card)] shrink-0"
+        data-testid="hamburger-menu-button"
         aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
         aria-expanded={mobileNavOpen}
         aria-controls="mobile-nav"
