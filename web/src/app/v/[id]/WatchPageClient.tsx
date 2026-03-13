@@ -18,6 +18,7 @@ import CommentSection from "@/components/CommentSection";
 import SaveToPlaylist from "@/components/SaveToPlaylist";
 import RecommendationSidebar from "@/components/RecommendationSidebar";
 import styles from "./WatchPageClient.module.css";
+import WatchPageSkeleton from "./WatchPageSkeleton";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
 import dynamic from "next/dynamic";
@@ -152,11 +153,7 @@ export default function WatchPage({
   const getToken = useCallback(() => getIdToken(), [getIdToken]);
 
   if (loading) {
-    return (
-      <div className={styles.stateContainer}>
-        <p className={styles.stateText}>Loading…</p>
-      </div>
-    );
+    return <WatchPageSkeleton />;
   }
 
   if (notFound) {
