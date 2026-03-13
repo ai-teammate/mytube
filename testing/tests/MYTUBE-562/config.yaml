@@ -1,0 +1,24 @@
+test_id: MYTUBE-562
+type: ui
+framework: playwright
+platform: web
+browser: chromium
+
+# Primary mode: static CSS analysis (always runs)
+# Secondary mode: live scroll verification (when APP_URL is set)
+default_mode: static
+
+# Fixture server
+fixture_port: 19562
+
+# Timeouts (milliseconds)
+page_load_timeout: 30000
+scroll_wait_ms: 800
+
+# Environment
+base_url_env: APP_URL
+fallback_base_url: https://ai-teammate.github.io/mytube
+headless_env: PLAYWRIGHT_HEADLESS
+slow_mo_env: PLAYWRIGHT_SLOW_MO
+
+dependencies: []
