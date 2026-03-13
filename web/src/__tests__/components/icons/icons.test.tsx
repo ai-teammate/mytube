@@ -31,14 +31,14 @@ describe("LogoIcon", () => {
     expect(getSvg(container)).toBeInTheDocument();
   });
 
-  it("has viewBox 0 0 44 44", () => {
+  it("has viewBox 0 0 40 40", () => {
     const { container } = render(<LogoIcon />);
-    expect(getSvg(container)).toHaveAttribute("viewBox", "0 0 44 44");
+    expect(getSvg(container)).toHaveAttribute("viewBox", "0 0 40 40");
   });
 
-  it("has fill=currentColor", () => {
+  it("has fill=none on the root svg", () => {
     const { container } = render(<LogoIcon />);
-    expect(getSvg(container)).toHaveAttribute("fill", "currentColor");
+    expect(getSvg(container)).toHaveAttribute("fill", "none");
   });
 
   it("defaults to aria-hidden=true", () => {
@@ -67,6 +67,65 @@ describe("LogoIcon", () => {
   it("forwards extra SVG props", () => {
     const { container } = render(<LogoIcon data-testid="logo-icon" />);
     expect(getSvg(container)).toHaveAttribute("data-testid", "logo-icon");
+  });
+
+  it("renders a rounded-rect background shape", () => {
+    const { container } = render(<LogoIcon />);
+    const rect = container.querySelector("rect");
+    expect(rect).toBeInTheDocument();
+    expect(rect).toHaveAttribute("rx", "10");
+  });
+
+  it("renders a linearGradient in <defs>", () => {
+    const { container } = render(<LogoIcon />);
+    const defs = container.querySelector("defs");
+    expect(defs).toBeInTheDocument();
+    const grad = defs!.querySelector("linearGradient");
+    expect(grad).toBeInTheDocument();
+  });
+
+  it("gradient start stop uses var(--logo-grad-start)", () => {
+    const { container } = render(<LogoIcon />);
+    const stops = container.querySelectorAll("stop");
+    expect(stops[0]).toHaveAttribute("stop-color", "var(--logo-grad-start)");
+  });
+
+  it("gradient end stop uses var(--logo-grad-end)", () => {
+    const { container } = render(<LogoIcon />);
+    const stops = container.querySelectorAll("stop");
+    expect(stops[1]).toHaveAttribute("stop-color", "var(--logo-grad-end)");
+  });
+
+  it("rect fill references the gradient id", () => {
+    const { container } = render(<LogoIcon />);
+    const rect = container.querySelector("rect");
+    const grad = container.querySelector("linearGradient");
+    const gradId = grad!.getAttribute("id")!;
+    expect(rect).toHaveAttribute("fill", `url(#${gradId})`);
+  });
+
+  it("each instance gets a unique gradient id", () => {
+    const { container: c1 } = render(<LogoIcon />);
+    const { container: c2 } = render(<LogoIcon />);
+    const id1 = c1.querySelector("linearGradient")!.getAttribute("id");
+    const id2 = c2.querySelector("linearGradient")!.getAttribute("id");
+    expect(id1).not.toBe(id2);
+  });
+
+  it("renders play triangle path with white fill", () => {
+    const { container } = render(<LogoIcon />);
+    const paths = container.querySelectorAll("path");
+    const playPath = Array.from(paths).find((p) => p.getAttribute("fill") === "white");
+    expect(playPath).toBeInTheDocument();
+  });
+
+  it("renders smile arc path with white stroke", () => {
+    const { container } = render(<LogoIcon />);
+    const paths = container.querySelectorAll("path");
+    const smilePath = Array.from(paths).find(
+      (p) => p.getAttribute("stroke") === "white" && p.getAttribute("fill") !== "white"
+    );
+    expect(smilePath).toBeInTheDocument();
   });
 });
 
