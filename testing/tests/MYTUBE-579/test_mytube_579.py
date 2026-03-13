@@ -59,9 +59,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
-import urllib.request
-
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -69,6 +66,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from testing.core.config.api_config import APIConfig
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.recommendations_service import RecommendationsService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -136,24 +134,6 @@ def _postgres_available(db_config: DBConfig) -> bool:
         return True
     except Exception:
         return False
-
-
-def _get_recommendations(base_url: str, video_id: str) -> tuple[int, dict | None]:
-    """GET /api/videos/{video_id}/recommendations; return (status_code, body_dict)."""
-    url = f"{base_url}/api/videos/{video_id}/recommendations"
-    req = urllib.request.Request(url)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            body = json.loads(resp.read().decode())
-            return resp.status, body
-    except urllib.error.HTTPError as exc:
-        try:
-            body = json.loads(exc.read().decode())
-        except Exception:
-            body = None
-        return exc.code, body
-    except Exception:
-        return 0, None
 
 
 def _get_or_create_category(conn, name: str) -> int:
@@ -408,7 +388,8 @@ def recommendations_response(api_server, seeded_data) -> tuple[int, dict]:
     os.environ["API_BASE_URL"] = f"http://127.0.0.1:{_PORT}"
     base_url = f"http://127.0.0.1:{_PORT}"
     video_a = seeded_data["video_a"]
-    status_code, body = _get_recommendations(base_url, video_a)
+    svc = RecommendationsService(base_url)
+    status_code, body = svc.get_recommendations(video_a)
     if status_code == 0:
         pytest.fail(
             f"GET /api/videos/{video_a}/recommendations returned status 0 — "
@@ -517,7 +498,7 @@ class TestRecommendationsFiltering:
         """Each recommendation item must contain id, title, view_count, uploader_username, created_at."""
         _, body = recommendations_response
         recs = body.get("recommendations", [])
-        required_fields = {"id", "title", "view_count", "uploader_username", "created_at"}
+        required_fields = {"id", "title", "thumbnail_url", "view_count", "uploader_username", "created_at"}
         for item in recs:
             missing = required_fields - set(item.keys())
             assert not missing, (
