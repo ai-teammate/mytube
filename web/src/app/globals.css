@@ -26,6 +26,10 @@
   --accent-login-border:#a189db;
   --accent-logo:        #6d40cb;
 
+  /* Logo gradient stops */
+  --logo-grad-start: #9d74ff;
+  --logo-grad-end:   #6d40cb;
+
   /* Borders & shadows */
   --border-light:  #dcdcdc;
   --shadow-main:   0 8px 24px rgba(0, 0, 0, 0.06);
@@ -65,6 +69,10 @@ body[data-theme="dark"] {
   --accent-pill-bg:      #2d1f4e;
   --accent-login-border: #7b5fc0;
   --accent-logo:         #9370db;
+
+  /* Logo gradient stops (same reference gradient, unaffected by dark theme) */
+  --logo-grad-start: #9d74ff;
+  --logo-grad-end:   #6d40cb;
 
   --skeleton-base:      #2c2c31;
   --skeleton-highlight: #363639;
