@@ -61,10 +61,6 @@ _HERO_TSX = _REPO_ROOT / "web" / "src" / "components" / "HeroSection.tsx"
 # ---------------------------------------------------------------------------
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
-_HERO_SECTION_SELECTOR = "section[aria-label='Hero']"
-# The CSS module class `.visualCanvas` maps to a hashed class in production, but
-# the image is rendered inside the hero visual panel; target via aria/alt attribute.
-_VISUAL_IMAGE_SELECTOR = "section[aria-label='Hero'] img[alt='Personal Playback Preview']"
 _EXPECTED_IMAGE_FILENAME = "landing_image.png"
 
 
@@ -126,14 +122,9 @@ class TestHeroImageLive:
                 "Hero section is not visible on the homepage."
             )
 
-            # Locate the image in the visual canvas
-            img_locator = page.locator(_VISUAL_IMAGE_SELECTOR)
-            img_locator.first.wait_for(state="visible", timeout=_PAGE_LOAD_TIMEOUT)
-
-            # Get the rendered src — Next.js Image rewrites the src via _next/image
-            # so we check both the raw src attribute and the srcset for the filename.
-            src = img_locator.first.get_attribute("src") or ""
-            srcset = img_locator.first.get_attribute("srcset") or ""
+            # Retrieve the rendered src via component method — Next.js Image rewrites
+            # the src via _next/image, so we check both src and srcset for the filename.
+            src, srcset = hero.get_visual_image_src(timeout=_PAGE_LOAD_TIMEOUT)
 
             assert _EXPECTED_IMAGE_FILENAME in src or _EXPECTED_IMAGE_FILENAME in srcset, (
                 f"Expected image src/srcset to contain '{_EXPECTED_IMAGE_FILENAME}'.\n"
