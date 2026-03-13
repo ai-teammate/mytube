@@ -1,6 +1,8 @@
 // Domain layer: entities and repository interface for the video watch page.
 // No framework dependencies.
 
+import type { VideoCardItem } from "@/domain/search";
+
 /** Uploader info as returned on the video watch page. */
 export interface VideoUploader {
   username: string;
@@ -24,4 +26,9 @@ export interface VideoDetail {
 /** Repository interface for fetching a single video. */
 export interface VideoRepository {
   getByID(videoID: string): Promise<VideoDetail | null>;
+}
+
+/** Repository interface for fetching video recommendations. */
+export interface RecommendationRepository {
+  getRecommendations(videoID: string): Promise<VideoCardItem[]>;
 }
