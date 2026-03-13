@@ -71,12 +71,12 @@ beforeEach(() => {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("SearchPage", () => {
-  it("shows loading state initially", () => {
+  it("shows skeleton loading state initially", () => {
     const repo = makeRepo(() => new Promise(() => {}));
 
     render(<SearchPage repository={repo} />);
 
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.getAllByTestId("video-card-skeleton").length).toBeGreaterThan(0);
   });
 
   it("shows 'No videos found' when results are empty", async () => {

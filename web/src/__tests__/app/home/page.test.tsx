@@ -82,14 +82,15 @@ function makeRepo(
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("HomePage", () => {
-  it("shows loading state initially", () => {
+  it("shows skeleton loading state initially", () => {
     const repo = makeRepo(
       () => new Promise(() => {}),
       () => new Promise(() => {})
     );
 
     render(<HomePage repository={repo} />);
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    // Skeleton cards are rendered in place of real VideoCard items while loading.
+    expect(screen.getAllByTestId("video-card-skeleton").length).toBeGreaterThan(0);
   });
 
   it("renders 'Recently Uploaded' section heading after load", async () => {
@@ -178,7 +179,7 @@ describe("HomePage", () => {
     });
   });
 
-  it("does not show loading state after data loads", async () => {
+  it("does not show skeleton cards after data loads", async () => {
     const repo = makeRepo(
       () => Promise.resolve([]),
       () => Promise.resolve([])
@@ -187,7 +188,7 @@ describe("HomePage", () => {
     render(<HomePage repository={repo} />);
 
     await waitFor(() => {
-      expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+      expect(screen.queryByTestId("video-card-skeleton")).not.toBeInTheDocument();
     });
   });
 
