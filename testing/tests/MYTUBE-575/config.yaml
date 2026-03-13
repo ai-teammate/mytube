@@ -1,0 +1,5 @@
+test_id: MYTUBE-575
+type: ui
+framework: playwright+static-analysis
+platform: web
+dependencies: []
