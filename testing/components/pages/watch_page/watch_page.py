@@ -498,3 +498,52 @@ class WatchPage:
     def get_video_title_computed_style(self, css_property: str) -> Optional[str]:
         """Return the computed value of *css_property* for the .videoTitle element."""
         return self.get_computed_style('[class*="videoTitle"]', css_property)
+
+    # ------------------------------------------------------------------
+    # Player wrapper helpers (aspect-ratio / CLS verification)
+    # ------------------------------------------------------------------
+
+    _PLAYER_WRAPPER = '[class*="player"]'
+
+    def wait_for_player_wrapper(self, timeout: int = _PAGE_LOAD_TIMEOUT) -> None:
+        """Wait for the CSS-module player wrapper element to appear in the DOM."""
+        self._page.wait_for_selector(self._PLAYER_WRAPPER, timeout=timeout)
+
+    def get_player_metrics(self) -> Optional[dict]:
+        """Return computed aspect-ratio, bounding box, and padding-top of the player wrapper.
+
+        Returns a dict with keys: width, height, aspectRatioProp, paddingTop.
+        Returns None if the player wrapper element is not present.
+        """
+        return self._page.evaluate(
+            """() => {
+                const el = document.querySelector('[class*="player"]');
+                if (!el) return null;
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return {
+                    width: rect.width,
+                    height: rect.height,
+                    aspectRatioProp: style.aspectRatio,
+                    paddingTop: style.paddingTop,
+                };
+            }"""
+        )
+
+    def get_player_height(self) -> Optional[float]:
+        """Return the current bounding-box height of the player wrapper, or None if absent."""
+        return self._page.evaluate(
+            """() => {
+                const el = document.querySelector('[class*="player"]');
+                if (!el) return null;
+                return el.getBoundingClientRect().height;
+            }"""
+        )
+
+    def wait_for_player_container(self, timeout: int = _PLAYER_INIT_TIMEOUT) -> bool:
+        """Wait for the [data-vjs-player] wrapper to appear; return True if found."""
+        try:
+            self._page.wait_for_selector(self._VJS_PLAYER_CONTAINER, timeout=timeout)
+            return True
+        except Exception:
+            return False
