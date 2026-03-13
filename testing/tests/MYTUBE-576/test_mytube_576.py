@@ -111,27 +111,6 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _attr(source: str, attr_name: str) -> str | None:
-    """Extract the first occurrence of attr_name="value" from source."""
-    # Matches both JSX (camelCase) and HTML/SVG (kebab-case) attributes
-    pattern = re.compile(
-        r'(?:^|\s)' + re.escape(attr_name) + r'\s*[=:]\s*["\'{`]([^"\'{`}]+)["\'}]',
-        re.MULTILINE,
-    )
-    m = pattern.search(source)
-    return m.group(1).strip() if m else None
-
-
-def _extract_attr_html(source: str, element: str, attr: str) -> str | None:
-    """Extract an XML/SVG attribute value from a specific element."""
-    pattern = re.compile(
-        r'<' + re.escape(element) + r'[^>]*\s' + re.escape(attr) + r'\s*=\s*["\']([^"\']+)["\']',
-        re.IGNORECASE,
-    )
-    m = pattern.search(source)
-    return m.group(1).strip() if m else None
-
-
 def _extract_path_data(source: str) -> list[str]:
     """Return all path ``d`` attribute values found in source."""
     pattern = re.compile(r'\bd\s*[=:]\s*["\'{`]([^"\'{`}]+)["\'}]', re.MULTILINE)
@@ -267,13 +246,13 @@ class TestLogoIconSVGMatchesReference:
 
     def test_gradient_geometry(self):
         """linearGradient must span from (0,0) to (40,40) in userSpaceOnUse."""
-        assert 'x1="0"' in self._tsx or "x1={" in self._tsx, \
+        assert re.search(r'x1\s*=\s*["\'{]0["\'}]', self._tsx), \
             "linearGradient x1=0 not found in LogoIcon.tsx"
-        assert 'y1="0"' in self._tsx or "y1={" in self._tsx, \
+        assert re.search(r'y1\s*=\s*["\'{]0["\'}]', self._tsx), \
             "linearGradient y1=0 not found in LogoIcon.tsx"
-        assert 'x2="40"' in self._tsx or "x2={" in self._tsx, \
+        assert re.search(r'x2\s*=\s*["\'{]40["\'}]', self._tsx), \
             "linearGradient x2=40 not found in LogoIcon.tsx"
-        assert 'y2="40"' in self._tsx or "y2={" in self._tsx, \
+        assert re.search(r'y2\s*=\s*["\'{]40["\'}]', self._tsx), \
             "linearGradient y2=40 not found in LogoIcon.tsx"
         assert 'gradientUnits="userSpaceOnUse"' in self._tsx, \
             "gradientUnits='userSpaceOnUse' not found in LogoIcon.tsx"
