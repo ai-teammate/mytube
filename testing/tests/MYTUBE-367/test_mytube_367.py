@@ -42,8 +42,12 @@ Three modes, tried in order:
   1. Log in via the login page UI.
   2. Wait for authenticated state.
   3. Block Firebase auth domains.
-  4. Force a token refresh via page.evaluate() to trigger the auth observer error.
-  5. Assert error message.
+  4. Wait HEARTBEAT_INTERVAL_MS + HEARTBEAT_PROBE_TIMEOUT_MS + buffer (≈135 s)
+     for the periodic heartbeat probe to fire and detect the blocked network.
+     The heartbeat (added in MYTUBE-381/MYTUBE-399 fix) calls
+     user.getIdToken(forceRefresh=true) every 120 seconds; when that call
+     times out (10 s) it sets authError=true.
+  5. Assert error message visible in role="alert" element.
 
 **Mode 2 — Fake-session injection** (no credentials, but Firebase API key extractable):
   1. Navigate to the home page (Firebase available → auth resolves to null).
@@ -53,9 +57,12 @@ Three modes, tried in order:
      this simulates "the application was initially loaded with a successful
      authentication status".
   5. Block Firebase auth domains.
-  6. Reload the page → Firebase finds the stored user, attempts a background
-     token refresh, which fails with auth/network-request-failed, triggering
-     the onAuthStateChanged error callback → authError=true.
+  6. Reload the page and wait the full heartbeat window.
+     NOTE: Firebase JS SDK v12 fires onAuthStateChanged(null) rather than the
+     error callback when the token refresh fails over a blocked network.
+     The heartbeat fix only fires when user is non-null; if Firebase briefly
+     sets user from localStorage the heartbeat may fire, otherwise this mode
+     may not reliably trigger the error on its own.
   7. Assert error message.
 
 **Mode 3 — Fallback** (no credentials, no API key extractable):
@@ -114,6 +121,22 @@ _INITIAL_LOAD_TIMEOUT_MS = 20_000
 
 # How long to wait for the auth error message to appear after blocking Firebase.
 _ERROR_VISIBILITY_TIMEOUT_MS = 15_000
+
+# -----------------------------------------------------------------------
+# Heartbeat timing — must match AuthContext.tsx exported constants.
+#
+# The MYTUBE-381/MYTUBE-399 fix adds a periodic heartbeat that calls
+# user.getIdToken(forceRefresh=true) every HEARTBEAT_INTERVAL_MS ms.
+# When Firebase auth domains are blocked mid-session the probe times out
+# after HEARTBEAT_PROBE_TIMEOUT_MS ms and sets authError=true.
+#
+# The test MUST wait at least HEARTBEAT_INTERVAL_MS + HEARTBEAT_PROBE_TIMEOUT_MS
+# after blocking Firebase before asserting the error is visible.
+# -----------------------------------------------------------------------
+_HEARTBEAT_INTERVAL_MS = 120_000   # AuthContext.tsx: HEARTBEAT_INTERVAL_MS
+_HEARTBEAT_PROBE_TIMEOUT_MS = 10_000  # AuthContext.tsx: HEARTBEAT_PROBE_TIMEOUT_MS
+# Add a 5-second buffer on top of the theoretical maximum detection latency.
+_HEARTBEAT_WAIT_MS = _HEARTBEAT_INTERVAL_MS + _HEARTBEAT_PROBE_TIMEOUT_MS + 5_000
 
 # Regex to match the expected auth error text (case-insensitive).
 _AUTH_ERROR_KEYWORDS = re.compile(
@@ -431,12 +454,11 @@ class TestAuthObserverFailureDuringActiveSession:
                 except Exception:
                     pass
 
-                page.wait_for_timeout(5_000)
-
-                if not _is_auth_error_present(page):
-                    page.goto(web_config.dashboard_url(), wait_until="domcontentloaded")
-                    _wait_for_initial_load(page)
-                    page.wait_for_timeout(3_000)
+                # The heartbeat probe fires every HEARTBEAT_INTERVAL_MS (120 s).
+                # After each probe fails it waits up to HEARTBEAT_PROBE_TIMEOUT_MS
+                # (10 s) for the token refresh to time out.  We must wait the full
+                # worst-case detection window before asserting the error.
+                page.wait_for_timeout(_HEARTBEAT_WAIT_MS)
 
             else:
                 # ------------------------------------------------------------------
@@ -478,7 +500,10 @@ class TestAuthObserverFailureDuringActiveSession:
 
                     page.reload(wait_until="domcontentloaded")
                     _wait_for_initial_load(page)
-                    page.wait_for_timeout(5_000)
+                    # Wait the full heartbeat window.  If Firebase briefly
+                    # surfaces the stored user before clearing it, the
+                    # heartbeat may still fire.
+                    page.wait_for_timeout(_HEARTBEAT_WAIT_MS)
 
                 else:
                     # Mode 3: Hard-reload fallback (no API key extractable).
@@ -488,7 +513,7 @@ class TestAuthObserverFailureDuringActiveSession:
 
                     page.reload(wait_until="domcontentloaded")
                     _wait_for_initial_load(page)
-                    page.wait_for_timeout(5_000)
+                    page.wait_for_timeout(15_000)
 
             # ------------------------------------------------------------------
             # Final assertion: auth-error message MUST be visible.
@@ -511,6 +536,9 @@ class TestAuthObserverFailureDuringActiveSession:
         services are unavailable.
 
         This test focuses on the *absence* of the silent-fallback anti-pattern.
+        When real credentials are available the test uses Mode 1 (authenticated
+        heartbeat path) for deterministic results; otherwise it falls back to
+        fake-session injection.
         """
         context: BrowserContext = browser.new_context()
         context.set_default_timeout(30_000)
@@ -518,22 +546,50 @@ class TestAuthObserverFailureDuringActiveSession:
         page.set_default_timeout(30_000)
 
         try:
-            # Step 1: Load home page successfully (Firebase reachable).
-            page.goto(web_config.home_url(), wait_until="domcontentloaded")
-            _wait_for_initial_load(page)
+            has_credentials = bool(
+                web_config.test_email and web_config.test_password
+            )
 
-            # Step 2: Extract Firebase API key and inject fake session.
-            api_key = _extract_firebase_api_key(page)
-            if api_key:
-                _inject_fake_user_session(page, api_key)
+            if has_credentials:
+                # Mode 1: authenticated heartbeat path (same as test 1).
+                # After the heartbeat probe fails the header must show the
+                # auth-error alert, NOT silently degrade to a guest state.
+                login_page = LoginPage(page)
+                login_page.navigate(web_config.login_url())
+                _wait_for_initial_load(page)
+                login_page.login_as(web_config.test_email, web_config.test_password)
 
-            # Step 3: Block Firebase auth domains mid-session.
-            _block_firebase_auth(context)
+                try:
+                    page.wait_for_url(
+                        re.compile(r".*/(?:$|\?|#)"),
+                        timeout=15_000,
+                    )
+                except Exception:
+                    pass
+                _wait_for_initial_load(page)
 
-            # Step 4: Reload to trigger the auth cycle with Firebase blocked.
-            page.reload(wait_until="domcontentloaded")
-            _wait_for_initial_load(page)
-            page.wait_for_timeout(5_000)
+                _block_firebase_auth(context)
+
+                # Wait for the heartbeat to fire and detect the blocked network.
+                page.wait_for_timeout(_HEARTBEAT_WAIT_MS)
+
+            else:
+                # Step 1: Load home page successfully (Firebase reachable).
+                page.goto(web_config.home_url(), wait_until="domcontentloaded")
+                _wait_for_initial_load(page)
+
+                # Step 2: Extract Firebase API key and inject fake session.
+                api_key = _extract_firebase_api_key(page)
+                if api_key:
+                    _inject_fake_user_session(page, api_key)
+
+                # Step 3: Block Firebase auth domains mid-session.
+                _block_firebase_auth(context)
+
+                # Step 4: Reload to trigger the auth cycle with Firebase blocked.
+                page.reload(wait_until="domcontentloaded")
+                _wait_for_initial_load(page)
+                page.wait_for_timeout(_HEARTBEAT_WAIT_MS)
 
             # ------------------------------------------------------------------
             # Assertion: if a 'Sign in' link is visible, an auth-error message
