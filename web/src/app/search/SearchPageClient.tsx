@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { VideoCardItem, SearchRepository } from "@/domain/search";
 import { ApiSearchRepository } from "@/data/searchRepository";
 import VideoCard from "@/components/VideoCard";
+import VideoCardSkeleton from "@/components/VideoCardSkeleton";
 
 const defaultRepository: SearchRepository = new ApiSearchRepository();
 
@@ -59,7 +60,9 @@ function SearchResults({ repository = defaultRepository }: SearchPageProps) {
       </h1>
 
       {loading && (
-        <p className="text-gray-500 text-center py-16">Loading…</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <VideoCardSkeleton count={6} />
+        </div>
       )}
 
       {error && (
