@@ -16,6 +16,7 @@ import { LogoIcon, SunIcon, MoonIcon } from "@/components/icons";
 export default function SiteHeader() {
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { user, loading, signOut, authError } = useAuth();
@@ -64,6 +65,7 @@ export default function SiteHeader() {
   const myVideosHref = user ? "/dashboard" : "/login?next=/dashboard";
 
   return (
+    <>
     <header
       style={{
         background: "var(--bg-header)",
@@ -71,6 +73,31 @@ export default function SiteHeader() {
       }}
       className="min-h-[56px] sm:min-h-[88px] px-4 sm:px-10 py-3 sm:py-4 flex items-center gap-3 sm:gap-6"
     >
+      {/* Hamburger toggle — mobile only */}
+      <button
+        type="button"
+        className="sm:hidden w-10 h-10 flex items-center justify-center rounded-md bg-transparent transition-colors hover:bg-[color:var(--bg-card)] shrink-0"
+        aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+        aria-expanded={mobileNavOpen}
+        aria-controls="mobile-nav"
+        onClick={() => setMobileNavOpen((prev) => !prev)}
+      >
+        {mobileNavOpen ? (
+          /* X icon */
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-secondary)" }}>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        ) : (
+          /* Hamburger icon */
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-secondary)" }}>
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        )}
+      </button>
+
       {/* Branded logo: SVG icon + text block */}
       <Link href="/" className="flex items-center gap-2 shrink-0">
         <LogoIcon
@@ -94,7 +121,7 @@ export default function SiteHeader() {
         </div>
       </Link>
 
-      {/* Primary nav links — visible for all users */}
+      {/* Primary nav links — visible on sm+ */}
       <nav aria-label="Primary navigation" className="hidden sm:flex items-center gap-6">
         <Link
           href="/"
@@ -248,5 +275,36 @@ export default function SiteHeader() {
         </nav>
       </div>
     </header>
+
+    {/* Mobile navigation panel — visible only when hamburger is open */}
+    {mobileNavOpen && (
+      <nav
+        id="mobile-nav"
+        aria-label="Mobile navigation"
+        className="sm:hidden border-b px-4 py-3 flex flex-col gap-3"
+        style={{
+          background: "var(--bg-header)",
+          borderColor: "rgba(127,127,127,0.16)",
+        }}
+      >
+        <Link
+          href="/"
+          className="text-base transition-colors hover:underline py-1"
+          style={{ color: "var(--text-secondary)" }}
+          onClick={() => setMobileNavOpen(false)}
+        >
+          Home
+        </Link>
+        <Link
+          href={myVideosHref}
+          className="text-base transition-colors hover:underline py-1"
+          style={{ color: "var(--text-secondary)" }}
+          onClick={() => setMobileNavOpen(false)}
+        >
+          My Videos
+        </Link>
+      </nav>
+    )}
+    </>
   );
 }
