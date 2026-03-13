@@ -311,3 +311,95 @@ class SiteHeader:
         headerScrollWidth, headerHeight, childCount.
         """
         return self._page.evaluate(self._HEADER_METRICS_JS)
+
+    # ------------------------------------------------------------------
+    # Mobile navigation (hamburger menu)
+    # ------------------------------------------------------------------
+
+    # Hamburger button — mobile-only toggle visible inside <header> at ≤640px.
+    # Multiple selectors tried in order to be resilient to attribute changes.
+    _HAMBURGER_SELECTORS = [
+        "header button[aria-label*='menu' i]",
+        "header button[aria-label*='navigation' i]",
+        "header button[aria-label*='hamburger' i]",
+        "header button.sm\\:hidden",
+        "header button[data-testid*='hamburger']",
+        "header button[data-testid*='mobile-menu']",
+    ]
+
+    # Mobile nav panel — always in DOM; ``hidden`` attribute controls visibility.
+    _MOBILE_NAV_SELECTOR = "#mobile-nav, [aria-label='Mobile navigation']"
+
+    # Primary desktop nav — hidden sm:flex on narrow viewports.
+    _DESKTOP_NAV_SELECTOR = "nav[aria-label='Primary navigation']"
+
+    def is_hamburger_visible(self) -> bool:
+        """Return True if the hamburger toggle button is visible in the header."""
+        for selector in self._HAMBURGER_SELECTORS:
+            locator = self._page.locator(selector)
+            try:
+                if locator.count() > 0 and locator.first.is_visible():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def click_hamburger(self) -> None:
+        """Click the first visible hamburger toggle button in the header."""
+        for selector in self._HAMBURGER_SELECTORS:
+            locator = self._page.locator(selector)
+            try:
+                count = locator.count()
+            except Exception:
+                continue
+            for i in range(count):
+                try:
+                    if locator.nth(i).is_visible():
+                        locator.nth(i).click()
+                        return
+                except Exception:
+                    continue
+        raise AssertionError(
+            "Hamburger/mobile-menu toggle button NOT FOUND in the site header. "
+            "Expected a <button> with aria-label containing 'menu', 'nav', or "
+            "'hamburger' to be present and visible inside <header>."
+        )
+
+    def is_mobile_nav_visible(self) -> bool:
+        """Return True if the mobile nav panel is currently visible.
+
+        SiteHeader.tsx controls visibility via the HTML ``hidden`` attribute on
+        <nav id="mobile-nav">. Playwright's ``is_visible()`` respects that
+        attribute, so this returns False when hidden=True.
+        """
+        locator = self._page.locator(self._MOBILE_NAV_SELECTOR)
+        try:
+            return locator.count() > 0 and locator.first.is_visible()
+        except Exception:
+            return False
+
+    def is_desktop_nav_visible(self) -> bool:
+        """Return True if the primary desktop navigation is visible."""
+        try:
+            locator = self._page.locator(self._DESKTOP_NAV_SELECTOR)
+            return locator.count() > 0 and locator.first.is_visible()
+        except Exception:
+            return False
+
+    def desktop_nav_home_link_visible(self) -> bool:
+        """Return True if the 'Home' link is visible inside the desktop nav."""
+        try:
+            nav = self._page.locator(self._DESKTOP_NAV_SELECTOR).first
+            link = nav.locator("a:has-text('Home')")
+            return link.count() > 0 and link.first.is_visible()
+        except Exception:
+            return False
+
+    def desktop_nav_my_videos_link_visible(self) -> bool:
+        """Return True if the 'My Videos' link is visible inside the desktop nav."""
+        try:
+            nav = self._page.locator(self._DESKTOP_NAV_SELECTOR).first
+            link = nav.locator("a:has-text('My Videos')")
+            return link.count() > 0 and link.first.is_visible()
+        except Exception:
+            return False
