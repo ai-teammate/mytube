@@ -24,7 +24,8 @@ class SiteHeader:
     """
 
     # Logo: the "mytube" branded link that always navigates to /
-    _LOGO_LINK = "header a.text-red-600"
+    # Uses shrink-0 class (see SiteHeader.tsx: className="flex items-center gap-2 shrink-0")
+    _LOGO_LINK = "header a.shrink-0"
 
     def __init__(self, page: Page) -> None:
         self._page = page
