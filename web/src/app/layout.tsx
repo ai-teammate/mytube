@@ -16,7 +16,10 @@ export const metadata: Metadata = {
   title: "mytube",
   description: "Personal video platform",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+  },
+  openGraph: {
+    images: [{ url: "/logo.svg" }],
   },
 };
 
