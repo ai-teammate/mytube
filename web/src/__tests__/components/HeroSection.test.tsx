@@ -186,6 +186,15 @@ describe("HeroSection", () => {
     expect(img).toHaveAttribute("src", "/landing_image.png");
   });
 
+  it("prefixes landing_image.png src with NEXT_PUBLIC_BASE_PATH when set (GitHub Pages basePath)", () => {
+    const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+    process.env.NEXT_PUBLIC_BASE_PATH = "/mytube";
+    render(<HeroSection />);
+    const img = screen.getByAltText("Personal Playback Preview");
+    expect(img).toHaveAttribute("src", "/mytube/landing_image.png");
+    process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+  });
+
   it("renders landing image with correct intrinsic dimensions", () => {
     render(<HeroSection />);
     const img = screen.getByAltText("Personal Playback Preview");
