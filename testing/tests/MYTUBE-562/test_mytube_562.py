@@ -246,7 +246,7 @@ class TestScrollLive:
         return WebConfig()
 
     @pytest.fixture(scope="class")
-    def page_and_home(self, config: WebConfig):
+    def page_obj(self, config: WebConfig):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
@@ -263,7 +263,7 @@ class TestScrollLive:
             yield page
             browser.close()
 
-    def test_single_wheel_event_scrolls_page(self, page_and_home) -> None:
+    def test_single_wheel_event_scrolls_page(self, page_obj) -> None:
         """
         A single mouse-wheel event dispatched on the document body must cause
         ``scrollY`` to increase — confirming that the AppShell containers no
@@ -277,7 +277,7 @@ class TestScrollLive:
         4. Wait a short period for the event to propagate.
         5. Assert scrollY > 0.
         """
-        page = page_and_home
+        page = page_obj
 
         # Scroll back to absolute top for a clean baseline.
         page.evaluate("window.scrollTo(0, 0)")
