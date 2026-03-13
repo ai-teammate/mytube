@@ -50,13 +50,13 @@ from playwright.sync_api import Browser
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.hero_section.hero_section_page import HeroSectionPage
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _VIEWPORT = {"width": 1280, "height": 800}
-_PAGE_LOAD_TIMEOUT = 30_000  # ms
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HERO_SECTION_SRC = _REPO_ROOT / "web" / "src" / "components" / "HeroSection.tsx"
@@ -95,13 +95,7 @@ class TestHeroImageSourceAttributes:
 
         A missing or empty alt attribute fails WCAG 1.1.1 (Non-text Content).
         """
-        # Match alt="..." on the landing Image component
-        pattern = re.compile(
-            r'<Image\b[^>]*src=["\'][^"\']*landing_image[^"\']*["\'][^>]*>',
-            re.DOTALL,
-        )
-        # The tag may be multi-line; find the Image block that includes landing_image
-        # by searching from the src occurrence
+        # Find the Image block that includes landing_image by searching from the src occurrence
         src_match = re.search(r'src=["\'][^"\']*landing_image[^"\']*["\']', hero_source)
         assert src_match, (
             "No <Image> with src matching 'landing_image' was found in HeroSection.tsx. "
@@ -187,54 +181,16 @@ class TestHeroImageLive:
         """
         Full E2E verification of MYTUBE-574:
 
-        1. Navigate to the homepage.
-        2. Locate the <img> element for the landing image.
+        1. Navigate to the homepage via HeroSectionPage.
+        2. Retrieve alt, width, and height from the landing image via the component.
         3. Assert alt attribute is present and non-empty.
         4. Assert width attribute is present and a positive integer.
         5. Assert height attribute is present and a positive integer.
         """
         page = browser.new_page(viewport=_VIEWPORT)
         try:
-            # ── Step 1: Navigate to homepage ──────────────────────────────
-            page.goto(
-                config.home_url(),
-                timeout=_PAGE_LOAD_TIMEOUT,
-                wait_until="domcontentloaded",
-            )
-
-            # ── Step 2: Locate the landing image ─────────────────────────
-            # Next.js <Image> renders as <img>; the src may be a transformed
-            # /_next/image URL or the original path.  Match on src containing
-            # "landing_image" or the frosted-overlay / visual-canvas container.
-            img_locator = page.locator(
-                "img[src*='landing_image'], "
-                "[class*='visualCanvas'] img, "
-                "[class*='frostedOverlay'] img"
-            ).first
-
-            try:
-                img_locator.wait_for(state="attached", timeout=15_000)
-            except Exception:
-                # Fallback: locate any img inside the hero section
-                img_locator = page.locator(
-                    "section[aria-label='Hero'] img"
-                ).first
-                img_locator.wait_for(state="attached", timeout=10_000)
-
-            assert img_locator.count() > 0, (
-                "No <img> element for the hero landing image was found on the homepage. "
-                "Expected: an <img> with src containing 'landing_image' inside the hero section."
-            )
-
-            # Retrieve attributes via JavaScript for reliability
-            attrs: dict = img_locator.evaluate(
-                """(el) => ({
-                    alt:    el.getAttribute('alt'),
-                    width:  el.getAttribute('width'),
-                    height: el.getAttribute('height'),
-                    src:    el.getAttribute('src') || el.currentSrc || '',
-                })"""
-            )
+            hero = HeroSectionPage(page)
+            attrs = hero.get_landing_image_attributes(config.home_url())
 
             # ── Step 3: Assert alt attribute ─────────────────────────────
             alt = attrs.get("alt")
