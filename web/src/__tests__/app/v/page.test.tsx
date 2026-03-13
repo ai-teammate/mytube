@@ -150,12 +150,15 @@ function makeVideo(overrides: Partial<VideoDetail> = {}): VideoDetail {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("WatchPage", () => {
-  it("shows loading state initially", () => {
+  it("shows skeleton loading state initially", () => {
     const repo = makeRepo(() => new Promise(() => {}));
 
     renderWatchPage(repo, "vid-1");
 
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    // WatchPageSkeleton renders skeleton elements with aria-hidden while loading.
+    expect(screen.getAllByRole("main")[0]).toBeInTheDocument();
+    // Verify no real content (title, description) is shown yet
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   });
 
   it("shows not-found message when video is null", async () => {

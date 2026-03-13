@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VideoCardItem } from "@/domain/search";
 import styles from "./VideoCard.module.css";
@@ -20,6 +20,7 @@ interface VideoCardProps {
  */
 export default function VideoCard({ video }: VideoCardProps) {
   const router = useRouter();
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   // GitHub Pages static export only pre-builds /v/_/ as the watch-page shell.
   // Direct client-side navigation to /v/<uuid> bypasses the 404.html SPA
@@ -57,7 +58,8 @@ export default function VideoCard({ video }: VideoCardProps) {
             src={video.thumbnailUrl}
             alt={video.title}
             fill
-            className="object-cover"
+            className={`object-cover ${imgLoaded ? styles.loaded : ""}`}
+            onLoad={() => setImgLoaded(true)}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">

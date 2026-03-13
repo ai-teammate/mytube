@@ -18,6 +18,7 @@ import type {
 import type { PlaylistRepository, PlaylistSummary } from "@/domain/playlist";
 import { CATEGORIES } from "@/domain/categories";
 import DashboardVideoCard from "@/components/DashboardVideoCard";
+import VideoCardSkeleton from "@/components/VideoCardSkeleton";
 import styles from "./_content.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -660,7 +661,9 @@ export function DashboardContent({
 
             {/* Loading / empty / grid */}
             {fetching ? (
-              <p className="text-gray-500">Loading your videos…</p>
+              <div className={styles.videoGrid}>
+                <VideoCardSkeleton count={4} />
+              </div>
             ) : filteredVideos.length === 0 ? (
               <div className={styles.emptyState}>
                 {videos.length === 0 ? (

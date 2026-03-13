@@ -104,7 +104,7 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
   }, [src, poster]);
 
   return (
-    <div data-vjs-player>
+    <div data-vjs-player style={{ opacity: 1, transition: "opacity 0.2s ease" }}>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={videoRef}
