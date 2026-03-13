@@ -167,61 +167,24 @@ _FIXTURE_HTML = """\
 </html>
 """
 
-# JavaScript that dispatches a single vertical swipe gesture
-# (touch-start at y=600, move to y=200, touch-end) and returns window.scrollY.
-_SWIPE_JS = """
-() => {
-    return new Promise((resolve) => {
-        const startX = 187, startY = 600, endY = 200;
-        const el = document.elementFromPoint(startX, startY) || document.body;
+def _scroll_and_get_scroll_y(page: Page, x: int = 187, y: int = 400, delta: int = 200) -> float:
+    """
+    Simulate a scroll gesture using Playwright's mouse wheel and return ``window.scrollY``.
 
-        function mkTouch(y) {
-            return new Touch({
-                identifier: 1,
-                target: el,
-                clientX: startX,
-                clientY: y,
-                screenX: startX,
-                screenY: y,
-                pageX: startX,
-                pageY: y,
-                radiusX: 10,
-                radiusY: 10,
-                rotationAngle: 0,
-                force: 1,
-            });
-        }
+    Uses ``page.mouse.wheel()`` which dispatches a real wheel event through the
+    browser's compositor. This correctly exercises CSS overflow routing:
+    - With ``overflow: clip`` on ``.shell``: the wheel event propagates to the
+      document root and ``window.scrollY`` increases.
+    - With ``overflow: hidden`` on ``.shell``: the wheel event is consumed by the
+      implicit scroll container created by ``.shell`` and ``window.scrollY`` stays 0.
 
-        el.dispatchEvent(new TouchEvent('touchstart', {
-            bubbles: true, cancelable: true,
-            touches: [mkTouch(startY)],
-            changedTouches: [mkTouch(startY)],
-        }));
-
-        // Dispatch multiple touchmove events to simulate a drag gesture
-        for (let y = startY - 50; y >= endY; y -= 50) {
-            el.dispatchEvent(new TouchEvent('touchmove', {
-                bubbles: true, cancelable: true,
-                touches: [mkTouch(y)],
-                changedTouches: [mkTouch(y)],
-            }));
-        }
-
-        el.dispatchEvent(new TouchEvent('touchend', {
-            bubbles: true, cancelable: true,
-            touches: [],
-            changedTouches: [mkTouch(endY)],
-        }));
-
-        // Also call scrollBy as a belt-and-suspenders check — confirms
-        // the document root is the scroll target (not consumed by .shell).
-        window.scrollBy({top: 200, behavior: 'instant'});
-
-        // Give the browser a frame to process the scroll
-        requestAnimationFrame(() => resolve(window.scrollY));
-    });
-}
-"""
+    JS-dispatched synthetic TouchEvents (``dispatchEvent``) do NOT trigger native
+    browser scroll, so they cannot be used to measure ``window.scrollY`` reliably.
+    """
+    page.mouse.move(x, y)
+    page.mouse.wheel(0, delta)
+    page.wait_for_timeout(150)
+    return page.evaluate("() => window.scrollY")
 
 
 # ---------------------------------------------------------------------------
@@ -415,12 +378,14 @@ class TestTouchScrollFixture:
 
     def test_fixture_touch_swipe_scrolls_page(self, config: WebConfig) -> None:
         """
-        A single swipe gesture on the fixture page must move the viewport.
+        A scroll gesture on the fixture page must move the viewport.
 
-        The test dispatches a vertical swipe (touchstart → touchmove → touchend)
-        and also calls ``window.scrollBy(200)`` to confirm the document root
-        is scrollable and the scroll was not consumed by a .shell scroll
-        container. ``window.scrollY > 0`` confirms the fix is effective.
+        Uses ``page.mouse.wheel()`` to send a real wheel event through the browser's
+        compositor, which correctly exercises CSS overflow routing. With
+        ``overflow: clip`` on ``.shell``, the event propagates to the document root
+        and ``window.scrollY > 0``. With ``overflow: hidden``, ``.shell`` would
+        create an implicit scroll container and consume the event, keeping
+        ``window.scrollY`` at 0.
         """
         server, fixture_url = _start_fixture_server()
         try:
@@ -440,13 +405,13 @@ class TestTouchScrollFixture:
                     # Ensure the page is at the top before the gesture
                     page.evaluate("() => window.scrollTo(0, 0)")
 
-                    scroll_y = page.evaluate(_SWIPE_JS)
+                    scroll_y = _scroll_and_get_scroll_y(page)
 
                     assert scroll_y > 0, (
-                        f"window.scrollY is {scroll_y} after a swipe gesture — the page "
+                        f"window.scrollY is {scroll_y} after a scroll gesture — the page "
                         "did not scroll. "
                         "Expected: scroll position > 0, confirming the document root "
-                        "receives scroll events (not consumed by an .shell scroll container). "
+                        "receives scroll events (not consumed by a .shell scroll container). "
                         "If scrollY remains 0, .shell or .page-wrap may be using "
                         "'overflow: hidden' which creates a scroll container that "
                         "silently swallows touch/wheel events."
@@ -529,7 +494,12 @@ class TestTouchScrollLive:
     def test_live_touch_swipe_scrolls_document(self, config: WebConfig) -> None:
         """
         On the deployed homepage (mobile viewport, touch enabled), performing a
-        swipe gesture must result in ``window.scrollY > 0``.
+        scroll gesture must result in ``window.scrollY > 0``.
+
+        Uses ``page.mouse.wheel()`` to send a real browser wheel event through
+        the compositor, which correctly exercises CSS overflow routing. This
+        distinguishes between ``overflow: clip`` (events reach document root) and
+        ``overflow: hidden`` (events consumed by ``.shell`` scroll container).
 
         Skipped when the deployed app is unreachable or no scrollable content
         is present.
@@ -569,15 +539,15 @@ class TestTouchScrollLive:
                     )
 
                 page.evaluate("() => window.scrollTo(0, 0)")
-                scroll_y = page.evaluate(_SWIPE_JS)
+                scroll_y = _scroll_and_get_scroll_y(page)
 
                 assert scroll_y > 0, (
-                    f"Live homepage: window.scrollY is {scroll_y} after a swipe "
+                    f"Live homepage: window.scrollY is {scroll_y} after a scroll "
                     "gesture — the page did not scroll on the first attempt. "
-                    "Expected: scroll position > 0 immediately after a single swipe, "
-                    "confirming touch events reach the document root. "
+                    "Expected: scroll position > 0, confirming scroll events reach the "
+                    "document root. "
                     "Likely cause: .shell or .page-wrap uses overflow: hidden, "
-                    "creating a CSS scroll container that consumes the touch events. "
+                    "creating a CSS scroll container that consumes the scroll events. "
                     f"Page URL: {page.url}"
                 )
 
