@@ -258,6 +258,18 @@ class SiteHeader:
 }
 """
 
+    # ------------------------------------------------------------------
+    # Logo SVG locator
+    # ------------------------------------------------------------------
+
+    # The <svg> element rendered by LogoIcon.tsx inside the logo link.
+    # SiteHeader.tsx: <Link href="/" className="… shrink-0"><LogoIcon …>
+    _LOGO_SVG_SELECTOR = "header a.shrink-0 svg"
+
+    def logo_svg_locator(self) -> Locator:
+        """Return the Playwright Locator for the LogoIcon SVG inside the header."""
+        return self._page.locator(self._LOGO_SVG_SELECTOR)
+
     def get_header_layout_metrics(self) -> dict | None:
         """Return layout metrics for the <header> element on the current page.
 
