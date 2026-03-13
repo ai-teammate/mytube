@@ -30,8 +30,8 @@ class HeroImageNetworkComponent:
 
     Provides two operations:
     - ``fetch_direct``: direct APIRequestContext GET for the asset URL.
-    - ``capture_landing_image_response``: loads the homepage and returns the
-      first intercepted response for ``landing_image.png``.
+    - ``capture_all_landing_image_responses``: loads the homepage and returns
+      all intercepted responses for ``landing_image.png``.
     """
 
     def __init__(self, config: WebConfig) -> None:
@@ -51,38 +51,6 @@ class HeroImageNetworkComponent:
                 )
             finally:
                 context.dispose()
-
-    def capture_landing_image_response(self) -> ImageNetworkResponse | None:
-        """Load the homepage and return the first intercepted landing image response.
-
-        Returns ``None`` if no request for ``landing_image.png`` was observed.
-        """
-        captured: list[ImageNetworkResponse] = []
-
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=self._config.headless)
-            try:
-                page = browser.new_page()
-
-                def _on_response(response) -> None:  # type: ignore[no-untyped-def]
-                    if _ASSET_FILENAME in response.url:
-                        captured.append(
-                            ImageNetworkResponse(
-                                url=response.url,
-                                status=response.status,
-                            )
-                        )
-
-                page.on("response", _on_response)
-                page.goto(
-                    self._config.home_url(),
-                    timeout=_REQUEST_TIMEOUT,
-                    wait_until="networkidle",
-                )
-            finally:
-                browser.close()
-
-        return captured[0] if captured else None
 
     def capture_all_landing_image_responses(self) -> list[ImageNetworkResponse]:
         """Load the homepage and return ALL intercepted landing image responses."""
