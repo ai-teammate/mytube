@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { VideoCardItem, DiscoveryRepository } from "@/domain/search";
 import { ApiDiscoveryRepository } from "@/data/searchRepository";
 import VideoCard from "@/components/VideoCard";
+import VideoCardSkeleton from "@/components/VideoCardSkeleton";
 import HeroSection from "@/components/HeroSection";
 
 const defaultRepository: DiscoveryRepository = new ApiDiscoveryRepository();
@@ -51,7 +52,24 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
       <HeroSection thumbnailUrl={recentVideos[0]?.thumbnailUrl} />
 
       {loading && (
-        <p className="text-gray-500 text-center py-16">Loading…</p>
+        <div id="video-grid">
+          <section aria-labelledby="recently-uploaded-heading" className="mb-12">
+            <h2 id="recently-uploaded-heading" className="text-xl font-semibold text-gray-900 mb-4">
+              Recently Uploaded
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <VideoCardSkeleton count={8} />
+            </div>
+          </section>
+          <section aria-labelledby="most-viewed-heading">
+            <h2 id="most-viewed-heading" className="text-xl font-semibold text-gray-900 mb-4">
+              Most Viewed
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <VideoCardSkeleton count={8} />
+            </div>
+          </section>
+        </div>
       )}
 
       {error && (
