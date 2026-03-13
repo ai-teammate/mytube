@@ -1,0 +1,5 @@
+test_id: MYTUBE-577
+type: web-ui
+framework: playwright+static-analysis
+platform: chromium
+dependencies: []
