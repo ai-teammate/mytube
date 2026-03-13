@@ -13,10 +13,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ai-teammate.github.io"),
   title: "mytube",
   description: "Personal video platform",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+  },
+  openGraph: {
+    images: [{ url: "/mytube/logo.svg" }],
   },
 };
 
