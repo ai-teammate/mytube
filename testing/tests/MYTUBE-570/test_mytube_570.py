@@ -131,8 +131,10 @@ class TestWatchPageSkeletonStatic:
     def test_skeleton_includes_player_placeholder(self) -> None:
         """WatchPageSkeleton must render a Skeleton inside the player container."""
         src = _read_file(_WATCH_SKELETON_TSX)
-        assert "playerFill" in src or "player" in src.lower(), (
+        import re
+        assert re.search(r'playerFill|playerContainer|player-fill', src), (
             "WatchPageSkeleton does not render a player-area skeleton placeholder. "
+            "No player-area CSS class (playerFill, playerContainer, player-fill) found. "
             f"File: {_WATCH_SKELETON_TSX}"
         )
         # The Skeleton component must be used for the player area
@@ -249,8 +251,8 @@ class TestWatchPageSkeletonLive:
                 "15 seconds of navigation. The loading skeleton may not be present."
             )
 
-            # Give React a brief moment to settle the skeleton into the DOM.
-            page.wait_for_timeout(800)
+            # Wait until at least one skeleton div is present in the DOM.
+            page.wait_for_selector(f"main {_SKELETON_SELECTOR}", timeout=_REACT_MOUNT_TIMEOUT)
 
             # --- Assert skeleton elements are present ---
 
