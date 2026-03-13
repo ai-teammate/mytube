@@ -547,3 +547,31 @@ class WatchPage:
             return True
         except Exception:
             return False
+
+    # ------------------------------------------------------------------
+    # Recommendation Sidebar Queries
+    # ------------------------------------------------------------------
+
+    _MORE_LIKE_THIS_HEADING = "h2:has-text('More like this')"
+    _RECOMMENDATIONS_PLACEHOLDER = "text=Recommendations coming soon"
+    _LOADING_RECOMMENDATIONS = "[aria-label='Loading recommendations']"
+    _SIDEBAR_SETTLE_TIMEOUT = 10_000  # ms
+
+    def wait_for_recommendations_to_settle(self, timeout: int = _SIDEBAR_SETTLE_TIMEOUT) -> None:
+        """Wait until the recommendation loading skeleton disappears (fetch complete)."""
+        try:
+            self._page.wait_for_selector(
+                self._LOADING_RECOMMENDATIONS,
+                state="hidden",
+                timeout=timeout,
+            )
+        except Exception:
+            pass  # skeleton may not appear if fetch is instant
+
+    def is_recommendation_sidebar_present(self) -> bool:
+        """Return True if the 'More like this' sidebar heading is visible in the DOM."""
+        return self._page.locator(self._MORE_LIKE_THIS_HEADING).count() > 0
+
+    def has_recommendations_placeholder(self) -> bool:
+        """Return True if the 'Recommendations coming soon' placeholder text is present."""
+        return self._page.get_by_text("Recommendations coming soon", exact=False).count() > 0
