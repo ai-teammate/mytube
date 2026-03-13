@@ -210,3 +210,63 @@ class SiteHeader:
         if "rgb(109, 64, 203)" in lower or "rgb(147, 112, 219)" in lower:
             return True
         return False
+
+    # ------------------------------------------------------------------
+    # Layout metrics (responsive / breakpoint tests)
+    # ------------------------------------------------------------------
+
+    # JS that measures horizontal overflow and flex-row count of <header>.
+    # Returns null when no <header> exists; otherwise a dict with keys:
+    #   overflowPx, rowCount, headerWidth, headerScrollWidth,
+    #   headerHeight, childCount.
+    _HEADER_METRICS_JS = """
+() => {
+    const header = document.querySelector('header');
+    if (!header) return null;
+    const overflowPx = header.scrollWidth - header.clientWidth;
+    const children = Array.from(header.children);
+    if (children.length === 0) {
+        return {
+            overflowPx: overflowPx,
+            rowCount: 0,
+            headerWidth: header.clientWidth,
+            headerScrollWidth: header.scrollWidth,
+            headerHeight: header.clientHeight,
+            childCount: 0,
+        };
+    }
+    const rects = children.map(c => c.getBoundingClientRect());
+    let rowCount = 1;
+    let currentRowBottom = rects[0].bottom;
+    const TOLERANCE = 4;
+    for (let i = 1; i < rects.length; i++) {
+        if (rects[i].top >= currentRowBottom - TOLERANCE) {
+            rowCount++;
+            currentRowBottom = rects[i].bottom;
+        } else {
+            currentRowBottom = Math.max(currentRowBottom, rects[i].bottom);
+        }
+    }
+    return {
+        overflowPx: overflowPx,
+        rowCount:   rowCount,
+        headerWidth: header.clientWidth,
+        headerScrollWidth: header.scrollWidth,
+        headerHeight: header.clientHeight,
+        childCount: children.length,
+    };
+}
+"""
+
+    def get_header_layout_metrics(self) -> dict | None:
+        """Return layout metrics for the <header> element on the current page.
+
+        Measures horizontal overflow and the number of flex rows formed by
+        the header's direct children.  Call after navigating to a page and
+        waiting for the header to be visible.
+
+        Returns None if no <header> element is found; otherwise returns a
+        dict with keys: overflowPx, rowCount, headerWidth,
+        headerScrollWidth, headerHeight, childCount.
+        """
+        return self._page.evaluate(self._HEADER_METRICS_JS)
