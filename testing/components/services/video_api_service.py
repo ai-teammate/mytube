@@ -149,6 +149,24 @@ class VideoApiService:
         url = f"{self._base_url}/api/videos/popular?limit={limit}"
         return self._fetch_list(url)
 
+    def get_recommendations(self, video_id: str) -> tuple[int, dict | None]:
+        """GET /api/videos/:id/recommendations → (status_code, body_dict).
+
+        Returns (200, dict) on success.
+        Returns (status_code, None) on HTTP error or non-object response.
+        Returns (0, None) when the host is unreachable.
+        """
+        url = f"{self._base_url}/api/videos/{video_id}/recommendations"
+        req = urllib.request.Request(url)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                body = json.loads(resp.read().decode())
+                return resp.status, body if isinstance(body, dict) else None
+        except urllib.error.HTTPError as exc:
+            return exc.code, None
+        except Exception:
+            return 0, None
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
