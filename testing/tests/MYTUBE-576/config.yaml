@@ -1,0 +1,5 @@
+test_id: MYTUBE-576
+type: web
+framework: static_analysis
+platform: python
+dependencies: []
