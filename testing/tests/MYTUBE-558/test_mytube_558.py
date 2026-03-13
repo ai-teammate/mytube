@@ -161,16 +161,8 @@ class TestMobileHeaderAlignmentLive:
 
     def test_no_horizontal_scroll_on_homepage(self, mobile_page: Page) -> None:
         """The homepage must not have a horizontal scrollbar at 375px viewport."""
-        scroll_width = mobile_page.evaluate(
-            "() => document.documentElement.scrollWidth"
-        )
-        client_width = mobile_page.evaluate(
-            "() => document.documentElement.clientWidth"
-        )
-        assert scroll_width <= client_width, (
+        assert not _page_has_horizontal_scroll(mobile_page), (
             f"Horizontal overflow detected on homepage at 375px viewport. "
-            f"scrollWidth={scroll_width}px > clientWidth={client_width}px. "
-            f"The SiteHeader or one of its children is overflowing the viewport. "
             f"URL: {mobile_page.url}"
         )
 
@@ -199,12 +191,9 @@ class TestMobileHeaderAlignmentLive:
 
     def test_logo_is_visible_on_mobile(self, mobile_page: Page) -> None:
         """The logo link must be visible on the mobile viewport."""
-        # The logo is the first <a> in the header with shrink-0 class (Next.js
-        # transforms href="/" to the base path on GitHub Pages deployments).
-        logo = mobile_page.locator("header a.shrink-0").first
-        assert logo.count() > 0 and logo.is_visible(), (
-            f"Logo link (header a.shrink-0) is not visible at 375px viewport. "
-            f"URL: {mobile_page.url}"
+        header = SiteHeader(mobile_page)
+        assert header.logo_is_visible(), (
+            f"Logo link is not visible at 375px viewport. URL: {mobile_page.url}"
         )
 
     def test_logo_right_edge_within_viewport(self, mobile_page: Page) -> None:
@@ -223,8 +212,8 @@ class TestMobileHeaderAlignmentLive:
 
     def test_search_input_is_visible_on_mobile(self, mobile_page: Page) -> None:
         """The search input must be visible and accessible on the mobile viewport."""
-        search_input = mobile_page.locator("header input[type='search']")
-        assert search_input.is_visible(), (
+        header = SiteHeader(mobile_page)
+        assert header.search_input_locator().is_visible(), (
             f"Search input is not visible on 375px viewport. "
             f"The search form should be present and not overflowing. URL: {mobile_page.url}"
         )
@@ -255,11 +244,14 @@ class TestMobileHeaderAlignmentLive:
         if right_edge is None:
             # Fallback: look for the sign-in link or auth nav container
             right_edge = _element_right_edge(mobile_page, "header nav[aria-label='User navigation']")
-        if right_edge is not None:
-            assert right_edge <= viewport_width + 1, (
-                f"Utility/auth area right edge ({right_edge:.1f}px) exceeds mobile "
-                f"viewport ({viewport_width}px). URL: {mobile_page.url}"
-            )
+        assert right_edge is not None, (
+            "Could not locate the utility/auth area (header [aria-label='User navigation']). "
+            "Verify the selector matches the rendered DOM."
+        )
+        assert right_edge <= viewport_width + 1, (
+            f"Utility/auth area right edge ({right_edge:.1f}px) exceeds mobile "
+            f"viewport ({viewport_width}px). URL: {mobile_page.url}"
+        )
 
 
 # ---------------------------------------------------------------------------
