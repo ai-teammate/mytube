@@ -72,7 +72,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
-from testing.components.pages.home_page.home_page import HomePage
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -261,8 +260,7 @@ class TestScrollLive:
                 timeout=_PAGE_LOAD_TIMEOUT,
                 wait_until="networkidle",
             )
-            home = HomePage(page)
-            yield page, home
+            yield page
             browser.close()
 
     def test_single_wheel_event_scrolls_page(self, page_and_home) -> None:
@@ -279,7 +277,7 @@ class TestScrollLive:
         4. Wait a short period for the event to propagate.
         5. Assert scrollY > 0.
         """
-        page, home = page_and_home
+        page = page_and_home
 
         # Scroll back to absolute top for a clean baseline.
         page.evaluate("window.scrollTo(0, 0)")
@@ -291,18 +289,11 @@ class TestScrollLive:
             "Could not establish a clean baseline."
         )
 
-        # Dispatch a single wheel event — equivalent to one click of the scroll wheel.
-        page.evaluate(
-            """() => {
-                const evt = new WheelEvent('wheel', {
-                    deltaY: 300,
-                    deltaMode: 0,
-                    bubbles: true,
-                    cancelable: true
-                });
-                document.body.dispatchEvent(evt);
-            }"""
-        )
+        # Send a single trusted native wheel event via Playwright's input API.
+        # page.evaluate() dispatches untrusted synthetic events that browsers
+        # do not use to drive native scroll — page.mouse.wheel() sends a real
+        # OS-level event through the browser's input pipeline.
+        page.mouse.wheel(0, 300)
 
         # Wait for the scroll to propagate/animate.
         page.wait_for_timeout(_SCROLL_WAIT_MS)
