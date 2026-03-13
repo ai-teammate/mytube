@@ -41,11 +41,13 @@ import sys
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.components.pages.hero_section.hero_image_network_component import (
+    HeroImageNetworkComponent,
+)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -116,41 +118,31 @@ class TestLandingImageHTTP:
         - Located under the app's base URL (confirming it is a static file
           served from the deployment, not a CDN redirect to an unrelated host)
         """
+        component = HeroImageNetworkComponent(config)
+        result = component.fetch_direct()
         asset_url = f"{config.base_url}/{_ASSET_FILENAME}"
 
-        with sync_playwright() as pw:
-            request_context = pw.request.new_context()
-            try:
-                response = request_context.get(asset_url, timeout=_REQUEST_TIMEOUT)
+        assert result.status == 200, (
+            f"Expected HTTP 200 for {asset_url!r}, "
+            f"but got HTTP {result.status}. "
+            f"The hero landing image is not being served correctly as a "
+            f"static asset. Check that landing_image.png is present in "
+            f"web/public/ and the deployment includes it."
+        )
 
-                assert response.status == 200, (
-                    f"Expected HTTP 200 for {asset_url!r}, "
-                    f"but got HTTP {response.status}. "
-                    f"The hero landing image is not being served correctly as a "
-                    f"static asset. Check that landing_image.png is present in "
-                    f"web/public/ and the deployment includes it."
-                )
+        # Verify the final URL is still under the app's base URL
+        assert config.base_url in result.url or _ASSET_FILENAME in result.url, (
+            f"The final URL after redirect ({result.url!r}) does not appear "
+            f"to be the expected static asset. "
+            f"Expected the URL to contain the base URL ({config.base_url!r}) "
+            f"or the asset filename ({_ASSET_FILENAME!r})."
+        )
 
-                # Verify the final URL is still under the app's base URL
-                # (i.e., not redirected to a 3rd-party CDN that returns 200 for
-                # everything).
-                final_url: str = response.url
-                assert config.base_url in final_url or _ASSET_FILENAME in final_url, (
-                    f"The final URL after redirect ({final_url!r}) does not appear "
-                    f"to be the expected static asset. "
-                    f"Expected the URL to contain the base URL ({config.base_url!r}) "
-                    f"or the asset filename ({_ASSET_FILENAME!r})."
-                )
-
-                # Confirm Content-Type indicates an image
-                content_type = response.headers.get("content-type", "")
-                assert "image" in content_type.lower() or content_type == "", (
-                    f"Unexpected Content-Type for landing image: {content_type!r}. "
-                    f"Expected a content type containing 'image' (e.g., 'image/png')."
-                )
-
-            finally:
-                request_context.dispose()
+        # Confirm Content-Type indicates an image
+        assert "image" in result.content_type.lower() or result.content_type == "", (
+            f"Unexpected Content-Type for landing image: {result.content_type!r}. "
+            f"Expected a content type containing 'image' (e.g., 'image/png')."
+        )
 
     def test_landing_image_intercepted_on_homepage(self, config: WebConfig) -> None:
         """Load the homepage and intercept the network request for landing_image.png.
@@ -160,48 +152,25 @@ class TestLandingImageHTTP:
         2. Refresh the page.
         3. Filter for landing_image.png — assert it appears with HTTP 200.
         """
-        captured: list[dict] = []
+        component = HeroImageNetworkComponent(config)
+        captured = component.capture_all_landing_image_responses()
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=config.headless)
-            try:
-                page = browser.new_page()
+        # Step 3: Verify landing_image.png was requested and returned 200
+        assert len(captured) > 0, (
+            f"No network request for {_ASSET_FILENAME!r} was observed while "
+            f"loading {config.home_url()!r}. "
+            f"Expected: the homepage should reference landing_image.png so "
+            f"that the browser fetches it as a static asset. "
+            f"Check that the hero image component on the homepage uses "
+            f"src='/landing_image.png' or equivalent."
+        )
 
-                # Intercept all responses and capture the landing image response
-                def on_response(response) -> None:  # type: ignore[no-untyped-def]
-                    if _ASSET_FILENAME in response.url:
-                        captured.append(
-                            {"url": response.url, "status": response.status}
-                        )
-
-                page.on("response", on_response)
-
-                # Step 1 + 2: Navigate to (and thus load) the homepage
-                page.goto(
-                    config.home_url(),
-                    timeout=_REQUEST_TIMEOUT,
-                    wait_until="networkidle",
-                )
-
-                # Step 3: Verify landing_image.png was requested and returned 200
-                assert len(captured) > 0, (
-                    f"No network request for {_ASSET_FILENAME!r} was observed while "
-                    f"loading {config.home_url()!r}. "
-                    f"Expected: the homepage should reference landing_image.png so "
-                    f"that the browser fetches it as a static asset. "
-                    f"Check that the hero image component on the homepage uses "
-                    f"src='/landing_image.png' or equivalent."
-                )
-
-                for entry in captured:
-                    assert entry["status"] == 200, (
-                        f"Request for {entry['url']!r} returned HTTP {entry['status']}. "
-                        f"Expected HTTP 200 — the landing image is not being served "
-                        f"correctly as a static asset."
-                    )
-
-            finally:
-                browser.close()
+        for entry in captured:
+            assert entry.status == 200, (
+                f"Request for {entry.url!r} returned HTTP {entry.status}. "
+                f"Expected HTTP 200 — the landing image is not being served "
+                f"correctly as a static asset."
+            )
 
 
 # ---------------------------------------------------------------------------
