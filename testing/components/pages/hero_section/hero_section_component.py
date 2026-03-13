@@ -155,6 +155,20 @@ class HeroSectionComponent:
         self.upload_cta_button().click()
 
     # ------------------------------------------------------------------
+    # Visual canvas image
+    # ------------------------------------------------------------------
+
+    _VISUAL_IMAGE = "section[aria-label='Hero'] img[alt='Personal Playback Preview']"
+
+    def get_visual_image_src(self, timeout: int = 30_000) -> tuple[str, str]:
+        """Return (src, srcset) of the hero visual-canvas image."""
+        loc = self._page.locator(self._VISUAL_IMAGE)
+        loc.first.wait_for(state="visible", timeout=timeout)
+        src = loc.first.get_attribute("src") or ""
+        srcset = loc.first.get_attribute("srcset") or ""
+        return src, srcset
+
+    # ------------------------------------------------------------------
     # Grid layout
     # ------------------------------------------------------------------
 
