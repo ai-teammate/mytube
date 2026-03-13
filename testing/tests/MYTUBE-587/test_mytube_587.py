@@ -87,17 +87,8 @@ class TestHeroImageSrcBasePath:
         The src attribute contains '/mytube/landing_image.png', confirming the
         NEXT_PUBLIC_BASE_PATH prefix is applied and MYTUBE-584 regression is absent.
         """
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=config.headless)
-            try:
-                page = browser.new_page()
-                page.set_viewport_size({"width": 1280, "height": 800})
-                hero_page = HeroSectionPage(page)
-                attrs = hero_page.get_landing_image_attributes(config.home_url())
-            finally:
-                browser.close()
+        hero_page = HeroSectionPage(config)
+        attrs = hero_page.get_landing_image_attributes()
 
         src = attrs.get("src", "")
         assert src, (
