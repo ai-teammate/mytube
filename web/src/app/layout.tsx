@@ -15,6 +15,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "mytube",
   description: "Personal video platform",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
 };
 
 /** Root layout — wraps every page with providers, fonts, and theme initialisation. */

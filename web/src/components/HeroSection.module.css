@@ -119,7 +119,7 @@
 
 /* Dark mode frosted overlay */
 :global(body[data-theme="dark"]) .frostedOverlay {
-  background: rgba(15, 15, 17, 0.72);
+  background: rgba(15, 15, 17, var(--hero-overlay-opacity-dark, 0.85));
 }
 
 .visualTitle {
