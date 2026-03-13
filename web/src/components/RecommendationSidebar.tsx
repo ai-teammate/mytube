@@ -11,6 +11,8 @@ const MIN_RECOMMENDATIONS = 2;
 interface RecommendationSidebarProps {
   videoID: string;
   repository: RecommendationRepository;
+  /** Called after fetch settles — true if ≥2 recommendations are available. */
+  onHasRecommendations?: (has: boolean) => void;
 }
 
 /**
@@ -21,6 +23,7 @@ interface RecommendationSidebarProps {
 export default function RecommendationSidebar({
   videoID,
   repository,
+  onHasRecommendations,
 }: RecommendationSidebarProps) {
   const [recommendations, setRecommendations] = useState<VideoCardItem[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,11 +37,13 @@ export default function RecommendationSidebar({
         const data = await repository.getRecommendations(videoID);
         if (!cancelled) {
           setRecommendations(data);
+          onHasRecommendations?.(data.length >= MIN_RECOMMENDATIONS);
         }
       } catch {
         if (!cancelled) {
           // Silently hide the section on error — consistent with <2-results rule.
           setRecommendations([]);
+          onHasRecommendations?.(false);
         }
       } finally {
         if (!cancelled) {

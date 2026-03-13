@@ -466,8 +466,10 @@ WHERE  v.id    != $1
   AND  v.status = 'ready'
   AND  v.hls_manifest_path IS NOT NULL
   AND  (
-         v.category_id IS NOT NULL
-         AND v.category_id = (SELECT category_id FROM videos WHERE id = $1)
+         (
+           v.category_id IS NOT NULL
+           AND v.category_id = (SELECT category_id FROM videos WHERE id = $1)
+         )
          OR EXISTS (
            SELECT 1
            FROM   video_tags vt

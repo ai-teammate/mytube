@@ -94,6 +94,13 @@ export default function WatchPage({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Start as true so the skeleton is visible while the first fetch is in-flight.
+  // Reset to true whenever the video id changes so a new fetch is always attempted.
+  const [hasRecommendations, setHasRecommendations] = useState(true);
+  useEffect(() => {
+    setHasRecommendations(true);
+  }, [id]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -271,13 +278,19 @@ export default function WatchPage({
         />
       </main>
 
-      {/* Sidebar: recommendations (right column at lg+) */}
-      <aside className={styles.sidebar}>
-        <RecommendationSidebar
-          videoID={id}
-          repository={recommendationRepository}
-        />
-      </aside>
+      {/* Sidebar: recommendations (right column at lg+).
+          Hidden (aside unmounted) when the sidebar signals <2 results or an
+          error via onHasRecommendations. Resets to visible on each id change
+          so new videos always attempt a fresh fetch. */}
+      {hasRecommendations && (
+        <aside className={styles.sidebar}>
+          <RecommendationSidebar
+            videoID={id}
+            repository={recommendationRepository}
+            onHasRecommendations={setHasRecommendations}
+          />
+        </aside>
+      )}
     </div>
   );
 }

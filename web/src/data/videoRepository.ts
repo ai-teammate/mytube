@@ -52,6 +52,16 @@ export class ApiVideoRepository implements VideoRepository {
 /**
  * ApiRecommendationRepository fetches video recommendations from the backend API.
  */
+/** Raw shape of a single item returned by the recommendations API endpoint. */
+interface RecommendationApiItem {
+  id: string;
+  title: string;
+  thumbnail_url: string | null;
+  view_count: number;
+  uploader_username: string;
+  created_at: string;
+}
+
 export class ApiRecommendationRepository implements RecommendationRepository {
   private readonly baseUrl: string;
 
@@ -71,8 +81,7 @@ export class ApiRecommendationRepository implements RecommendationRepository {
     }
 
     const data = await res.json();
-    const items: { id: string; title: string; thumbnail_url: string | null; view_count: number; uploader_username: string; created_at: string }[] =
-      data.recommendations ?? [];
+    const items: RecommendationApiItem[] = data.recommendations ?? [];
 
     return items.map((item) => ({
       id: item.id,

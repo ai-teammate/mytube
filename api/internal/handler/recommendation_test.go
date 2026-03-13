@@ -40,11 +40,11 @@ func makeRecommendationRequest(videoID string) *http.Request {
 	return req
 }
 
-// makeSearchVideo returns a minimal SearchVideo for use in tests.
-func makeSearchVideo(id, title string) repository.SearchVideo {
+// makeRecommendationVideo returns a minimal RecommendationVideo for use in tests.
+func makeRecommendationVideo(id, title string) repository.RecommendationVideo {
 	now := time.Now().Truncate(time.Second)
 	thumb := "https://cdn.example.com/thumb.jpg"
-	return repository.SearchVideo{
+	return repository.RecommendationVideo{
 		ID:               id,
 		Title:            title,
 		ThumbnailURL:     &thumb,
@@ -58,9 +58,9 @@ func makeSearchVideo(id, title string) repository.SearchVideo {
 // ─── GET /api/videos/{id}/recommendations ────────────────────────────────────
 
 func TestRecommendationsHandler_GET_Success_ReturnsList(t *testing.T) {
-	videos := []repository.SearchVideo{
-		makeSearchVideo("vid-2", "Video 2"),
-		makeSearchVideo("vid-3", "Video 3"),
+	videos := []repository.RecommendationVideo{
+		makeRecommendationVideo("vid-2", "Video 2"),
+		makeRecommendationVideo("vid-3", "Video 3"),
 	}
 	p := &stubRecommendationProvider{videos: videos}
 	h := handler.NewRecommendationsHandler(p)
@@ -88,7 +88,7 @@ func TestRecommendationsHandler_GET_Success_ReturnsList(t *testing.T) {
 }
 
 func TestRecommendationsHandler_GET_EmptySlice_WhenNoRecommendations(t *testing.T) {
-	p := &stubRecommendationProvider{videos: []repository.SearchVideo{}}
+	p := &stubRecommendationProvider{videos: []repository.RecommendationVideo{}}
 	h := handler.NewRecommendationsHandler(p)
 
 	req := makeRecommendationRequest(testVideoID)
@@ -161,7 +161,7 @@ func TestRecommendationsHandler_InvalidVideoID_Returns400(t *testing.T) {
 }
 
 func TestRecommendationsHandler_GET_ContentTypeIsJSON(t *testing.T) {
-	p := &stubRecommendationProvider{videos: []repository.SearchVideo{}}
+	p := &stubRecommendationProvider{videos: []repository.RecommendationVideo{}}
 	h := handler.NewRecommendationsHandler(p)
 
 	req := makeRecommendationRequest(testVideoID)
@@ -173,9 +173,9 @@ func TestRecommendationsHandler_GET_ContentTypeIsJSON(t *testing.T) {
 }
 
 func TestRecommendationsHandler_GET_NilThumbnailSerializedAsNull(t *testing.T) {
-	v := makeSearchVideo("vid-2", "No Thumb")
+	v := makeRecommendationVideo("vid-2", "No Thumb")
 	v.ThumbnailURL = nil
-	p := &stubRecommendationProvider{videos: []repository.SearchVideo{v}}
+	p := &stubRecommendationProvider{videos: []repository.RecommendationVideo{v}}
 	h := handler.NewRecommendationsHandler(p)
 
 	req := makeRecommendationRequest(testVideoID)
@@ -200,7 +200,7 @@ func TestRecommendationsHandler_GET_NilThumbnailSerializedAsNull(t *testing.T) {
 func TestRecommendationsHandler_GET_AllFieldsMappedCorrectly(t *testing.T) {
 	thumb := "https://cdn.example.com/thumb.jpg"
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	v := repository.SearchVideo{
+	v := repository.RecommendationVideo{
 		ID:               "vid-abc",
 		Title:            "Mapped Video",
 		ThumbnailURL:     &thumb,
@@ -209,7 +209,7 @@ func TestRecommendationsHandler_GET_AllFieldsMappedCorrectly(t *testing.T) {
 		CreatedAt:        now,
 		Status:           "ready",
 	}
-	p := &stubRecommendationProvider{videos: []repository.SearchVideo{v}}
+	p := &stubRecommendationProvider{videos: []repository.RecommendationVideo{v}}
 	h := handler.NewRecommendationsHandler(p)
 
 	req := makeRecommendationRequest(testVideoID)
