@@ -18,6 +18,8 @@ export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const mobileNavRef = useRef<HTMLElement>(null);
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const { user, loading, signOut, authError } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -45,6 +47,45 @@ export default function SiteHeader() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [menuOpen]);
+
+  // Close mobile nav on Escape key (WCAG 2.1 SC 2.1.1 Keyboard)
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileNavOpen]);
+
+  // Close mobile nav when clicking outside (consistent with user-dropdown behaviour)
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        mobileNavRef.current && !mobileNavRef.current.contains(e.target as Node) &&
+        hamburgerRef.current && !hamburgerRef.current.contains(e.target as Node)
+      ) {
+        setMobileNavOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [mobileNavOpen]);
+
+  // Reset mobile nav state when viewport grows past the sm breakpoint (640px)
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth >= 640) setMobileNavOpen(false);
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -75,6 +116,7 @@ export default function SiteHeader() {
     >
       {/* Hamburger toggle — mobile only */}
       <button
+        ref={hamburgerRef}
         type="button"
         className="sm:hidden w-10 h-10 flex items-center justify-center rounded-md bg-transparent transition-colors hover:bg-[color:var(--bg-card)] shrink-0"
         aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
@@ -276,35 +318,35 @@ export default function SiteHeader() {
       </div>
     </header>
 
-    {/* Mobile navigation panel — visible only when hamburger is open */}
-    {mobileNavOpen && (
-      <nav
-        id="mobile-nav"
-        aria-label="Mobile navigation"
-        className="sm:hidden border-b px-4 py-3 flex flex-col gap-3"
-        style={{
-          background: "var(--bg-header)",
-          borderColor: "rgba(127,127,127,0.16)",
-        }}
+    {/* Mobile navigation panel — always in DOM; hidden attribute controls visibility for AT and aria-controls */}
+    <nav
+      ref={mobileNavRef}
+      id="mobile-nav"
+      aria-label="Mobile navigation"
+      hidden={!mobileNavOpen}
+      className="sm:hidden border-b px-4 py-3 flex flex-col gap-3"
+      style={{
+        background: "var(--bg-header)",
+        borderColor: "rgba(127,127,127,0.16)",
+      }}
+    >
+      <Link
+        href="/"
+        className="text-base transition-colors hover:underline py-1"
+        style={{ color: "var(--text-secondary)" }}
+        onClick={() => setMobileNavOpen(false)}
       >
-        <Link
-          href="/"
-          className="text-base transition-colors hover:underline py-1"
-          style={{ color: "var(--text-secondary)" }}
-          onClick={() => setMobileNavOpen(false)}
-        >
-          Home
-        </Link>
-        <Link
-          href={myVideosHref}
-          className="text-base transition-colors hover:underline py-1"
-          style={{ color: "var(--text-secondary)" }}
-          onClick={() => setMobileNavOpen(false)}
-        >
-          My Videos
-        </Link>
-      </nav>
-    )}
+        Home
+      </Link>
+      <Link
+        href={myVideosHref}
+        className="text-base transition-colors hover:underline py-1"
+        style={{ color: "var(--text-secondary)" }}
+        onClick={() => setMobileNavOpen(false)}
+      >
+        My Videos
+      </Link>
+    </nav>
     </>
   );
 }
