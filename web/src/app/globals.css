@@ -85,6 +85,9 @@ body[data-theme="dark"] {
 
   --gradient-hero: linear-gradient(135deg, #9370db 0%, #62c235 100%);
   --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
+
+  /* Hero overlay opacity — raised to 0.85 to ensure WCAG AA contrast over landing image */
+  --hero-overlay-opacity-dark: 0.85;
 }
 
 /* ─── AppShell: page-wrap + shell container ──────────────────────────────────── */
