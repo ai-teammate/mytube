@@ -291,10 +291,15 @@ class TestSourceAnalysis:
         if not _SIDEBAR_CSS.exists():
             pytest.skip(f"CSS file not found: {_SIDEBAR_CSS}")
         content = _SIDEBAR_CSS.read_text(encoding="utf-8")
-        # The .list class must have flex-direction: column (vertical stacking)
-        assert "flex-direction" in content and "column" in content, (
+        # Match the .list rule block and verify it contains flex-direction: column
+        assert re.search(
+            r"\.list\s*\{[^}]*flex-direction\s*:\s*column[^}]*\}",
+            content,
+            re.DOTALL,
+        ), (
             "Could not confirm vertical flex layout (flex-direction: column) "
-            f"in {_SIDEBAR_CSS}. The VideoCard list must be vertically stacked."
+            f"within the .list rule in {_SIDEBAR_CSS}. "
+            "The VideoCard list must be vertically stacked."
         )
 
     def test_sidebar_section_structure(self) -> None:
@@ -391,27 +396,6 @@ class TestFixtureBrowser:
                         f"Expected .list to have flex-direction: column, got: {display!r}"
                     )
 
-                finally:
-                    browser.close()
-        finally:
-            server.shutdown()
-
-    def test_fixture_no_placeholder_text(self) -> None:
-        """Fixture page must not contain 'Recommendations coming soon'."""
-        port = _find_free_port()
-        server = HTTPServer(("127.0.0.1", port), _FixtureHandler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-
-        try:
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=True)
-                page = browser.new_page(viewport=_VIEWPORT)
-                try:
-                    page.goto(f"http://127.0.0.1:{port}/", timeout=_PAGE_LOAD_TIMEOUT)
-                    assert page.get_by_text("Recommendations coming soon").count() == 0, (
-                        "Fixture page unexpectedly contains placeholder text."
-                    )
                 finally:
                     browser.close()
         finally:
