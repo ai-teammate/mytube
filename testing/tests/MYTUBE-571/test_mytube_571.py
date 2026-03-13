@@ -27,6 +27,10 @@ The CSS is declared in VideoCard.module.css:
 When the <Image> element fires its onLoad event, VideoCard appends the
 "loaded" CSS module class to the <img> tag, transitioning opacity 0 → 1.
 
+Navigation is handled by the HomePage component; all DOM/CSS inspection
+is delegated to VideoCardComponent — following the project's OOP component
+abstraction architecture.
+
 Run from repo root:
     pytest testing/tests/MYTUBE-571/test_mytube_571.py -v
 """
@@ -36,10 +40,12 @@ import os
 import sys
 
 import pytest
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+from testing.components.pages.home_page.home_page import HomePage
+from testing.components.pages.home_page.video_card_component import VideoCardComponent
 from testing.core.config.web_config import WebConfig
 
 # ---------------------------------------------------------------------------
@@ -61,127 +67,6 @@ def config() -> WebConfig:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _get_transition_style(page: Page, selector: str) -> dict:
-    """Return a dict with transition, opacity, and transition-duration/property
-    computed styles for the given CSS selector."""
-    return page.evaluate(
-        """(sel) => {
-            const el = document.querySelector(sel);
-            if (!el) return null;
-            const cs = window.getComputedStyle(el);
-            return {
-                opacity: cs.opacity,
-                transition: cs.transition,
-                transitionProperty: cs.transitionProperty,
-                transitionDuration: cs.transitionDuration,
-                transitionTimingFunction: cs.transitionTimingFunction,
-            };
-        }""",
-        selector,
-    )
-
-
-def _find_fade_rule_in_stylesheets(page: Page) -> dict | None:
-    """Search loaded stylesheets for a rule that applies an opacity fade-in
-    transition to img elements inside a thumbnail container.  Returns a dict
-    with 'cssText' if found, else None."""
-    return page.evaluate("""() => {
-        for (const sheet of document.styleSheets) {
-            try {
-                for (const rule of sheet.cssRules) {
-                    const text = rule.cssText || '';
-                    // Match rules that set opacity: 0 and a transition on opacity
-                    // for img elements (VideoCard.module.css pattern).
-                    if (text.includes('img') &&
-                        text.includes('opacity') &&
-                        text.includes('transition')) {
-                        return { cssText: text.substring(0, 400) };
-                    }
-                }
-            } catch (e) {
-                // Ignore CORS-blocked cross-origin stylesheets
-            }
-        }
-        return null;
-    }""")
-
-
-def _find_video_card_images(page: Page) -> list:
-    """Return data about img elements that have a non-zero opacity transition.
-
-    Only includes images where transitionProperty is explicitly 'opacity'
-    (i.e., a real CSS transition has been declared), ignoring images that
-    only have the browser default 'all 0s ease' values.
-    """
-    return page.evaluate("""() => {
-        const results = [];
-        const allImgs = document.querySelectorAll('#video-grid img, main img');
-        for (const img of allImgs) {
-            const cs = window.getComputedStyle(img);
-            const transitionProperty = (cs.transitionProperty || '').toLowerCase();
-            const transitionDuration = cs.transitionDuration || '0s';
-            // Only include images with an EXPLICIT opacity transition (non-zero duration)
-            const hasOpacityTransition = (
-                transitionProperty === 'opacity' ||
-                transitionProperty.includes('opacity')
-            );
-            if (hasOpacityTransition && transitionDuration !== '0s') {
-                results.push({
-                    src: img.src,
-                    opacity: cs.opacity,
-                    transition: cs.transition,
-                    transitionProperty: cs.transitionProperty,
-                    transitionDuration: cs.transitionDuration,
-                    transitionTimingFunction: cs.transitionTimingFunction,
-                    classList: img.classList.toString(),
-                    complete: img.complete,
-                    naturalWidth: img.naturalWidth,
-                });
-            }
-        }
-        return results;
-    }""")
-
-
-def _find_any_video_card_img(page: Page) -> dict | None:
-    """Return computed styles for the first thumbnail <img> found in a VideoCard,
-    using multiple selector strategies for fallback detection."""
-    return page.evaluate("""() => {
-        const candidates = [
-            '#video-grid img',
-            'a[class*="thumb"] img',
-            'a[class*="Thumb"] img',
-            'div[class*="thumb"] img',
-            'div[class*="Thumb"] img',
-            '[class*="card"] a img',
-            '[class*="card"] img',
-        ];
-        for (const sel of candidates) {
-            const el = document.querySelector(sel);
-            if (el) {
-                const cs = window.getComputedStyle(el);
-                return {
-                    selector: sel,
-                    src: el.src,
-                    opacity: cs.opacity,
-                    transition: cs.transition,
-                    transitionProperty: cs.transitionProperty,
-                    transitionDuration: cs.transitionDuration,
-                    transitionTimingFunction: cs.transitionTimingFunction,
-                    classList: el.classList.toString(),
-                    complete: el.complete,
-                };
-            }
-        }
-        return null;
-    }""")
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -193,7 +78,7 @@ class TestMytube571LazyLoadFadeTransition:
         """
         Full E2E test:
 
-        1. Navigate to the homepage.
+        1. Navigate to the homepage via the HomePage component.
         2. Assert the CSS fade-in rule is present in the loaded stylesheets
            (VideoCard.module.css: .thumb img { opacity: 0; transition: opacity 0.2s; }).
         3. Wait for VideoCard images inside the video grid to appear.
@@ -211,11 +96,8 @@ class TestMytube571LazyLoadFadeTransition:
                 page = browser.new_page(viewport={"width": 1280, "height": 800})
 
                 # ── Step 1: Navigate to homepage ─────────────────────────────
-                page.goto(
-                    config.home_url(),
-                    timeout=_PAGE_LOAD_TIMEOUT,
-                    wait_until="domcontentloaded",
-                )
+                home = HomePage(page)
+                home.navigate(config.home_url())
 
                 # Wait for the video grid to render (skeleton → real cards)
                 try:
@@ -224,14 +106,15 @@ class TestMytube571LazyLoadFadeTransition:
                         timeout=_NETWORK_IDLE_TIMEOUT,
                     )
                 except Exception:
-                    # Fallback: wait for any img in main content
                     try:
                         page.wait_for_selector("main img", timeout=5000)
                     except Exception:
                         pass
 
+                vc = VideoCardComponent(page)
+
                 # ── Step 2: Verify CSS fade-in rule in stylesheets ───────────
-                fade_rule = _find_fade_rule_in_stylesheets(page)
+                fade_rule = vc.find_fade_css_rule()
 
                 assert fade_rule is not None, (
                     "The CSS fade-in rule for VideoCard thumbnail images was NOT found "
@@ -255,11 +138,11 @@ class TestMytube571LazyLoadFadeTransition:
                 )
 
                 # ── Step 3: Inspect images in the video grid ─────────────────
-                images_with_transition = _find_video_card_images(page)
+                images_with_transition = vc.get_images_with_opacity_transition()
 
                 if not images_with_transition:
                     # Fallback: try to find any VideoCard image and check it
-                    fallback_img = _find_any_video_card_img(page)
+                    fallback_img = vc.find_any_thumbnail_image()
 
                     assert fallback_img is not None, (
                         "No <img> elements were found in VideoCard thumbnail containers "
@@ -268,7 +151,6 @@ class TestMytube571LazyLoadFadeTransition:
                         "Expected at least one VideoCard with a thumbnail image."
                     )
 
-                    # The CSS rule was confirmed in Step 2 — re-assert on computed styles
                     transition_prop = fallback_img.get("transitionProperty", "") or ""
                     transition_dur = fallback_img.get("transitionDuration", "") or ""
                     transition_fn = fallback_img.get("transitionTimingFunction", "") or ""
@@ -308,27 +190,9 @@ class TestMytube571LazyLoadFadeTransition:
                                 "so the image is invisible until the onLoad callback fires."
                             )
 
-                    # Give images time to load and check loaded state
+                    # Give images time to load then verify opacity: 1
                     page.wait_for_timeout(1000)
-                    loaded_results = page.evaluate("""() => {
-                        const imgs = document.querySelectorAll('#video-grid img, main img');
-                        const results = [];
-                        for (const img of imgs) {
-                            if (img.complete && img.naturalWidth > 0) {
-                                const cs = window.getComputedStyle(img);
-                                const tp = (cs.transitionProperty || '').toLowerCase();
-                                if (tp === 'opacity' || tp.includes('opacity')) {
-                                    results.push({
-                                        src: img.src.substring(0, 80),
-                                        opacity: parseFloat(cs.opacity),
-                                        classList: img.classList.toString(),
-                                    });
-                                }
-                            }
-                        }
-                        return results;
-                    }""")
-
+                    loaded_results = vc.get_loaded_images_opacity()
                     if loaded_results:
                         for result in loaded_results:
                             assert result["opacity"] == pytest.approx(1.0, abs=0.05), (
@@ -343,7 +207,7 @@ class TestMytube571LazyLoadFadeTransition:
                 page.mouse.wheel(0, 600)
                 page.wait_for_timeout(800)
 
-                scrolled_images = _find_video_card_images(page)
+                scrolled_images = vc.get_images_with_opacity_transition()
                 for img_info in scrolled_images:
                     _assert_transition_values(
                         img_info["transitionDuration"],
@@ -362,7 +226,6 @@ class TestMytube571LazyLoadFadeTransition:
 
 def _assert_transition_values(duration: str, timing_fn: str, context: str) -> None:
     """Assert that transition-duration is 0.2s and timing-function is ease."""
-    # Normalise: browsers may report '0.2s' or '200ms'
     normalised_duration = duration.strip().lower()
     normalised_fn = timing_fn.strip().lower()
 
