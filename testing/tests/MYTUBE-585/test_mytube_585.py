@@ -27,6 +27,7 @@ correctly toggles between false and true based on the menu state.
 Architecture
 ------------
 - WebConfig (core/config/web_config.py) centralises env var access.
+- SiteHeader page object encapsulates hamburger button lookup.
 - Playwright sync API with pytest module-scoped fixtures.
 - No hardcoded URLs or environment-specific paths.
 
@@ -42,14 +43,12 @@ Run from repo root:
 """
 from __future__ import annotations
 
-import os
-import sys
+import urllib.request
 
 import pytest
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
+from testing.components.pages.site_header.site_header import SiteHeader
 from testing.core.config.web_config import WebConfig
 
 # ---------------------------------------------------------------------------
@@ -59,19 +58,18 @@ from testing.core.config.web_config import WebConfig
 _MOBILE_VIEWPORT = {"width": 375, "height": 812}  # iPhone-like mobile size ≤ 640px
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 
-# Primary selector for the hamburger button: aria-label containing 'menu'
-# as implemented in SiteHeader.tsx: aria-label="Open navigation menu"
-_HAMBURGER_BY_ARIA_LABEL_SELECTORS = [
-    "header button[aria-label*='menu' i]",
-    "header button[aria-label*='hamburger' i]",
-    "header button[aria-label*='nav' i]",
-]
 
-# Fallback selectors by data-testid (for forward compatibility)
-_HAMBURGER_BY_TESTID_SELECTORS = [
-    "header button[data-testid*='hamburger']",
-    "header button[data-testid*='mobile-menu']",
-]
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_url_reachable(url: str, timeout: int = 10) -> bool:
+    try:
+        res = urllib.request.urlopen(url, timeout=timeout)
+        return res.status < 500
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -82,45 +80,6 @@ _HAMBURGER_BY_TESTID_SELECTORS = [
 @pytest.fixture(scope="module")
 def config() -> WebConfig:
     return WebConfig()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _find_hamburger_by_aria_label(page: Page):
-    """Return the first visible hamburger button matched by aria-label, or None."""
-    for selector in _HAMBURGER_BY_ARIA_LABEL_SELECTORS:
-        locator = page.locator(selector)
-        try:
-            count = locator.count()
-        except Exception:
-            continue
-        for i in range(count):
-            try:
-                if locator.nth(i).is_visible():
-                    return locator.nth(i)
-            except Exception:
-                continue
-    return None
-
-
-def _find_hamburger_by_testid(page: Page):
-    """Return the first visible hamburger button matched by data-testid, or None."""
-    for selector in _HAMBURGER_BY_TESTID_SELECTORS:
-        locator = page.locator(selector)
-        try:
-            count = locator.count()
-        except Exception:
-            continue
-        for i in range(count):
-            try:
-                if locator.nth(i).is_visible():
-                    return locator.nth(i)
-            except Exception:
-                continue
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -136,12 +95,15 @@ class TestMytube585HamburgerARIA:
 
         Steps:
         1. Navigate to homepage with mobile viewport (≤640px).
-        2. Locate the hamburger button via aria-label.
+        2. Locate the hamburger button via SiteHeader page object.
         3. Verify aria-label contains 'menu', 'nav', or 'hamburger'.
         4. Verify button has a data-testid for 'hamburger' or 'mobile-menu'.
         5. Confirm aria-expanded is initially 'false'.
         6. Click button and confirm aria-expanded changes to 'true'.
         """
+        if not _is_url_reachable(config.base_url):
+            pytest.skip(f"Deployed app unreachable ({config.base_url})")
+
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
                 headless=config.headless, slow_mo=config.slow_mo
@@ -156,14 +118,15 @@ class TestMytube585HamburgerARIA:
                     wait_until="domcontentloaded",
                 )
 
-                # ── Step 2: Locate the hamburger button via aria-label ───────
-                hamburger = _find_hamburger_by_aria_label(page)
+                site_header = SiteHeader(page)
+
+                # ── Step 2: Locate the hamburger button via SiteHeader PO ────
+                hamburger = site_header.hamburger_button_locator()
                 assert hamburger is not None, (
                     "Hamburger/mobile-menu toggle button NOT FOUND via aria-label in the site header "
                     f"at mobile viewport {_MOBILE_VIEWPORT['width']}×{_MOBILE_VIEWPORT['height']}px. "
                     "Expected: a <button> inside <header> with aria-label containing 'menu', 'nav', "
-                    "or 'hamburger' to be present and visible. "
-                    f"Selectors tried: {_HAMBURGER_BY_ARIA_LABEL_SELECTORS}"
+                    "or 'hamburger' to be present and visible."
                 )
 
                 # ── Step 3: Verify aria-label contains expected keyword ──────
@@ -177,13 +140,9 @@ class TestMytube585HamburgerARIA:
                 )
 
                 # ── Step 4: Verify data-testid attribute ─────────────────────
-                # Check via data-testid selectors
-                hamburger_by_testid = _find_hamburger_by_testid(page)
-                # Also check if the button itself has a data-testid attribute
                 button_testid = hamburger.get_attribute("data-testid") or ""
                 has_testid = (
-                    hamburger_by_testid is not None
-                    or "hamburger" in button_testid.lower()
+                    "hamburger" in button_testid.lower()
                     or "mobile-menu" in button_testid.lower()
                 )
                 assert has_testid, (
@@ -203,14 +162,7 @@ class TestMytube585HamburgerARIA:
 
                 # ── Step 6: Click button and verify aria-expanded → 'true' ──
                 hamburger.click()
-                page.wait_for_timeout(400)  # Allow animation to settle
-
-                aria_expanded_after = hamburger.get_attribute("aria-expanded") or ""
-                assert aria_expanded_after == "true", (
-                    f"After clicking the hamburger button, aria-expanded is '{aria_expanded_after}', "
-                    "expected 'true'. "
-                    "The aria-expanded attribute must toggle to 'true' when the mobile menu is opened."
-                )
+                expect(hamburger).to_have_attribute("aria-expanded", "true")
 
             finally:
                 browser.close()
