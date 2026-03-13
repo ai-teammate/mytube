@@ -87,10 +87,10 @@ describe("SiteHeader — mobile viewport overflow fix (MYTUBE-567)", () => {
     expect(utilityDiv).not.toBeNull();
   });
 
-  it("logo text spans (MYTUBE + subtitle) are still in the DOM for accessibility / screen readers", () => {
+  it("logo link has an aria-label so screen readers can identify it when text is visually hidden on mobile", () => {
     render(<SiteHeader />);
-    // Even when visually hidden, the text must remain in the DOM
-    expect(screen.getByText("MYTUBE")).toBeInTheDocument();
-    expect(screen.getByText(/personal video portal/i)).toBeInTheDocument();
+    // aria-label provides an accessible name regardless of CSS visibility
+    const logoLink = screen.getByRole("link", { name: /mytube/i });
+    expect(logoLink).toHaveAttribute("aria-label", "MYTUBE — Personal Video Portal");
   });
 });
