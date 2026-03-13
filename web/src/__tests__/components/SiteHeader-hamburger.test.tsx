@@ -5,7 +5,7 @@
  * allowing mobile users (viewport ≤640px) to access navigation links.
  */
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 jest.mock("next/navigation", () => ({
@@ -138,5 +138,63 @@ describe("SiteHeader — hamburger menu (MYTUBE-566)", () => {
         name: /close navigation menu|close menu|close nav/i,
       })
     ).toBeInTheDocument();
+  });
+
+  it("Escape key closes the mobile nav (WCAG 2.1 SC 2.1.1)", async () => {
+    const user = userEvent.setup();
+    render(<SiteHeader />);
+    await user.click(
+      screen.getByRole("button", { name: /open navigation menu/i })
+    );
+    expect(
+      screen.getByRole("navigation", { name: /mobile navigation/i })
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(
+      screen.queryByRole("navigation", { name: /mobile navigation/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking outside the mobile nav closes it", async () => {
+    const user = userEvent.setup();
+    render(<SiteHeader />);
+    await user.click(
+      screen.getByRole("button", { name: /open navigation menu/i })
+    );
+    expect(
+      screen.getByRole("navigation", { name: /mobile navigation/i })
+    ).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(
+      screen.queryByRole("navigation", { name: /mobile navigation/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("resizing viewport to ≥640px closes the mobile nav", async () => {
+    const originalInnerWidth = window.innerWidth;
+    const user = userEvent.setup();
+    render(<SiteHeader />);
+    await user.click(
+      screen.getByRole("button", { name: /open navigation menu/i })
+    );
+    expect(
+      screen.getByRole("navigation", { name: /mobile navigation/i })
+    ).toBeInTheDocument();
+    Object.defineProperty(window, "innerWidth", {
+      writable: true,
+      configurable: true,
+      value: 640,
+    });
+    act(() => {
+      fireEvent(window, new Event("resize"));
+    });
+    expect(
+      screen.queryByRole("navigation", { name: /mobile navigation/i })
+    ).not.toBeInTheDocument();
+    Object.defineProperty(window, "innerWidth", {
+      writable: true,
+      configurable: true,
+      value: originalInnerWidth,
+    });
   });
 });
