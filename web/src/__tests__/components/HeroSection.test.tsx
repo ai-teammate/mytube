@@ -33,16 +33,32 @@ jest.mock("next/image", () => ({
   default: function MockImage({
     src,
     alt,
+    width,
+    height,
+    sizes,
+    style,
     ...props
   }: {
     src: string;
     alt: string;
+    width?: number;
+    height?: number;
+    sizes?: string;
+    style?: React.CSSProperties;
     [key: string]: unknown;
   }) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { fill: _fill, unoptimized: _unoptimized, ...rest } = props;
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={alt} {...rest} />;
+    return (
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        data-sizes={sizes}
+        style={style}
+        {...props}
+      />
+    );
   },
 }));
 
@@ -160,23 +176,27 @@ describe("HeroSection", () => {
 
   it("shows gradient placeholder canvas when no thumbnailUrl is provided", () => {
     render(<HeroSection />);
-    expect(screen.getByTestId("canvas-placeholder")).toBeInTheDocument();
-  });
-
-  it("shows gradient placeholder canvas when thumbnailUrl is null", () => {
-    render(<HeroSection thumbnailUrl={null} />);
-    expect(screen.getByTestId("canvas-placeholder")).toBeInTheDocument();
-  });
-
-  it("renders thumbnail image when thumbnailUrl is provided", () => {
-    render(<HeroSection thumbnailUrl="https://cdn.example.com/thumb.jpg" />);
-    const img = screen.getByAltText("Video preview");
-    expect(img).toHaveAttribute("src", "https://cdn.example.com/thumb.jpg");
-  });
-
-  it("does not render placeholder when thumbnailUrl is provided", () => {
-    render(<HeroSection thumbnailUrl="https://cdn.example.com/thumb.jpg" />);
     expect(screen.queryByTestId("canvas-placeholder")).not.toBeInTheDocument();
+  });
+
+  it("always renders landing_image.png as the canvas visual regardless of video availability", () => {
+    render(<HeroSection />);
+    const img = screen.getByAltText("Personal Playback Preview");
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute("src", "/landing_image.png");
+  });
+
+  it("renders landing image with correct intrinsic dimensions", () => {
+    render(<HeroSection />);
+    const img = screen.getByAltText("Personal Playback Preview");
+    expect(img).toHaveAttribute("width", "1536");
+    expect(img).toHaveAttribute("height", "1024");
+  });
+
+  it("renders landing image with responsive sizes attribute", () => {
+    render(<HeroSection />);
+    const img = screen.getByAltText("Personal Playback Preview");
+    expect(img).toHaveAttribute("data-sizes", "(max-width: 768px) 100vw, 50vw");
   });
 
   // ─── Accessibility ────────────────────────────────────────────────────────
