@@ -55,7 +55,9 @@ from playwright.sync_api import Browser, sync_playwright
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.web_config import WebConfig
+from testing.core.config.api_config import APIConfig
 from testing.components.pages.watch_page.watch_page import WatchPage
+from testing.components.services.video_api_service import VideoApiService
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -94,35 +96,11 @@ def _is_app_reachable(url: str) -> bool:
         return False
 
 
-def _discover_video_id(config: WebConfig) -> str:
-    """Try the API to find a ready video; fall back to the env-var or SPA placeholder."""
-    override = os.getenv("TEST_VIDEO_ID", "")
-    if override:
-        return override
-
-    api_base = config.api_base_url
-    try:
-        for username in ("tester", "testuser", "alice", "admin"):
-            url = f"{api_base}/api/users/{username}"
-            try:
-                with urllib.request.urlopen(url, timeout=6) as resp:
-                    import json
-                    profile = json.loads(resp.read().decode())
-                    for v in profile.get("videos", []):
-                        vid_id = v.get("id") or v.get("video_id")
-                        if not vid_id:
-                            continue
-                        detail_url = f"{api_base}/api/videos/{vid_id}"
-                        with urllib.request.urlopen(detail_url, timeout=6) as dr:
-                            detail = json.loads(dr.read().decode())
-                            if detail.get("status") == "ready":
-                                return detail["id"]
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    return _FALLBACK_VIDEO_ID
+def _resolve_video_id() -> str:
+    """Return a ready video ID via VideoApiService, or the fallback placeholder."""
+    video_svc = VideoApiService(APIConfig())
+    result = video_svc.find_ready_video(override_id=os.getenv("TEST_VIDEO_ID", ""))
+    return result[0] if result else _FALLBACK_VIDEO_ID
 
 
 # ---------------------------------------------------------------------------
@@ -242,30 +220,17 @@ class TestMytube568AspectRatioNoCLS:
         if not _is_app_reachable(config.base_url):
             pytest.skip(f"Deployed app unreachable ({config.base_url})")
 
-        video_id = _discover_video_id(config)
+        video_id = _resolve_video_id()
         page = playwright_browser.new_page(viewport={"width": 1280, "height": 800})
         try:
             watch = WatchPage(page)
             watch.navigate_to_video(config.base_url, video_id)
 
             # Wait for the player wrapper to appear in the DOM
-            page.wait_for_selector('[class*="player"]', timeout=_PAGE_LOAD_TIMEOUT)
+            watch.wait_for_player_wrapper(timeout=_PAGE_LOAD_TIMEOUT)
 
-            # Read bounding rect of the player wrapper
-            metrics = page.evaluate(
-                """() => {
-                    const el = document.querySelector('[class*="player"]');
-                    if (!el) return null;
-                    const rect = el.getBoundingClientRect();
-                    const style = window.getComputedStyle(el);
-                    return {
-                        width: rect.width,
-                        height: rect.height,
-                        aspectRatioProp: style.aspectRatio,
-                        paddingTop: style.paddingTop,
-                    };
-                }"""
-            )
+            # Read bounding rect and computed styles of the player wrapper
+            metrics = watch.get_player_metrics()
 
             assert metrics is not None, (
                 f"No element matching [class*='player'] found on {config.base_url}/v/{video_id}. "
@@ -322,26 +287,15 @@ class TestMytube568AspectRatioNoCLS:
         if not _is_app_reachable(config.base_url):
             pytest.skip(f"Deployed app unreachable ({config.base_url})")
 
-        video_id = _discover_video_id(config)
+        video_id = _resolve_video_id()
         page = playwright_browser.new_page(viewport={"width": 1280, "height": 800})
         try:
             # Navigate and capture the initial player height immediately
-            page.goto(
-                f"{config.base_url.rstrip('/')}/v/{video_id}",
-                wait_until="domcontentloaded",
-            )
-            page.wait_for_selector('[class*="player"]', timeout=_PAGE_LOAD_TIMEOUT)
+            watch = WatchPage(page)
+            watch.navigate_to_video(config.base_url, video_id)
+            watch.wait_for_player_wrapper(timeout=_PAGE_LOAD_TIMEOUT)
 
-            def _get_height() -> Optional[float]:
-                return page.evaluate(
-                    """() => {
-                        const el = document.querySelector('[class*="player"]');
-                        if (!el) return null;
-                        return el.getBoundingClientRect().height;
-                    }"""
-                )
-
-            height_before = _get_height()
+            height_before = watch.get_player_height()
             assert height_before is not None, (
                 "Player wrapper not found after DOM content loaded."
             )
@@ -352,12 +306,9 @@ class TestMytube568AspectRatioNoCLS:
             )
 
             # Allow Video.js async init to complete
-            try:
-                page.wait_for_selector("[data-vjs-player]", timeout=_PLAYER_INIT_TIMEOUT)
-            except Exception:
-                pass  # player may not fully init on static shell — height check still valid
+            watch.wait_for_player_container(timeout=_PLAYER_INIT_TIMEOUT)
 
-            height_after = _get_height()
+            height_after = watch.get_player_height()
 
             if height_after is None:
                 # The player wrapper was removed — this happens when the SPA
