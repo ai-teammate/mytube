@@ -79,7 +79,11 @@ body[data-theme="dark"] {
   min-height: 100vh;
   padding: 24px;
   background: var(--bg-page);
-  overflow-x: hidden;
+  /* clip instead of hidden: prevents an implicit y-scroll container (CSS spec
+     coerces overflow-y from visible→auto when overflow-x is non-visible).
+     overflow-x: clip provides the same visual clipping without creating a
+     scroll container, so wheel/touch scroll events reach the document root. */
+  overflow-x: clip;
 }
 
 /* Decor icons: absolutely positioned outside the shell, behind it (z-index: 1) */
@@ -129,7 +133,12 @@ body[data-theme="dark"] {
   border-radius: 24px;
   background: var(--bg-content);
   box-shadow: var(--shadow-main);
-  overflow: hidden;
+  /* clip instead of hidden: overflow:hidden creates a scroll container
+     (per CSS spec) that silently consumes scroll events before they reach
+     the document root — causing the "multiple attempts to scroll" symptom.
+     overflow:clip provides the same border-radius child clipping without
+     making this element a scroll container. */
+  overflow: clip;
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 48px); /* 48px = 2 × 24px page-wrap padding */
