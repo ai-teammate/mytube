@@ -10,6 +10,8 @@ from typing import Optional
 
 from playwright.sync_api import Page, Request, Response
 
+from testing.components.pages.mixins.shell_inspection_mixin import ShellInspectionMixin
+
 
 @dataclass
 class RegistrationResult:
@@ -31,7 +33,7 @@ class RegistrationResult:
     """The URL of the page after the registration attempt completes."""
 
 
-class RegisterPage:
+class RegisterPage(ShellInspectionMixin):
     """Page Object for the registration form at /register.
 
     All selectors and form interactions are encapsulated here.
@@ -45,17 +47,24 @@ class RegisterPage:
     # Navigation
     # ------------------------------------------------------------------
 
-    def navigate(self, base_url: str) -> None:
-        """Navigate to the /register page and wait until it is loaded.
+    def navigate(self, url: str) -> None:
+        """Navigate to the register page URL and wait until it is loaded.
+
+        Accepts a full URL (e.g. ``https://example.com/register/``) so that
+        the signature is consistent with ``LoginPage.navigate()``.
 
         Waits for the Firebase auth loading state to resolve before returning,
         so that the registration form is visible and interactive.
         """
-        url = base_url.rstrip("/") + "/register/"
-        self._page.goto(url, wait_until="networkidle")
+        self._page.goto(url, wait_until="domcontentloaded")
+        self._page.wait_for_load_state("networkidle")
         # Wait for the loading spinner to disappear (Firebase auth resolves)
         # and the form heading to become visible.
         self._page.wait_for_selector("h1", timeout=20_000)
+
+    # ------------------------------------------------------------------
+    # Shell / layout inspection (inherited from ShellInspectionMixin)
+    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Assertions (state queries)
@@ -88,6 +97,35 @@ class RegisterPage:
             return None
         text = alert.inner_text().strip()
         return text if text else None
+
+    # ------------------------------------------------------------------
+    # Auth-switch link ("Sign in" → /login)
+    # ------------------------------------------------------------------
+
+    _SWITCH_LINK = 'p a[href*="/login"]'
+
+    def get_switch_link_color(self) -> str:
+        """Return the computed color of the switch-to-login link."""
+        return self._page.evaluate(
+            "(sel) => getComputedStyle(document.querySelector(sel)).color",
+            self._SWITCH_LINK,
+        )
+
+    def hover_switch_link(self) -> None:
+        """Hover the switch-to-login link and wait for CSS transitions."""
+        self._page.hover(self._SWITCH_LINK)
+        self._page.wait_for_timeout(300)
+
+    def get_switch_link_text_decoration(self) -> str:
+        """Return the computed textDecorationLine of the switch link."""
+        return self._page.evaluate(
+            "(sel) => getComputedStyle(document.querySelector(sel)).textDecorationLine",
+            self._SWITCH_LINK,
+        )
+
+    def wait_for_switch_link(self, timeout: int = 30_000) -> None:
+        """Block until the switch-to-login link is present in the DOM."""
+        self._page.wait_for_selector(self._SWITCH_LINK, timeout=timeout)
 
     # ------------------------------------------------------------------
     # Form interactions

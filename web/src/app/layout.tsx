@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import AppShell from "@/components/AppShell";
+import { themeInitScript } from "@/lib/themeInitScript";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -19,18 +17,24 @@ export const metadata: Metadata = {
   description: "Personal video platform",
 };
 
+/** Root layout — wraps every page with providers, fonts, and theme initialisation. */
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html lang="en" className={inter.variable}>
+      <body className="antialiased">
+        {/* FOUC prevention: must run before React hydration */}
+        {
+          // eslint-disable-next-line react/no-danger
+          <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        }
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <ThemeProvider>
+            <AppShell>{children}</AppShell>
+          </ThemeProvider>
         </AuthProvider>
       </body>
     </html>

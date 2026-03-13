@@ -1,0 +1,4 @@
+test_id: MYTUBE-337
+type: web
+framework: playwright
+platform: chrome

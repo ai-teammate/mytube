@@ -1,0 +1,7 @@
+name: MYTUBE-400
+description: Verify no "Authentication services are currently unavailable" alert is shown when network and session are valid.
+env:
+  - FIREBASE_TEST_EMAIL
+  - FIREBASE_TEST_PASSWORD
+flags:
+  - headless: true

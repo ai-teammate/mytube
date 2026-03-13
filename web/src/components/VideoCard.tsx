@@ -5,14 +5,18 @@ import Link from "next/link";
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { VideoCardItem } from "@/domain/search";
+import styles from "./VideoCard.module.css";
+
+const MAX_VISIBLE_TAGS = 3;
 
 interface VideoCardProps {
   video: VideoCardItem;
 }
 
 /**
- * VideoCard displays a video in a vertical card layout with a 16:9 thumbnail.
- * Used across the homepage, search results page, and category browse page.
+ * VideoCard displays a video in a styled card layout with a 16:9 thumbnail,
+ * HD quality overlay, title, sub-line (uploader · views · date), and optional
+ * tag pills. Used across the homepage, search results, and category browse.
  */
 export default function VideoCard({ video }: VideoCardProps) {
   const router = useRouter();
@@ -35,14 +39,18 @@ export default function VideoCard({ video }: VideoCardProps) {
     [video.id, router]
   );
 
+  const tags = video.tags ?? [];
+  const visibleTags = tags.slice(0, MAX_VISIBLE_TAGS);
+  const overflowCount = tags.length - visibleTags.length;
+
   return (
-    <div className="rounded-lg overflow-hidden bg-white shadow hover:shadow-md transition-shadow">
-      {/* 16:9 Thumbnail — links to watch page */}
+    <div className={styles.card}>
+      {/* Thumbnail — links to watch page */}
       <Link
         href={`/v/${video.id}`}
         onClick={handleWatchClick}
         aria-label={video.title}
-        className="block relative w-full aspect-video bg-gray-200"
+        className={styles.thumb}
       >
         {video.thumbnailUrl ? (
           <Image
@@ -57,24 +65,41 @@ export default function VideoCard({ video }: VideoCardProps) {
           </div>
         )}
       </Link>
-      <div className="p-3">
+
+      <div className={styles.body}>
+        {/* Title — two-line clamp */}
         <Link
           href={`/v/${video.id}`}
           onClick={handleWatchClick}
-          className="text-sm font-medium text-gray-900 line-clamp-2 hover:underline"
+          className={styles.videoTitle}
         >
           {video.title}
         </Link>
-        <Link
-          href={`/u/${video.uploaderUsername}`}
-          className="text-xs text-blue-600 hover:underline mt-1 block"
-        >
-          {video.uploaderUsername}
-        </Link>
-        <p className="text-xs text-gray-500 mt-0.5">
-          {video.viewCount.toLocaleString()} views &middot;{" "}
-          {new Date(video.createdAt).toLocaleDateString()}
-        </p>
+
+        {/* Sub-line: uploader · view count · date */}
+        <div className={styles.videoSub}>
+          <Link href={`/u/${video.uploaderUsername}`} className={styles.videoSubLink}>
+            {video.uploaderUsername}
+          </Link>
+          <span aria-hidden="true">·</span>
+          <span>{video.viewCount.toLocaleString()} views</span>
+          <span aria-hidden="true">·</span>
+          <span>{new Date(video.createdAt).toLocaleDateString()}</span>
+        </div>
+
+        {/* Tags row — max 3 visible tags with "+N more" overflow indicator */}
+        {visibleTags.length > 0 && (
+          <div className={styles.videoTags}>
+            {visibleTags.map((tag) => (
+              <span key={tag} className={styles.tagPill}>
+                {tag}
+              </span>
+            ))}
+            {overflowCount > 0 && (
+              <span className={styles.tagOverflow}>+{overflowCount} more</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

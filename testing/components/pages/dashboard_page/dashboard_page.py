@@ -27,7 +27,7 @@ class DashboardPage:
     _NOT_FOUND = "text=404"
     _TABLE = "table"
     _TABLE_ROWS = "table tbody tr"
-    _UPLOAD_CTA_TEXT = "Upload new video"
+    _UPLOAD_CTA_TEXT = "Upload your first video"
     _UPLOAD_CTA_LINK = "a[href*='upload']"
 
     def __init__(self, page: Page) -> None:
@@ -264,6 +264,108 @@ class DashboardPage:
         self._page.get_by_role("button", name="Cancel", exact=True).click()
 
     # ------------------------------------------------------------------
+    # Toolbar filter — search, category, reset, playlist chips
+    # ------------------------------------------------------------------
+
+    _SEARCH_INPUT = 'input[aria-label="Search videos"]'
+    _RESET_FILTERS_BTN = 'button:has-text("Reset filters")'
+    _PLAYLIST_ROW = '[role="group"][aria-label="Filter by playlist"]'
+    _ALL_CHIP = '[role="group"][aria-label="Filter by playlist"] button:has-text("All")'
+    # Each DashboardVideoCard renders an aria-labeled Edit button; count them to measure grid size.
+    _VIDEO_CARD_EDIT_BTN = 'button[aria-label^="Edit "]'
+    _NO_MATCH_TEXT = "text=No videos match your filters"
+
+    def is_toolbar_visible(self, timeout: int = 5_000) -> bool:
+        """Return True if the search input (toolbar) is visible on the dashboard."""
+        try:
+            self._page.wait_for_selector(self._SEARCH_INPUT, timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def fill_search_input(self, text: str) -> None:
+        """Type *text* into the search input field."""
+        self._page.fill(self._SEARCH_INPUT, text)
+
+    def get_search_input_value(self) -> str:
+        """Return the current value of the search input."""
+        return self._page.locator(self._SEARCH_INPUT).input_value()
+
+    def is_reset_button_visible(self) -> bool:
+        """Return True if the 'Reset filters' button is present in the toolbar."""
+        return self._page.locator(self._RESET_FILTERS_BTN).count() > 0
+
+    def click_reset_filters(self) -> None:
+        """Click the 'Reset filters' ghost button."""
+        self._page.locator(self._RESET_FILTERS_BTN).click()
+
+    def wait(self, ms: int) -> None:
+        """Pause execution for *ms* milliseconds (thin wrapper for test synchronisation)."""
+        self._page.wait_for_timeout(ms)
+
+    def is_playlist_row_visible(self, timeout: int = 5_000) -> bool:
+        """Return True if the playlist chip row is visible."""
+        try:
+            self._page.wait_for_selector(self._PLAYLIST_ROW, timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def get_playlist_chip_names(self) -> list[str]:
+        """Return the text of every chip in the playlist row (including 'All')."""
+        chips = self._page.locator(f"{self._PLAYLIST_ROW} button")
+        return [(chips.nth(i).text_content() or "").strip() for i in range(chips.count())]
+
+    def click_playlist_chip_by_name(self, name: str) -> None:
+        """Click the playlist chip with the given *name*."""
+        self._page.locator(f"{self._PLAYLIST_ROW} button").filter(has_text=name).first.click()
+
+    def is_all_chip_active(self) -> bool:
+        """Return True when the 'All' chip has the active (accent) styling.
+
+        Works with both:
+        - CSS Modules (production): class contains 'chipInactive' / 'chipActive'
+        - Fixture HTML: class contains 'chip-inactive' / 'chip-active'
+
+        A chip is considered active when its class does NOT contain 'inactive'
+        (case-insensitive check).
+        """
+        all_chip = self._page.locator(self._ALL_CHIP).first
+        class_attr = all_chip.get_attribute("class") or ""
+        return "inactive" not in class_attr.lower()
+
+    def get_active_chip_text(self) -> str:
+        """Return the text of the currently-active playlist chip, or empty string.
+
+        A chip is considered active when its class does NOT contain 'inactive'
+        (case-insensitive), matching both CSS Modules and fixture HTML naming.
+        """
+        chips = self._page.locator(f"{self._PLAYLIST_ROW} button")
+        count = chips.count()
+        for i in range(count):
+            chip = chips.nth(i)
+            class_attr = chip.get_attribute("class") or ""
+            if "inactive" not in class_attr.lower():
+                return (chip.text_content() or "").strip()
+        return ""
+
+    def get_video_card_count(self) -> int:
+        """Return the number of video cards currently shown in the grid.
+
+        Each DashboardVideoCard renders an Edit button with aria-label='Edit <title>'.
+        Counting those buttons gives the rendered card count.
+        """
+        return self._page.locator(self._VIDEO_CARD_EDIT_BTN).count()
+
+    def wait_for_video_cards(self, timeout: int = 20_000) -> None:
+        """Wait until at least one video card is visible in the grid."""
+        self._page.wait_for_selector(self._VIDEO_CARD_EDIT_BTN, timeout=timeout)
+
+    def is_no_match_message_visible(self) -> bool:
+        """Return True if the 'No videos match your filters' message is displayed."""
+        return self._page.locator(self._NO_MATCH_TEXT).is_visible()
+
+    # ------------------------------------------------------------------
     # Upload CTA actions
     # ------------------------------------------------------------------
 
@@ -296,6 +398,95 @@ class DashboardPage:
         self._page.wait_for_url(lambda url: "/upload" in url, timeout=15_000)
 
     # ------------------------------------------------------------------
+    # CSS grid inspection (MYTUBE-522)
+    # ------------------------------------------------------------------
+
+    _VIDEO_GRID = '[data-testid="video-grid"]'
+    _DASHBOARD_TOOLBAR = '[data-testid="dashboard-toolbar"]'
+
+    def is_video_grid_present(self) -> bool:
+        """Return True if the video grid container is present in the DOM."""
+        return self._page.locator(self._VIDEO_GRID).count() > 0
+
+    def wait_for_video_grid_visible(self, timeout: int = 5_000) -> None:
+        """Wait until the video grid container is visible."""
+        self._page.locator(self._VIDEO_GRID).first.wait_for(
+            state="visible", timeout=timeout
+        )
+
+    def is_toolbar_present(self) -> bool:
+        """Return True if the dashboard toolbar is present in the DOM."""
+        return self._page.locator(self._DASHBOARD_TOOLBAR).count() > 0
+
+    def get_video_grid_styles(self) -> dict | None:
+        """Return authored gridTemplateColumns and computed gap for the video grid.
+
+        Scans loaded stylesheets for the rule matching the video grid element so
+        that ``grid-template-columns`` is returned as the authored value rather
+        than the resolved pixel string from ``getComputedStyle``.
+        """
+        return self._page.evaluate(
+            """(sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return null;
+                const cs = window.getComputedStyle(el);
+                const computedGap = cs.gap || cs.rowGap || '';
+                let authoredGtc = '';
+                for (const sheet of document.styleSheets) {
+                    let rules;
+                    try { rules = sheet.cssRules || sheet.rules; } catch (e) { continue; }
+                    if (!rules) continue;
+                    for (const rule of rules) {
+                        if (!(rule instanceof CSSStyleRule)) continue;
+                        try {
+                            if (el.matches(rule.selectorText)) {
+                                const gtc = rule.style.gridTemplateColumns;
+                                if (gtc) { authoredGtc = gtc; }
+                            }
+                        } catch (e) {}
+                    }
+                }
+                return { gridTemplateColumns: authoredGtc, gap: computedGap };
+            }""",
+            self._VIDEO_GRID,
+        )
+
+    def get_live_grid_rule(self) -> dict | None:
+        """Scan all loaded document.styleSheets for the video grid CSS rule.
+
+        Returns a dict with ``gridTemplateColumns`` and ``gap`` if a rule
+        containing ``repeat(auto-fill, minmax(220px, ...))`` is found, or None.
+        """
+        return self._page.evaluate(
+            """() => {
+                for (const sheet of document.styleSheets) {
+                    let rules;
+                    try {
+                        rules = sheet.cssRules || sheet.rules;
+                    } catch (e) {
+                        continue;
+                    }
+                    if (!rules) continue;
+                    for (const rule of rules) {
+                        if (!(rule instanceof CSSStyleRule)) continue;
+                        const gtc = rule.style.gridTemplateColumns;
+                        if (
+                            gtc &&
+                            gtc.includes('auto-fill') &&
+                            gtc.includes('220px')
+                        ) {
+                            return {
+                                gridTemplateColumns: gtc,
+                                gap: rule.style.gap || rule.style.rowGap || ''
+                            };
+                        }
+                    }
+                }
+                return null;
+            }"""
+        )
+
+    # ------------------------------------------------------------------
     # Status badge inspection
     # ------------------------------------------------------------------
 
@@ -326,3 +517,68 @@ class DashboardPage:
         if badge.count() == 0:
             return None
         return badge.first.get_attribute("class")
+
+    # ------------------------------------------------------------------
+    # Playlist chip interactions (card-grid layout)
+    # ------------------------------------------------------------------
+
+    _PLAYLIST_CHIP_GROUP = '[role="group"][aria-label="Filter by playlist"]'
+    _VIDEO_GRID = "[class*='videoGrid']"
+
+    def wait_for_playlist_chips(self, timeout: int = 15_000) -> None:
+        """Wait until the playlist chip row is visible."""
+        self._page.wait_for_selector(self._PLAYLIST_CHIP_GROUP, timeout=timeout)
+
+    def click_playlist_chip(self, playlist_name: str) -> None:
+        """Click the playlist filter chip with the given *playlist_name*."""
+        chip = self._page.locator(self._PLAYLIST_CHIP_GROUP).get_by_role(
+            "button", name=playlist_name, exact=True
+        )
+        chip.click()
+
+    def click_all_chip(self) -> None:
+        """Click the 'All' filter chip to reset the playlist filter."""
+        chip = self._page.locator(self._PLAYLIST_CHIP_GROUP).get_by_role(
+            "button", name="All", exact=True
+        )
+        chip.click()
+
+    def get_video_card_count(self, timeout: int = 5_000) -> int:
+        """Return the number of video cards currently visible in the card grid."""
+        grid = self._page.locator(self._VIDEO_GRID)
+        try:
+            grid.wait_for(state="visible", timeout=timeout)
+        except Exception:
+            return 0
+        return grid.locator("> div").count()
+
+    def get_video_card_titles(self) -> list[str]:
+        """Return the text of each title element in the video card grid."""
+        grid = self._page.locator(self._VIDEO_GRID)
+        if grid.count() == 0:
+            return []
+        titles: list[str] = []
+        cards = grid.locator("> div")
+        for i in range(cards.count()):
+            card = cards.nth(i)
+            title_el = card.locator("a, span").first
+            text = (title_el.text_content() or "").strip()
+            if text:
+                titles.append(text)
+        return titles
+
+    def is_video_card_visible_by_title(self, title: str, timeout: int = 3_000) -> bool:
+        """Return True if a video card containing *title* is visible in the grid."""
+        try:
+            card = self._page.locator(self._VIDEO_GRID).locator(
+                f"a:has-text('{title}'), span:has-text('{title}')"
+            ).first
+            card.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def wait_for_video_card_count(self, expected: int, timeout: int = 5_000) -> None:
+        """Wait until the card grid contains exactly *expected* cards."""
+        grid = self._page.locator(self._VIDEO_GRID)
+        expect(grid.locator("> div")).to_have_count(expected, timeout=timeout)

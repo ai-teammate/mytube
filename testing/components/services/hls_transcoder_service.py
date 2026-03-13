@@ -79,8 +79,9 @@ class HLSTranscoderService:
         self,
         video_id: str,
         raw_object_path: str,
-        db_dsn: str,
+        db_dsn: str = "",
         timeout_seconds: int = 300,
+        extra_env_vars: Optional[dict] = None,
     ) -> JobExecutionResult:
         """
         Execute the Cloud Run Job for the given VIDEO_ID and wait for completion.
@@ -95,23 +96,34 @@ class HLSTranscoderService:
             PostgreSQL DSN to pass as DB_DSN environment variable.
         timeout_seconds:
             Maximum seconds to wait for job completion.
+        extra_env_vars:
+            Optional additional environment variables to inject into the job
+            via ``--update-env-vars``. Values are appended after the standard
+            set, allowing callers to override or extend job configuration
+            (e.g. ``{"CLEANUP_ON_TRANSCODE_FAILURE": "false"}``).
 
         Returns
         -------
         JobExecutionResult
             Success flag, exit code, and stdout/stderr output.
         """
+        env_vars = (
+            f"VIDEO_ID={video_id},"
+            f"RAW_OBJECT_PATH={raw_object_path},"
+            f"HLS_BUCKET={self._config.hls_bucket},"
+            f"CDN_BASE_URL={self._config.cdn_base_url}"
+        )
+        if extra_env_vars:
+            for key, value in extra_env_vars.items():
+                env_vars += f",{key}={value}"
+
         cmd = [
             "gcloud", "run", "jobs", "execute",
             self._config.transcoder_job,
             f"--region={self._config.region}",
             f"--project={self._config.project_id}",
             "--wait",
-            f"--update-env-vars="
-            f"VIDEO_ID={video_id},"
-            f"RAW_OBJECT_PATH={raw_object_path},"
-            f"HLS_BUCKET={self._config.hls_bucket},"
-            f"CDN_BASE_URL={self._config.cdn_base_url}",
+            f"--update-env-vars={env_vars}",
         ]
         try:
             result = subprocess.run(

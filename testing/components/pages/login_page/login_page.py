@@ -12,8 +12,10 @@ Architecture notes
 """
 from playwright.sync_api import Page, expect
 
+from testing.components.pages.mixins.shell_inspection_mixin import ShellInspectionMixin
 
-class LoginPage:
+
+class LoginPage(ShellInspectionMixin):
     """Page Object for the MyTube login page."""
 
     # Selectors
@@ -153,6 +155,35 @@ class LoginPage:
         return self._is_text_color_visible(self._SIGN_IN_BUTTON)
 
     # ------------------------------------------------------------------
+    # Auth-switch link ("Create one" → /register)
+    # ------------------------------------------------------------------
+
+    _SWITCH_LINK = 'a[href*="/register"]'
+
+    def get_switch_link_color(self) -> str:
+        """Return the computed color of the switch-to-register link."""
+        return self._page.evaluate(
+            "(sel) => getComputedStyle(document.querySelector(sel)).color",
+            self._SWITCH_LINK,
+        )
+
+    def hover_switch_link(self) -> None:
+        """Hover the switch-to-register link and wait for CSS transitions."""
+        self._page.hover(self._SWITCH_LINK)
+        self._page.wait_for_timeout(300)
+
+    def get_switch_link_text_decoration(self) -> str:
+        """Return the computed textDecorationLine of the switch link."""
+        return self._page.evaluate(
+            "(sel) => getComputedStyle(document.querySelector(sel)).textDecorationLine",
+            self._SWITCH_LINK,
+        )
+
+    def wait_for_switch_link(self, timeout: int = 30_000) -> None:
+        """Block until the switch-to-register link is present in the DOM."""
+        self._page.wait_for_selector(self._SWITCH_LINK, timeout=timeout)
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
@@ -169,3 +200,75 @@ class LoginPage:
         if color is None:
             return False
         return color != "rgba(0, 0, 0, 0)"
+
+    # ------------------------------------------------------------------
+    # Auth-card branding queries
+    # ------------------------------------------------------------------
+
+    _AUTH_CARD_SVG = ".auth-card svg"
+    _WORDMARK_SELECTOR = ".auth-card span"
+
+    def get_logo_svg_count(self) -> int:
+        """Return the number of SVG elements inside the .auth-card branding area."""
+        return self._page.locator(self._AUTH_CARD_SVG).count()
+
+    def get_logo_svg_width(self) -> float:
+        """Return the computed width of the LogoIcon SVG in pixels."""
+        return self._computed_dimension(self._AUTH_CARD_SVG, "width")
+
+    def get_logo_svg_height(self) -> float:
+        """Return the computed height of the LogoIcon SVG in pixels."""
+        return self._computed_dimension(self._AUTH_CARD_SVG, "height")
+
+    def get_wordmark_count(self) -> int:
+        """Return the number of wordmark span elements containing 'MYTUBE' text."""
+        return self._page.locator(f"{self._WORDMARK_SELECTOR}:has-text('MYTUBE')").count()
+
+    def get_wordmark_computed_color(self) -> str:
+        """Return the computed CSS color of the 'MYTUBE' wordmark span."""
+        return self._page.locator(self._WORDMARK_SELECTOR).filter(has_text="MYTUBE").first.evaluate(
+            "el => window.getComputedStyle(el).color"
+        )
+
+    def resolve_css_variable(self, var_name: str) -> str:
+        """Return the computed value of a CSS custom property from :root."""
+        return self._page.evaluate(
+            f"() => getComputedStyle(document.documentElement)"
+            f".getPropertyValue('{var_name}').trim()"
+        )
+
+    def resolve_css_variable_to_rgb(self, var_name: str) -> str:
+        """Return the browser-computed RGB color value for a CSS custom property.
+
+        Resolves the raw CSS value by applying it to a temporary element so
+        that both sides of a color comparison share the same format.
+        """
+        raw_value = self.resolve_css_variable(var_name)
+        return self._page.evaluate(
+            """(accentValue) => {
+                const tmp = document.createElement('span');
+                tmp.style.color = accentValue;
+                tmp.style.display = 'none';
+                document.body.appendChild(tmp);
+                const computed = window.getComputedStyle(tmp).color;
+                document.body.removeChild(tmp);
+                return computed;
+            }""",
+            raw_value,
+        )
+
+    # ------------------------------------------------------------------
+    # Shell / layout inspection (inherited from ShellInspectionMixin)
+    # ------------------------------------------------------------------
+
+    def _computed_dimension(self, selector: str, prop: str) -> float:
+        """Return the computed CSS *prop* (e.g. 'width') as a float in pixels."""
+        raw: str = self._page.evaluate(
+            """(args) => {
+                const el = document.querySelector(args.sel);
+                if (!el) return '';
+                return window.getComputedStyle(el)[args.prop];
+            }""",
+            {"sel": selector, "prop": prop},
+        )
+        return float(raw.replace("px", "").strip()) if raw else -1.0

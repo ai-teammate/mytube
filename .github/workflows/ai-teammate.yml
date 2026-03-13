@@ -199,12 +199,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.146
+          key: dmtools-v1.7.149
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.146/install.sh | bash -s v1.7.146
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.149/install.sh | bash -s v1.7.149
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
@@ -243,7 +243,7 @@ jobs:
       - name: Get Firebase test token
         run: |
           RESP=$(curl -s -X POST \
-            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${{ vars.FIREBASE_API_KEY }}" \
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${{ secrets.FIREBASE_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{\"email\":\"${{ vars.FIREBASE_TEST_EMAIL }}\",\"password\":\"${{ secrets.FIREBASE_TEST_PASSWORD }}\",\"returnSecureToken\":true}")
           TOKEN=$(echo $RESP | jq -r .idToken)
@@ -276,6 +276,7 @@ jobs:
           CONFLUENCE_DEFAULT_SPACE: ${{ vars.CONFLUENCE_DEFAULT_SPACE }}
           CONFLUENCE_GRAPHQL_PATH: ${{ vars.CONFLUENCE_GRAPHQL_PATH }}
           JIRA_CLEAR_CACHE: "true"
+          DMTOOLS_CACHE_ENABLED: ${{ vars.DMTOOLS_CACHE_ENABLED }}
           # DMTools Integration Settings
           DMTOOLS_INTEGRATIONS: "jira,confluence,figma,ai,cli,file,github"
 
@@ -313,6 +314,7 @@ jobs:
 
           # DMTools Advanced Configuration
           PROMPT_CHUNK_TOKEN_LIMIT: ${{ vars.PROMPT_CHUNK_TOKEN_LIMIT }}
+          CLI_ALLOWED_COMMANDS: "find,ls,cat,mkdir,bash,run-agent.sh"
 
           # GCP Configuration (for test automation)
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -333,7 +335,7 @@ jobs:
 
           # Firebase Configuration (for test automation)
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_AUTH_DOMAIN: ${{ vars.FIREBASE_AUTH_DOMAIN }}
           FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
           FIREBASE_STORAGE_BUCKET: ${{ vars.FIREBASE_STORAGE_BUCKET }}
@@ -353,8 +355,8 @@ jobs:
           if [ -n "${ENCODED_CONFIG}" ]; then
             echo "Encoded config received (raw):"
             printf '%s\n' "${ENCODED_CONFIG}"
-            dmtools run "${{ inputs.config_file }}" "${ENCODED_CONFIG}" --ciRunUrl "${CI_RUN_URL}"
+            dmtools --debug run "${{ inputs.config_file }}" "${ENCODED_CONFIG}" --ciRunUrl "${CI_RUN_URL}"
           else
             echo "No encoded config provided."
-            dmtools run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
+            dmtools --debug run "${{ inputs.config_file }}" --ciRunUrl "${CI_RUN_URL}"
           fi

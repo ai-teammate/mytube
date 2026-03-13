@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import type { VideoCardItem, DiscoveryRepository } from "@/domain/search";
 import { ApiDiscoveryRepository } from "@/data/searchRepository";
 import VideoCard from "@/components/VideoCard";
+import HeroSection from "@/components/HeroSection";
 
 const defaultRepository: DiscoveryRepository = new ApiDiscoveryRepository();
 
@@ -46,6 +47,9 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Hero section — replaces the previous inline hero markup */}
+      <HeroSection thumbnailUrl={recentVideos[0]?.thumbnailUrl} />
+
       {loading && (
         <p className="text-gray-500 text-center py-16">Loading…</p>
       )}
@@ -57,7 +61,7 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
       )}
 
       {!loading && !error && (
-        <>
+        <div id="video-grid">
           {/* Recently Uploaded section */}
           <section aria-labelledby="recently-uploaded-heading" className="mb-12">
             <h2
@@ -95,7 +99,7 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
               </div>
             )}
           </section>
-        </>
+        </div>
       )}
     </div>
   );

@@ -1,0 +1,3 @@
+# Configuration for MYTUBE-398 test
+timeout: 300
+test_name: MYTUBE-398

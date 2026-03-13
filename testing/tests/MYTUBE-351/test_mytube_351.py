@@ -8,9 +8,10 @@ fails to resolve the authentication status.
 
 Steps
 -----
-1. Simulate a Firebase SDK initialization failure by blocking all requests
-   to Firebase auth domains (identitytoolkit.googleapis.com,
-   securetoken.googleapis.com, *.firebaseapp.com, firebase.googleapis.com).
+1. Simulate a Firebase SDK initialization failure by injecting a script
+   via context.add_init_script that overrides the onAuthStateChanged export
+   (webpack module 9997, export key "hg") to call the error callback after
+   a 100 ms delay instead of the success callback.
 2. Load the application (navigate to the home page /).
 
 Expected Result
@@ -21,15 +22,20 @@ a permanent loading state or allowing access.
 
 Test approach
 -------------
-Uses Playwright's page.route() to intercept and abort all HTTP(S) requests
-to Firebase authentication endpoints, simulating an SDK initialisation
-failure.  The test then navigates to the deployed home page and asserts that:
+Uses Playwright's context.add_init_script to inject a script before any
+page scripts run.  The script intercepts Object.defineProperty calls and,
+when webpack tries to define the "hg" export (onAuthStateChanged) on a
+module exports object, replaces the getter with a factory that returns a
+fake onAuthStateChanged that always calls the error callback after 100 ms.
+This directly triggers authError = true in AuthContext without relying on
+any network calls.
 
-  1. The application does NOT remain stuck in a permanent loading state
-     (the "Loading…" spinner must disappear within a reasonable timeout).
-  2. An error element visible to the user that communicates authentication
-     unavailability is present in the DOM (e.g. role="alert", or text
-     matching "unavailable", "authentication", "error").
+Why not network blocking?
+Network blocking (context.route()) was tried in previous runs and always
+failed: for unauthenticated users with no cached session the Firebase SDK
+resolves onAuthStateChanged with null synchronously from localStorage /
+IndexedDB without making any network requests, so the error callback is
+never triggered.
 
 Environment variables
 ---------------------
@@ -42,7 +48,7 @@ Architecture
 ------------
 - WebConfig from testing/core/config/web_config.py centralises env var access.
 - Playwright sync API with pytest function-scoped fixtures (each test gets a
-  fresh browser context with the route intercepts already in place).
+  fresh browser context with the init script already injected).
 - No hardcoded URLs or credentials.
 """
 from __future__ import annotations
@@ -62,16 +68,71 @@ from testing.core.config.web_config import WebConfig
 # Constants
 # ---------------------------------------------------------------------------
 
-# Firebase auth-related domains to block.
-# Blocking these simulates an SDK initialisation failure / network outage.
-_FIREBASE_AUTH_PATTERNS = [
-    "**/identitytoolkit.googleapis.com/**",
-    "**/securetoken.googleapis.com/**",
-    "**/*.firebaseapp.com/**",
-    "**/firebase.googleapis.com/**",
-    # Firebase also uses this URL pattern for auth REST calls
-    "**/googleapis.com/identitytoolkit/**",
-]
+# Init script injected before any page scripts run.
+# Intercepts Object.defineProperty to detect when webpack module 9997 exports
+# "hg" (onAuthStateChanged) and replaces it with a fake that always calls the
+# error callback after 100 ms, directly triggering authError = true in
+# AuthContext without relying on any network calls.
+#
+# IMPORTANT — minification-dependent export key "hg":
+# The key "hg" is assigned by webpack's minifier at build time and will change
+# with any webpack config change, Firebase JS SDK version bump, or minification
+# seed change.  If the intercept silently stops working (tests timeout with
+# "element not found" instead of asserting the auth-error alert), re-discover
+# the current key by running the following in DevTools after loading the app:
+#
+#   Object.entries(window.__webpack_modules__ ?? {})
+#     .find(([, m]) => m?.toString().includes('onAuthStateChanged'))
+#
+# Update the prop === 'hg' check below with the new key.
+#
+# The script sets window.__authInterceptActivated = true when it matches the
+# property.  The blocked_page fixture asserts this flag after page load to
+# detect silently-broken intercepts early.
+_FIREBASE_INTERCEPT_SCRIPT = """
+(function () {
+    var _origDefProp = Object.defineProperty;
+    Object.defineProperty = function (target, prop, descriptor) {
+        if (
+            prop === 'hg' &&
+            descriptor &&
+            typeof descriptor.get === 'function'
+        ) {
+            window.__authInterceptActivated = true;
+            return _origDefProp(target, prop, {
+                enumerable: descriptor.enumerable,
+                configurable: true,
+                get: function () {
+                    return function fakeOnAuthStateChanged(auth, nextOrObserver, error) {
+                        var errorCb;
+                        if (
+                            nextOrObserver !== null &&
+                            typeof nextOrObserver === 'object' &&
+                            typeof nextOrObserver.error === 'function'
+                        ) {
+                            errorCb = nextOrObserver.error;
+                        } else {
+                            errorCb = error;
+                        }
+                        setTimeout(function () {
+                            if (typeof errorCb === 'function') {
+                                errorCb(
+                                    new Error(
+                                        'Firebase: Error (auth/network-request-failed).' +
+                                        ' A network AuthError has occurred (simulated).'
+                                    )
+                                );
+                            }
+                        }, 100);
+                        return function () {}; // unsubscribe no-op
+                    };
+                }
+            });
+        }
+        return _origDefProp.apply(Object, arguments);
+    };
+})();
+"""
 
 # How long (ms) to wait for the loading indicator to disappear.
 # If it does not disappear within this time we treat it as a "permanent
@@ -129,20 +190,42 @@ def browser(web_config: WebConfig):
 
 @pytest.fixture(scope="function")
 def blocked_page(browser: Browser, web_config: WebConfig) -> Page:
-    """Open a fresh browser context with Firebase auth domains blocked.
+    """Yield a Page already navigated to home_url with the Firebase intercept active.
 
-    Each test function gets its own context so route registrations do not
-    bleed between tests.
+    The init script overrides Object.defineProperty to replace the webpack
+    'hg' export (onAuthStateChanged) with a fake that always calls the error
+    callback after 100 ms, directly triggering authError = true in AuthContext.
+
+    Each test function gets its own context so the init script injection does
+    not bleed between tests.
+
+    NOTE: The page is pre-navigated to home_url before it is yielded.
+    Tests MUST NOT call ``pg.goto()`` again — doing so causes a redundant
+    double-navigation (the intercept does re-activate, but it doubles wall-clock
+    time for every test in this suite).
     """
     context = browser.new_context()
     context.set_default_timeout(30_000)
 
-    # Register abort handlers for all Firebase auth patterns.
-    for pattern in _FIREBASE_AUTH_PATTERNS:
-        context.route(pattern, lambda route, **_: route.abort())
+    # Inject the Firebase interception script before any page scripts run.
+    context.add_init_script(script=_FIREBASE_INTERCEPT_SCRIPT)
 
     pg = context.new_page()
     pg.set_default_timeout(30_000)
+
+    # Navigate and assert that the intercept actually activated.
+    # window.__authInterceptActivated is set by the script when it matches the
+    # 'hg' property.  If False, the minified export key has changed and the
+    # script needs updating — see the comment above _FIREBASE_INTERCEPT_SCRIPT.
+    pg.goto(web_config.home_url())
+    activated = pg.evaluate("typeof window.__authInterceptActivated !== 'undefined' && window.__authInterceptActivated === true")
+    assert activated, (
+        "Firebase intercept script did NOT activate (window.__authInterceptActivated is not true). "
+        "The minified webpack export key 'hg' may have changed. "
+        "Re-discover the current key with: "
+        "Object.entries(window.__webpack_modules__ ?? {}).find(([, m]) => m?.toString().includes('onAuthStateChanged'))"
+    )
+
     yield pg
     context.close()
 
@@ -164,9 +247,9 @@ class TestFirebaseAuthErrorState:
         the "Loading…" spinner must disappear within _LOADING_DISMISS_TIMEOUT_MS.
         A permanent loading state would prevent users from receiving any
         feedback.
-        """
-        blocked_page.goto(web_config.home_url())
 
+        Note: blocked_page is pre-navigated to home_url by the fixture.
+        """
         loading = blocked_page.locator(_LOADING_TEXT_SELECTOR)
         try:
             loading.wait_for(state="visible", timeout=5_000)
@@ -203,9 +286,9 @@ class TestFirebaseAuthErrorState:
 
         A role="alert" element with empty text (e.g. the Next.js
         RouteAnnouncer) does NOT satisfy this requirement.
-        """
-        blocked_page.goto(web_config.home_url())
 
+        Note: blocked_page is pre-navigated to home_url by the fixture.
+        """
         # Wait for any loading state to clear first.
         loading = blocked_page.locator(_LOADING_TEXT_SELECTOR)
         try:

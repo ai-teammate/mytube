@@ -98,7 +98,6 @@ describe("VideoCard", () => {
   it("renders the created date", () => {
     render(<VideoCard video={makeVideo({ createdAt: "2024-01-15T00:00:00Z" })} />);
     // Date is localized; just assert it appears in the document
-    // The text includes the view count and date separated by "·"
     expect(screen.getByText(/\d+\/\d+\/\d+/)).toBeInTheDocument();
   });
 
@@ -159,5 +158,77 @@ describe("VideoCard — SPA navigation (MYTUBE-303)", () => {
     fireEvent.click(link, { ctrlKey: true });
     expect(mockPush).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("__spa_video_id")).toBeNull();
+  });
+});
+
+describe("VideoCard — tags row", () => {
+  it("does not render any tag pills when tags is undefined", () => {
+    render(<VideoCard video={makeVideo()} />);
+    expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
+  });
+
+  it("does not render any tag pills when tags is an empty array", () => {
+    render(<VideoCard video={makeVideo({ tags: [] })} />);
+    expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
+  });
+
+  it("renders a single tag pill", () => {
+    render(<VideoCard video={makeVideo({ tags: ["react"] })} />);
+    expect(screen.getByText("react")).toBeInTheDocument();
+    expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
+  });
+
+  it("renders all tags when count is exactly 3", () => {
+    render(<VideoCard video={makeVideo({ tags: ["a", "b", "c"] })} />);
+    expect(screen.getByText("a")).toBeInTheDocument();
+    expect(screen.getByText("b")).toBeInTheDocument();
+    expect(screen.getByText("c")).toBeInTheDocument();
+    expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
+  });
+
+  it("caps at 3 visible tags and shows overflow count for 4 tags", () => {
+    render(<VideoCard video={makeVideo({ tags: ["a", "b", "c", "d"] })} />);
+    expect(screen.getByText("a")).toBeInTheDocument();
+    expect(screen.getByText("b")).toBeInTheDocument();
+    expect(screen.getByText("c")).toBeInTheDocument();
+    expect(screen.queryByText("d")).not.toBeInTheDocument();
+    expect(screen.getByText("+1 more")).toBeInTheDocument();
+  });
+
+  it("caps at 3 visible tags and shows +2 more for 5 tags", () => {
+    render(<VideoCard video={makeVideo({ tags: ["a", "b", "c", "d", "e"] })} />);
+    expect(screen.getByText("a")).toBeInTheDocument();
+    expect(screen.getByText("b")).toBeInTheDocument();
+    expect(screen.getByText("c")).toBeInTheDocument();
+    expect(screen.queryByText("d")).not.toBeInTheDocument();
+    expect(screen.queryByText("e")).not.toBeInTheDocument();
+    expect(screen.getByText("+2 more")).toBeInTheDocument();
+  });
+
+  it("shows correct overflow count for many tags", () => {
+    const tags = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
+    render(<VideoCard video={makeVideo({ tags })} />);
+    expect(screen.getByText("t1")).toBeInTheDocument();
+    expect(screen.getByText("t2")).toBeInTheDocument();
+    expect(screen.getByText("t3")).toBeInTheDocument();
+    expect(screen.queryByText("t4")).not.toBeInTheDocument();
+    expect(screen.getByText("+4 more")).toBeInTheDocument();
+  });
+});
+
+describe("VideoCard — sub-line", () => {
+  it("renders the uploader username in the sub-line", () => {
+    render(<VideoCard video={makeVideo({ uploaderUsername: "bob" })} />);
+    expect(screen.getByRole("link", { name: "bob" })).toHaveAttribute("href", "/u/bob");
+  });
+
+  it("renders view count in the sub-line", () => {
+    render(<VideoCard video={makeVideo({ viewCount: 42000 })} />);
+    expect(screen.getByText(/42,000 views/)).toBeInTheDocument();
+  });
+
+  it("renders the creation date in the sub-line", () => {
+    render(<VideoCard video={makeVideo({ createdAt: "2025-06-01T00:00:00Z" })} />);
+    expect(screen.getByText(/\d+\/\d+\/\d+/)).toBeInTheDocument();
   });
 });

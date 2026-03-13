@@ -22,11 +22,23 @@ jest.mock("@/context/AuthContext", () => ({
   }),
 }));
 
+// ─── Mock ThemeContext ────────────────────────────────────────────────────────
+jest.mock("@/context/ThemeContext", () => ({
+  useTheme: () => ({ theme: "light", toggleTheme: jest.fn() }),
+}));
+
 import AppShell from "@/components/AppShell";
+
+const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockPathname = "/";
+  process.env.NEXT_PUBLIC_BASE_PATH = "";
+});
+
+afterAll(() => {
+  process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
 });
 
 describe("AppShell", () => {
@@ -85,6 +97,127 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: /footer navigation/i })).toBeInTheDocument();
   });
 
+  // ── page-wrap structure ───────────────────────────────────────────────────────
+
+  it("renders a page-wrap div for non-auth routes", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    const pageWrap = container.querySelector(".page-wrap");
+    expect(pageWrap).toBeInTheDocument();
+  });
+
+  it("renders a shell div inside page-wrap for non-auth routes", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    const shell = container.querySelector(".page-wrap .shell");
+    expect(shell).toBeInTheDocument();
+  });
+
+  it("places SiteHeader inside the shell container", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    const shell = container.querySelector(".shell");
+    expect(shell).toContainElement(screen.getByRole("link", { name: /mytube/i }).closest("header"));
+  });
+
+  it("places children inside the shell container", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div data-testid="page-content">content</div>
+      </AppShell>
+    );
+    const shell = container.querySelector(".shell");
+    expect(shell).toContainElement(screen.getByTestId("page-content"));
+  });
+
+  it("places SiteFooter inside the shell container", () => {
+    mockPathname = "/";
+    const { container } = render(<AppShell><div>content</div></AppShell>);
+    const shell = container.querySelector(".shell");
+    expect(shell).toContainElement(
+      screen.getByRole("navigation", { name: /footer navigation/i }).closest("footer")
+    );
+  });
+
+  // ── Decorative elements ───────────────────────────────────────────────────────
+
+  it("renders four decor elements for non-auth routes", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    const decors = container.querySelectorAll(".decor");
+    expect(decors).toHaveLength(4);
+  });
+
+  it("renders a .decor.play element", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    expect(container.querySelector(".decor.play")).toBeInTheDocument();
+  });
+
+  it("renders a .decor.film element", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    expect(container.querySelector(".decor.film")).toBeInTheDocument();
+  });
+
+  it("renders a .decor.camera element", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    expect(container.querySelector(".decor.camera")).toBeInTheDocument();
+  });
+
+  it("renders a .decor.wave element", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    expect(container.querySelector(".decor.wave")).toBeInTheDocument();
+  });
+
+  it("positions decor elements outside (as siblings of) the shell", () => {
+    mockPathname = "/";
+    const { container } = render(
+      <AppShell>
+        <div>content</div>
+      </AppShell>
+    );
+    const shell = container.querySelector(".shell");
+    const decorPlay = container.querySelector(".decor.play");
+    // decor should NOT be inside shell
+    expect(shell).not.toContainElement(decorPlay as HTMLElement);
+  });
+
   // ── Auth routes — no shell ────────────────────────────────────────────────────
 
   it("does NOT render SiteHeader on /login", () => {
@@ -117,6 +250,26 @@ describe("AppShell", () => {
     expect(screen.getByText("Login page")).toBeInTheDocument();
   });
 
+  it("does NOT render the page-wrap on /login", () => {
+    mockPathname = "/login";
+    const { container } = render(
+      <AppShell>
+        <div>Login page</div>
+      </AppShell>
+    );
+    expect(container.querySelector(".page-wrap")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render decor elements on /login", () => {
+    mockPathname = "/login";
+    const { container } = render(
+      <AppShell>
+        <div>Login page</div>
+      </AppShell>
+    );
+    expect(container.querySelectorAll(".decor")).toHaveLength(0);
+  });
+
   it("does NOT render SiteHeader on /register", () => {
     mockPathname = "/register";
     render(
@@ -145,5 +298,96 @@ describe("AppShell", () => {
       </AppShell>
     );
     expect(screen.getByText("Register page")).toBeInTheDocument();
+  });
+
+  it("does NOT render decor elements on /register", () => {
+    mockPathname = "/register";
+    const { container } = render(
+      <AppShell>
+        <div>Register page</div>
+      </AppShell>
+    );
+    expect(container.querySelectorAll(".decor")).toHaveLength(0);
+  });
+
+  // ── GitHub Pages base path — auth route detection with /mytube prefix ─────────
+
+  describe("GitHub Pages base path (/mytube)", () => {
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_BASE_PATH = "/mytube";
+    });
+
+    it("does NOT render shell on /mytube/login/ (GitHub Pages path)", () => {
+      mockPathname = "/mytube/login/";
+      const { container } = render(
+        <AppShell>
+          <div>Login page</div>
+        </AppShell>
+      );
+      expect(container.querySelector(".shell")).not.toBeInTheDocument();
+      expect(container.querySelector(".page-wrap")).not.toBeInTheDocument();
+    });
+
+    it("does NOT render shell on /mytube/register/ (GitHub Pages path)", () => {
+      mockPathname = "/mytube/register/";
+      const { container } = render(
+        <AppShell>
+          <div>Register page</div>
+        </AppShell>
+      );
+      expect(container.querySelector(".shell")).not.toBeInTheDocument();
+      expect(container.querySelector(".page-wrap")).not.toBeInTheDocument();
+    });
+
+    it("does NOT render decor elements on /mytube/login/", () => {
+      mockPathname = "/mytube/login/";
+      const { container } = render(
+        <AppShell>
+          <div>Login page</div>
+        </AppShell>
+      );
+      expect(container.querySelectorAll(".decor")).toHaveLength(0);
+    });
+
+    it("does NOT render decor elements on /mytube/register/", () => {
+      mockPathname = "/mytube/register/";
+      const { container } = render(
+        <AppShell>
+          <div>Register page</div>
+        </AppShell>
+      );
+      expect(container.querySelectorAll(".decor")).toHaveLength(0);
+    });
+
+    it("still renders children on /mytube/login/", () => {
+      mockPathname = "/mytube/login/";
+      render(
+        <AppShell>
+          <div>Login content</div>
+        </AppShell>
+      );
+      expect(screen.getByText("Login content")).toBeInTheDocument();
+    });
+
+    it("still renders children on /mytube/register/", () => {
+      mockPathname = "/mytube/register/";
+      render(
+        <AppShell>
+          <div>Register content</div>
+        </AppShell>
+      );
+      expect(screen.getByText("Register content")).toBeInTheDocument();
+    });
+
+    it("DOES render shell on /mytube/ (home page under basePath)", () => {
+      mockPathname = "/mytube/";
+      const { container } = render(
+        <AppShell>
+          <div>Home</div>
+        </AppShell>
+      );
+      expect(container.querySelector(".shell")).toBeInTheDocument();
+      expect(container.querySelector(".page-wrap")).toBeInTheDocument();
+    });
   });
 });
