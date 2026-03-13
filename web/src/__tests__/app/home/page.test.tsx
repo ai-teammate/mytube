@@ -11,16 +11,32 @@ jest.mock("next/image", () => ({
   default: function MockImage({
     src,
     alt,
+    width,
+    height,
+    sizes,
+    style,
     ...props
   }: {
     src: string;
     alt: string;
+    width?: number;
+    height?: number;
+    sizes?: string;
+    style?: React.CSSProperties;
     [key: string]: unknown;
   }) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { fill: _fill, unoptimized: _unoptimized, ...rest } = props;
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={alt} {...rest} />;
+    return (
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        data-sizes={sizes}
+        style={style}
+        {...props}
+      />
+    );
   },
 }));
 
@@ -301,7 +317,7 @@ describe("HomePage", () => {
     expect(link).toHaveAttribute("href", "/upload");
   });
 
-  it("passes first recent video thumbnail to the visual panel after load", async () => {
+  it("always renders landing_image.png in the hero visual panel", async () => {
     const videoWithThumb = { ...makeVideo("v1", "Thumb Video"), thumbnailUrl: "https://cdn.example.com/thumb.jpg" };
     const repo = makeRepo(
       () => Promise.resolve([videoWithThumb]),
@@ -311,12 +327,12 @@ describe("HomePage", () => {
     render(<HomePage repository={repo} />);
 
     await waitFor(() => {
-      const img = screen.getByAltText("Video preview");
-      expect(img).toHaveAttribute("src", "https://cdn.example.com/thumb.jpg");
+      const img = screen.getByAltText("Personal Playback Preview");
+      expect(img).toHaveAttribute("src", "/landing_image.png");
     });
   });
 
-  it("shows canvas placeholder in visual panel when no videos have thumbnails", async () => {
+  it("renders landing_image.png when no videos have thumbnails", async () => {
     const repo = makeRepo(
       () => Promise.resolve([makeVideo("v1", "No Thumb")]),
       () => Promise.resolve([])
@@ -325,7 +341,8 @@ describe("HomePage", () => {
     render(<HomePage repository={repo} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("canvas-placeholder")).toBeInTheDocument();
+      const img = screen.getByAltText("Personal Playback Preview");
+      expect(img).toHaveAttribute("src", "/landing_image.png");
     });
   });
 

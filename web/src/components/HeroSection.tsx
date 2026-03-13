@@ -31,14 +31,9 @@ const STAT_CARDS: StatCard[] = [
 
 type IconType = "lock" | "play" | "star";
 
-export interface HeroSectionProps {
-  /** Optional thumbnail URL for the visual panel canvas (e.g. first video thumbnail). */
-  thumbnailUrl?: string | null;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function HeroSection({ thumbnailUrl }: HeroSectionProps) {
+export default function HeroSection() {
   function handleBrowseLibrary() {
     document.getElementById("video-grid")?.scrollIntoView({ behavior: "smooth" });
   }
@@ -109,19 +104,17 @@ export default function HeroSection({ thumbnailUrl }: HeroSectionProps) {
             ))}
           </div>
 
-          {/* Thumbnail / canvas area */}
+          {/* Landing image canvas */}
           <div className={styles.visualCanvas}>
-            {thumbnailUrl ? (
-              <Image
-                src={thumbnailUrl}
-                alt="Video preview"
-                fill
-                style={{ objectFit: "cover" }}
-                unoptimized
-              />
-            ) : (
-              <div className={styles.canvasPlaceholder} data-testid="canvas-placeholder" />
-            )}
+            <Image
+              src="/landing_image.png"
+              alt="Personal Playback Preview"
+              width={1536}
+              height={1024}
+              sizes="(max-width: 768px) 100vw, 50vw"
+              style={{ objectFit: "cover", width: "100%", height: "100%" }}
+              priority
+            />
           </div>
         </div>
       </div>
