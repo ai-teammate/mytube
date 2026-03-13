@@ -107,7 +107,7 @@ export default function HeroSection() {
           {/* Landing image canvas */}
           <div className={styles.visualCanvas}>
             <Image
-              src="/landing_image.png"
+              src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/landing_image.png`}
               alt="Personal Playback Preview"
               width={1536}
               height={1024}
