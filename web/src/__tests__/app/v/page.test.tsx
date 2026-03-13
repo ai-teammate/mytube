@@ -4,6 +4,7 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
+import type { RecommendationRepository } from "@/domain/video";
 import type { RatingRepository } from "@/domain/rating";
 import type { CommentRepository } from "@/domain/comment";
 import type { PlaylistRepository } from "@/domain/playlist";
@@ -15,6 +16,11 @@ jest.mock("@/context/AuthContext", () => ({
     loading: false,
     getIdToken: jest.fn().mockResolvedValue(null),
   }),
+}));
+
+// ─── Mock next/navigation (required by VideoCard inside RecommendationSidebar) ─
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
 }));
 
 // ─── Mock React.use to unwrap Promise synchronously in tests ──────────────────
@@ -115,12 +121,21 @@ function makePlaylistRepo(): PlaylistRepository {
   };
 }
 
+function makeRecommendationRepo(
+  videos: object[] = []
+): RecommendationRepository {
+  return {
+    getRecommendations: jest.fn().mockResolvedValue(videos),
+  };
+}
+
 // Render WatchPage with default stub repos to avoid real fetch calls.
 function renderWatchPage(repo: VideoRepository, videoID = "vid-1") {
   return render(
     <WatchPage
       params={makeParams(videoID)}
       repository={repo}
+      recommendationRepository={makeRecommendationRepo()}
       ratingRepository={makeRatingRepo()}
       commentRepository={makeCommentRepo()}
       playlistRepository={makePlaylistRepo()}
@@ -349,16 +364,43 @@ describe("WatchPage", () => {
     });
   });
 
-  it("renders sidebar with 'Recommendations coming soon' placeholder", async () => {
-    const repo = makeRepo(() => Promise.resolve(makeVideo()));
-
-    renderWatchPage(repo, "vid-1");
+  it("renders sidebar recommendations section when >=2 recommendations are returned", async () => {
+    const recommendations = [
+      { id: "r1", title: "Related 1", thumbnailUrl: null, viewCount: 10, uploaderUsername: "bob", createdAt: "2024-01-01T00:00:00Z" },
+      { id: "r2", title: "Related 2", thumbnailUrl: null, viewCount: 5, uploaderUsername: "carol", createdAt: "2024-01-02T00:00:00Z" },
+    ];
+    render(
+      <WatchPage
+        params={makeParams("vid-1")}
+        repository={makeRepo(() => Promise.resolve(makeVideo()))}
+        recommendationRepository={makeRecommendationRepo(recommendations)}
+        ratingRepository={makeRatingRepo()}
+        commentRepository={makeCommentRepo()}
+        playlistRepository={makePlaylistRepo()}
+      />
+    );
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/recommendations coming soon/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText("More like this")).toBeInTheDocument();
     });
+  });
+
+  it("hides sidebar recommendations section when <2 recommendations are returned", async () => {
+    render(
+      <WatchPage
+        params={makeParams("vid-1")}
+        repository={makeRepo(() => Promise.resolve(makeVideo()))}
+        recommendationRepository={makeRecommendationRepo([])}
+        ratingRepository={makeRatingRepo()}
+        commentRepository={makeCommentRepo()}
+        playlistRepository={makePlaylistRepo()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Test Video" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("More like this")).not.toBeInTheDocument();
   });
 
   it("renders 'Rate this video' heading from StarRating widget", async () => {

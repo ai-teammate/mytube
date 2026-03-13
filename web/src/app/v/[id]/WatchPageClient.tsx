@@ -3,11 +3,12 @@
 import { use, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import type { VideoDetail, VideoRepository } from "@/domain/video";
+import type { VideoDetail, VideoRepository, RecommendationRepository } from "@/domain/video";
 import type { RatingRepository } from "@/domain/rating";
 import type { CommentRepository } from "@/domain/comment";
 import type { PlaylistRepository } from "@/domain/playlist";
 import { ApiVideoRepository } from "@/data/videoRepository";
+import { ApiRecommendationRepository } from "@/data/videoRepository";
 import { ApiRatingRepository } from "@/data/ratingRepository";
 import { ApiCommentRepository } from "@/data/commentRepository";
 import { ApiPlaylistRepository } from "@/data/playlistRepository";
@@ -15,6 +16,7 @@ import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
 import CommentSection from "@/components/CommentSection";
 import SaveToPlaylist from "@/components/SaveToPlaylist";
+import RecommendationSidebar from "@/components/RecommendationSidebar";
 import styles from "./WatchPageClient.module.css";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
@@ -30,6 +32,7 @@ const VideoPlayer = dynamic(() => import("@/components/VideoPlayer"), {
 
 // Default singleton repositories used in production.
 const defaultRepository: VideoRepository = new ApiVideoRepository();
+const defaultRecommendationRepository: RecommendationRepository = new ApiRecommendationRepository();
 const defaultRatingRepository: RatingRepository = new ApiRatingRepository();
 const defaultCommentRepository: CommentRepository = new ApiCommentRepository();
 const defaultPlaylistRepository: PlaylistRepository = new ApiPlaylistRepository();
@@ -39,6 +42,7 @@ interface WatchPageProps {
   params: Promise<{ id: string }>;
   // Optional repositories for dependency injection (e.g. in tests).
   repository?: VideoRepository;
+  recommendationRepository?: RecommendationRepository;
   ratingRepository?: RatingRepository;
   commentRepository?: CommentRepository;
   playlistRepository?: PlaylistRepository;
@@ -47,6 +51,7 @@ interface WatchPageProps {
 export default function WatchPage({
   params,
   repository = defaultRepository,
+  recommendationRepository = defaultRecommendationRepository,
   ratingRepository = defaultRatingRepository,
   commentRepository = defaultCommentRepository,
   playlistRepository = defaultPlaylistRepository,
@@ -269,13 +274,12 @@ export default function WatchPage({
         />
       </main>
 
-      {/* Sidebar: recommendations placeholder (right column at lg+) */}
+      {/* Sidebar: recommendations (right column at lg+) */}
       <aside className={styles.sidebar}>
-        <div className={styles.sidebarCard}>
-          <p className={styles.sidebarPlaceholderText}>
-            Recommendations coming soon
-          </p>
-        </div>
+        <RecommendationSidebar
+          videoID={id}
+          repository={recommendationRepository}
+        />
       </aside>
     </div>
   );

@@ -438,6 +438,55 @@ WHERE  id          = $1
 	return true, &paths, nil
 }
 
+// RecommendationVideo represents a video row returned by the recommendations endpoint.
+// It reuses the same fields as SearchVideo for consistency.
+type RecommendationVideo = SearchVideo
+
+// GetRecommendations returns up to limit videos that share the same category_id
+// OR at least one video_tag with the given video, ordered by view_count DESC,
+// created_at DESC. Only videos with status='ready' and a non-null
+// hls_manifest_path are returned. The source video itself is always excluded.
+// Returns an empty slice when no matches exist.
+func (r *VideoRepository) GetRecommendations(ctx context.Context, videoID string, limit int) ([]RecommendationVideo, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+
+	const selectSQL = `
+SELECT DISTINCT v.id,
+       v.title,
+       v.thumbnail_url,
+       v.view_count,
+       u.username,
+       v.created_at,
+       v.status
+FROM   videos v
+JOIN   users  u ON u.id = v.uploader_id
+WHERE  v.id    != $1
+  AND  v.status = 'ready'
+  AND  v.hls_manifest_path IS NOT NULL
+  AND  (
+         v.category_id IS NOT NULL
+         AND v.category_id = (SELECT category_id FROM videos WHERE id = $1)
+         OR EXISTS (
+           SELECT 1
+           FROM   video_tags vt
+           WHERE  vt.video_id = v.id
+             AND  vt.tag IN (SELECT tag FROM video_tags WHERE video_id = $1)
+         )
+       )
+ORDER BY v.view_count DESC, v.created_at DESC
+LIMIT  $2`
+
+	rows, err := r.db.QueryContext(ctx, selectSQL, videoID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get recommendations for video %s: %w", videoID, err)
+	}
+	defer rows.Close()
+
+	return scanSearchVideos(rows)
+}
+
 // Create inserts a new video row with status=processing and the given GCS raw path,
 // then inserts any provided tags into the video_tags table.
 // Returns the created VideoRecord.

@@ -16,6 +16,7 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { VideoDetail, VideoRepository } from "@/domain/video";
+import type { RecommendationRepository } from "@/domain/video";
 import type { RatingRepository } from "@/domain/rating";
 import type { CommentRepository } from "@/domain/comment";
 import type { PlaylistRepository } from "@/domain/playlist";
@@ -117,6 +118,12 @@ function makePlaylistRepo(): PlaylistRepository {
   };
 }
 
+function makeRecommendationRepo(): RecommendationRepository {
+  return {
+    getRecommendations: jest.fn().mockResolvedValue([]),
+  };
+}
+
 function makeVideo(overrides: Partial<VideoDetail> = {}): VideoDetail {
   return {
     id: "e8adb1b2-14d3-4baf-a734-7f03532213b5",
@@ -157,6 +164,7 @@ describe("WatchPageClient — GitHub Pages SPA fallback (MYTUBE-280)", () => {
       <WatchPage
         params={makeParams("_")}
         repository={repo}
+        recommendationRepository={makeRecommendationRepo()}
         ratingRepository={makeRatingRepo()}
         commentRepository={makeCommentRepo()}
         playlistRepository={makePlaylistRepo()}
@@ -189,6 +197,7 @@ describe("WatchPageClient — GitHub Pages SPA fallback (MYTUBE-280)", () => {
       <WatchPage
         params={makeParams("_")}
         repository={repo}
+        recommendationRepository={makeRecommendationRepo()}
         ratingRepository={makeRatingRepo()}
         commentRepository={makeCommentRepo()}
         playlistRepository={makePlaylistRepo()}
@@ -215,6 +224,7 @@ describe("WatchPageClient — GitHub Pages SPA fallback (MYTUBE-280)", () => {
       <WatchPage
         params={makeParams("_")}
         repository={repo}
+        recommendationRepository={makeRecommendationRepo()}
         ratingRepository={makeRatingRepo()}
         commentRepository={makeCommentRepo()}
         playlistRepository={makePlaylistRepo()}
@@ -243,6 +253,7 @@ describe("WatchPageClient — GitHub Pages SPA fallback (MYTUBE-280)", () => {
       <WatchPage
         params={makeParams(realId)}
         repository={repo}
+        recommendationRepository={makeRecommendationRepo()}
         ratingRepository={makeRatingRepo()}
         commentRepository={makeCommentRepo()}
         playlistRepository={makePlaylistRepo()}
