@@ -114,15 +114,14 @@ describe("metadata export", () => {
   });
 
   it("favicon icon references logo.svg", () => {
-    const icons = metadata.icons as { icon: Array<{ url: string }> };
-    const iconUrl = icons.icon[0].url;
-    expect(iconUrl).toContain("logo.svg");
+    const icons = metadata.icons as { icon?: Array<{ url: string }> };
+    expect(icons?.icon?.[0]?.url).toContain("logo.svg");
   });
 
   it("openGraph images reference logo.svg", () => {
-    const ogImages = metadata.openGraph?.images as Array<{ url: string }>;
+    const ogImages = metadata.openGraph?.images as Array<{ url: string }> | undefined;
     expect(ogImages).toBeDefined();
-    expect(ogImages.length).toBeGreaterThan(0);
-    expect(ogImages[0].url).toContain("logo.svg");
+    expect(ogImages?.length).toBeGreaterThan(0);
+    expect(ogImages?.[0]?.url).toContain("logo.svg");
   });
 });
