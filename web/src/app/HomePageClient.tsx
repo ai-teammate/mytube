@@ -48,7 +48,7 @@ export default function HomePageClient({ repository = defaultRepository }: HomeP
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Hero section — replaces the previous inline hero markup */}
-      <HeroSection thumbnailUrl={recentVideos[0]?.thumbnailUrl} />
+      <HeroSection />
 
       {loading && (
         <p className="text-gray-500 text-center py-16">Loading…</p>
