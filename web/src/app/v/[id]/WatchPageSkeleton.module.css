@@ -1,0 +1,56 @@
+.playerFill {
+  position: absolute;
+  inset: 0;
+}
+
+.titleLine {
+  height: 22px;
+  width: 85%;
+  margin-bottom: 8px;
+  border-radius: 6px;
+}
+
+.titleLineShort {
+  height: 22px;
+  width: 60%;
+  margin-bottom: 16px;
+  border-radius: 6px;
+}
+
+.uploaderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.uploaderName {
+  height: 14px;
+  width: 120px;
+  border-radius: 4px;
+}
+
+.metaLine {
+  height: 14px;
+  width: 200px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.descBlock {
+  height: 80px;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.sidebarBlock {
+  height: 400px;
+  width: 100%;
+  border-radius: 16px;
+}
