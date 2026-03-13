@@ -113,6 +113,7 @@ export default function HeroSection() {
               height={1024}
               sizes="(max-width: 768px) 100vw, 50vw"
               style={{ objectFit: "cover", width: "100%", height: "100%" }}
+              priority
             />
           </div>
         </div>
