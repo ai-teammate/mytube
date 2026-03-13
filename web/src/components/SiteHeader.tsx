@@ -77,7 +77,7 @@ export default function SiteHeader() {
           className="w-11 h-11"
           style={{ color: "var(--accent-logo)" }}
         />
-        <div className="flex flex-col leading-none gap-0.5">
+        <div className="hidden sm:flex flex-col leading-none gap-0.5">
           <span
             className="text-[22px] font-bold leading-none"
             style={{ color: "var(--accent-logo)" }}
