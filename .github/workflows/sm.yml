@@ -41,13 +41,6 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Update agents submodule to latest main
-        run: |
-          cd agents
-          git fetch origin main
-          git checkout origin/main
-          cd ..
-
       - name: Cache JDK 23
         uses: actions/cache@v4
         with:
