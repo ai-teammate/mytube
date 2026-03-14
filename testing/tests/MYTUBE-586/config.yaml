@@ -1,0 +1,5 @@
+test_id: MYTUBE-586
+type: e2e
+framework: playwright
+platform: web
+dependencies: []
