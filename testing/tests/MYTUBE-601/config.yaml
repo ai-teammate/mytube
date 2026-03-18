@@ -1,0 +1,23 @@
+test_id: MYTUBE-601
+type: ui
+framework: playwright
+platform: web
+browser: chromium
+
+# Primary mode: static CSS analysis (always runs)
+# Secondary mode: Playwright dark-theme fixture (always runs, uses page.set_content)
+default_mode: fixture
+
+# Timeouts (milliseconds)
+page_load_timeout: 30000
+navigation_timeout: 30000
+
+# Environment
+headless_env: PLAYWRIGHT_HEADLESS
+slow_mo_env: PLAYWRIGHT_SLOW_MO
+
+# Linked bugs
+linked_bugs:
+  - MYTUBE-593
+
+dependencies: []
