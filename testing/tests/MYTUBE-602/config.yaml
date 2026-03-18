@@ -1,0 +1,6 @@
+test_id: MYTUBE-602
+type: static+fixture
+framework: playwright
+platform: web
+dependencies:
+  - MYTUBE-593
