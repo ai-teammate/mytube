@@ -33,7 +33,35 @@ export default function PlaylistPageClient({
   repository = defaultRepository,
   videoRepository = defaultVideoRepository,
 }: PlaylistPageProps) {
-  const { id } = use(params);
+  const { id: paramId } = use(params);
+
+  // GitHub Pages SPA fallback: public/404.html stores the real playlist UUID in
+  // sessionStorage under '__spa_playlist_id' and redirects to the pre-built shell
+  // at /pl/_/. Resolve the actual ID once at mount via a lazy state initialiser
+  // so the loadPlaylist effect always sees the correct UUID on its first run.
+  const [id] = useState<string>(() => {
+    if (paramId !== "_" || typeof window === "undefined") return paramId;
+    const storedId = sessionStorage.getItem("__spa_playlist_id");
+    if (storedId) {
+      sessionStorage.removeItem("__spa_playlist_id");
+      return storedId;
+    }
+    return paramId;
+  });
+
+  // Correct the browser URL so the address bar shows /pl/<real-uuid>/ instead
+  // of the placeholder /pl/_/. Runs once after mount.
+  useEffect(() => {
+    if (id !== paramId && paramId === "_" && typeof window !== "undefined") {
+      const corrected = window.location.pathname.replace(
+        "/pl/_/",
+        `/pl/${id}/`
+      );
+      window.history.replaceState(null, "", corrected);
+    }
+    // Only run once at mount — id and paramId are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [playlist, setPlaylist] = useState<PlaylistDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
