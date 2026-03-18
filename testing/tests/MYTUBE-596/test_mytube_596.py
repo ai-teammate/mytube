@@ -217,13 +217,7 @@ class TestUploadButtonCSSLayer:
         clickable if it is invisible due to missing styling.
         """
         css = UploadCSSModule()
-        assert css.file_exists(), (
-            "upload.module.css was not found at the expected path. "
-            "Ensure the web source is present."
-        )
-        css_text = css._css_text  # raw text for pseudo-element checking
-
-        assert "::file-selector-button" in css_text, (
+        assert css.pseudo_element_rule_exists("::file-selector-button"), (
             "::file-selector-button pseudo-element rule is missing from upload.module.css. "
             "The MYTUBE-591 fix must add styling so the Choose File button is visible "
             "and clickable."
@@ -236,20 +230,14 @@ class TestUploadButtonCSSLayer:
         from the card background in dark mode.
         """
         css = UploadCSSModule()
-        css_text = css._css_text
-
-        # Extract the rule block for ::file-selector-button
-        import re
-        pattern = r"::file-selector-button\s*\{([^}]*)\}"
-        matches = re.findall(pattern, css_text, re.DOTALL | re.IGNORECASE)
-        assert matches, (
+        rule_body = css.get_pseudo_element_rule_body("::file-selector-button")
+        assert rule_body, (
             "::file-selector-button rule block not found in upload.module.css."
         )
-        rule_body = matches[0].lower()
         assert "background" in rule_body, (
             "::file-selector-button rule does not declare a 'background' property. "
             "The button will be invisible without a contrasting background. "
-            f"Rule body found: {matches[0]!r}"
+            f"Rule body found: {rule_body!r}"
         )
 
     def test_file_selector_button_has_color(self) -> None:
@@ -259,18 +247,13 @@ class TestUploadButtonCSSLayer:
         regardless of the browser theme.
         """
         css = UploadCSSModule()
-        css_text = css._css_text
-
-        import re
-        pattern = r"::file-selector-button\s*\{([^}]*)\}"
-        matches = re.findall(pattern, css_text, re.DOTALL | re.IGNORECASE)
-        assert matches, (
+        rule_body = css.get_pseudo_element_rule_body("::file-selector-button")
+        assert rule_body, (
             "::file-selector-button rule block not found in upload.module.css."
         )
-        rule_body = matches[0].lower()
         assert "color" in rule_body, (
             "::file-selector-button rule does not declare a 'color' property. "
-            f"Rule body found: {matches[0]!r}"
+            f"Rule body found: {rule_body!r}"
         )
 
 
@@ -361,11 +344,6 @@ class TestUploadButtonInteractionLayer:
                 file_input.click()
             file_chooser = fc_info.value
             file_chooser.set_files(fixture_path)
-
-            # After file selection, the React component renders a hint paragraph:
-            #   <p class="tiny">{file.name} ({size} MB)</p>
-            # Wait briefly for the React state update to re-render.
-            page.wait_for_timeout(500)
 
             # Check: the hint paragraph containing the fixture filename is visible.
             filename_only = os.path.basename(fixture_path)
