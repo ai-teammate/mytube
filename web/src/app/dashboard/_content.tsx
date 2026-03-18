@@ -95,12 +95,12 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      className={styles.modalOverlay}
     >
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-6 space-y-4">
+      <div className={styles.modalCard}>
         <h2
           id="edit-modal-title"
-          className="text-lg font-semibold text-gray-900"
+          className={styles.modalTitle}
         >
           Edit video
         </h2>
@@ -108,7 +108,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
         {error && (
           <div
             role="alert"
-            className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+            className={styles.bannerError}
           >
             {error}
           </div>
@@ -119,7 +119,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
           <div>
             <label
               htmlFor="edit-title"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className={styles.formLabel}
             >
               Title <span className="text-red-500">*</span>
             </label>
@@ -132,7 +132,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
               value={form.title}
               onChange={handleChange}
               disabled={saving}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className={styles.formInput}
             />
           </div>
 
@@ -140,7 +140,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
           <div>
             <label
               htmlFor="edit-description"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className={styles.formLabel}
             >
               Description
             </label>
@@ -151,7 +151,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
               value={form.description}
               onChange={handleChange}
               disabled={saving}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 resize-none"
+              className={styles.formInputResize}
             />
           </div>
 
@@ -159,7 +159,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
           <div>
             <label
               htmlFor="edit-categoryId"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className={styles.formLabel}
             >
               Category
             </label>
@@ -169,7 +169,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
               value={form.categoryId}
               onChange={handleChange}
               disabled={saving}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 bg-white"
+              className={styles.formInput}
             >
               <option value="">— Select a category —</option>
               {CATEGORIES.map((c) => (
@@ -184,7 +184,7 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
           <div>
             <label
               htmlFor="edit-tags"
-              className="block text-sm font-medium text-gray-700 mb-1"
+              className={styles.formLabel}
             >
               Tags
             </label>
@@ -196,25 +196,25 @@ function EditModal({ video, onClose, onSave, saving, error }: EditModalProps) {
               onChange={handleChange}
               disabled={saving}
               placeholder="golang, tutorial, programming"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className={styles.formInput}
             />
-            <p className="mt-1 text-xs text-gray-400">Separate tags with commas</p>
+            <p className={styles.formHint}>Separate tags with commas</p>
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-2">
+          <div className={styles.modalActions}>
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className={styles.btnSecondary}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className={styles.btnCta}
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
@@ -524,39 +524,31 @@ export function DashboardContent({
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className={styles.pageWrapper}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className={styles.sectionHeading}>My Videos</h1>
           <Link
             href="/upload"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            className={styles.btnCta}
           >
             Upload new video
           </Link>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-6">
+        <div className={styles.tabBar}>
+          <nav className={styles.tabNav}>
             <button
               onClick={() => setActiveTab("videos")}
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "videos"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
+              className={`${styles.tabBtn} ${activeTab === "videos" ? styles.tabBtnActive : ""}`}
             >
               My videos
             </button>
             <button
               onClick={() => setActiveTab("playlists")}
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "playlists"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
+              className={`${styles.tabBtn} ${activeTab === "playlists" ? styles.tabBtnActive : ""}`}
             >
               My playlists
             </button>
@@ -570,7 +562,7 @@ export function DashboardContent({
             {uploadedId && (
               <div
                 role="status"
-                className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700"
+                className={styles.bannerInfo}
               >
                 Your video is being processed. It will appear as{" "}
                 <strong>ready</strong> once transcoding is complete.
@@ -581,7 +573,7 @@ export function DashboardContent({
             {fetchError && (
               <div
                 role="alert"
-                className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+                className={styles.bannerError}
               >
                 {fetchError}
               </div>
@@ -591,7 +583,7 @@ export function DashboardContent({
             {deleteError && (
               <div
                 role="alert"
-                className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+                className={styles.bannerError}
               >
                 {deleteError}
               </div>
@@ -705,25 +697,25 @@ export function DashboardContent({
           <>
             {/* Error */}
             {playlistsError && (
-              <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              <div role="alert" className={styles.bannerError}>
                 {playlistsError}
               </div>
             )}
             {playlistDeleteError && (
-              <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              <div role="alert" className={styles.bannerError}>
                 {playlistDeleteError}
               </div>
             )}
 
             {/* Create new playlist */}
-            <div className="flex gap-2 items-center">
+            <div className={styles.createRow}>
               <input
                 type="text"
                 value={newPlaylistTitle}
                 onChange={(e) => setNewPlaylistTitle(e.target.value)}
                 placeholder="New playlist title"
                 maxLength={255}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={styles.createRowInput}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreatePlaylist();
                 }}
@@ -731,7 +723,7 @@ export function DashboardContent({
               <button
                 onClick={handleCreatePlaylist}
                 disabled={creatingPlaylist || !newPlaylistTitle.trim()}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                className={styles.btnCta}
               >
                 {creatingPlaylist ? "Creating…" : "Create playlist"}
               </button>
@@ -739,25 +731,25 @@ export function DashboardContent({
 
             {/* Playlist list */}
             {playlistsLoading ? (
-              <p className="text-gray-500">Loading your playlists…</p>
+              <p className={styles.playlistLoading}>Loading your playlists…</p>
             ) : playlists.length === 0 ? (
-              <div className="rounded-2xl bg-white shadow-sm p-8 text-center">
-                <p className="text-gray-500">You don&apos;t have any playlists yet.</p>
+              <div className={styles.playlistEmpty}>
+                <p>You don&apos;t have any playlists yet.</p>
               </div>
             ) : (
-              <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-left">
-                      <th className="px-4 py-3 font-medium text-gray-500">Title</th>
-                      <th className="px-4 py-3 font-medium text-gray-500">Date</th>
-                      <th className="px-4 py-3 font-medium text-gray-500 text-right">Actions</th>
+              <div className={styles.playlistTable}>
+                <table className={styles.playlistTableEl}>
+                  <thead className={styles.playlistTableHead}>
+                    <tr>
+                      <th className={styles.playlistTableHeadCell}>Title</th>
+                      <th className={styles.playlistTableHeadCell}>Date</th>
+                      <th className={`${styles.playlistTableHeadCell} text-right`}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {playlists.map((pl) => (
-                      <tr key={pl.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">
+                      <tr key={pl.id} className={styles.playlistTableRow}>
+                        <td className={styles.playlistTableCellTitle}>
                           {renamingPlaylistId === pl.id ? (
                             <span className="flex items-center gap-2">
                               <input
@@ -765,7 +757,7 @@ export function DashboardContent({
                                 value={renameTitle}
                                 onChange={(e) => setRenameTitle(e.target.value)}
                                 maxLength={255}
-                                className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className={styles.renameInput}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") handleRenameConfirm();
                                   if (e.key === "Escape") setRenamingPlaylistId(null);
@@ -774,30 +766,30 @@ export function DashboardContent({
                               <button
                                 onClick={handleRenameConfirm}
                                 disabled={renamingLoading || !renameTitle.trim()}
-                                className="text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                                className={styles.btnLinkAccent}
                               >
                                 {renamingLoading ? "Saving…" : "Save"}
                               </button>
                               <button
                                 onClick={() => setRenamingPlaylistId(null)}
-                                className="text-gray-500 hover:text-gray-700 font-medium"
+                                className={styles.btnLinkMuted}
                               >
                                 Cancel
                               </button>
                             </span>
                           ) : (
-                            <Link href={`/pl/${pl.id}`} className="hover:text-blue-600 transition-colors">
+                            <Link href={`/pl/${pl.id}`} className={styles.playlistLink}>
                               {pl.title}
                             </Link>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                        <td className={styles.playlistTableCellDate}>
                           {new Date(pl.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <td className={styles.playlistTableCellActions}>
                           <button
                             onClick={() => handleRenameClick(pl)}
-                            className="text-blue-600 hover:text-blue-800 font-medium mr-3"
+                            className={`${styles.btnLinkAccent} mr-3`}
                             aria-label={`Rename ${pl.title}`}
                           >
                             Rename
@@ -807,14 +799,14 @@ export function DashboardContent({
                               <button
                                 onClick={() => handleDeletePlaylistConfirm()}
                                 disabled={deletingPlaylist}
-                                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                className={styles.btnLinkDanger}
                               >
                                 {deletingPlaylist ? "Deleting..." : "Confirm"}
                               </button>
                               <button
                                 onClick={() => setDeletingPlaylistId(null)}
                                 disabled={deletingPlaylist}
-                                className="text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                className={styles.btnLinkMuted}
                               >
                                 Cancel
                               </button>
@@ -825,7 +817,7 @@ export function DashboardContent({
                                 setDeletingPlaylistId(pl.id);
                                 setPlaylistDeleteError(null);
                               }}
-                              className="text-red-600 hover:text-red-800 font-medium"
+                              className={styles.btnLinkDanger}
                               aria-label={`Delete ${pl.title}`}
                             >
                               Delete
