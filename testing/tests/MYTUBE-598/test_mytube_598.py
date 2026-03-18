@@ -67,7 +67,6 @@ _INVALID_UUID = "not-a-valid-uuid-123"
 _GENERIC_FAILURE_TEXT = "Could not load playlist"
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
-_POST_NAV_SETTLE = 3_000     # ms — wait for SPA redirect + React hydration
 
 
 # ---------------------------------------------------------------------------
@@ -201,9 +200,12 @@ class TestMytube598InvalidUuidUi:
                 playlist_page = PlaylistPage(page)
                 playlist_page.navigate(config.base_url, _INVALID_UUID)
 
-                # Allow time for the SPA redirect chain (404.html → base → replaceState)
-                # and React to hydrate + issue the API call.
-                page.wait_for_timeout(_POST_NAV_SETTLE)
+                # Wait for network to be idle so the SPA redirect chain
+                # (404.html → base → replaceState) and the API call all complete.
+                try:
+                    page.wait_for_load_state("networkidle", timeout=_PAGE_LOAD_TIMEOUT)
+                except Exception:
+                    pass  # networkidle may time out; the response handler will have fired
 
                 # -- Step 3: assert API responded with 400 ----------------------------
                 if captured_api_statuses:
