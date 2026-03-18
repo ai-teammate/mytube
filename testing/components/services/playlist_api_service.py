@@ -197,6 +197,37 @@ class PlaylistApiService:
                 raw_body=exc.read().decode(),
             )
 
+    def is_reachable(self, timeout: int = 5) -> bool:
+        """Return True if the API server responds to the health endpoint."""
+        health_url = f"{self._base_url}/health"
+        try:
+            with urllib.request.urlopen(health_url, timeout=timeout):
+                return True
+        except Exception:
+            return False
+
+    def get_with_origin_header(
+        self, playlist_id: str, origin: str, timeout: int = 15
+    ) -> tuple[int, dict]:
+        """GET /api/playlists/:id with an Origin header for CORS verification.
+
+        Returns (status_code, response_headers) where all header names are
+        lower-cased for case-insensitive comparison.
+        """
+        url = f"{self._base_url}/api/playlists/{playlist_id}"
+        req = urllib.request.Request(
+            url,
+            method="GET",
+            headers={"Origin": origin},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                headers = {k.lower(): v for k, v in resp.headers.items()}
+                return resp.status, headers
+        except urllib.error.HTTPError as exc:
+            headers = {k.lower(): v for k, v in exc.headers.items()}
+            return exc.code, headers
+
     def get_user_playlists(self, username: str) -> tuple[int, list]:
         """GET /api/users/<username>/playlists — fetch public playlists for a user.
 
