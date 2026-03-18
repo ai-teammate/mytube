@@ -1,58 +1,15 @@
 """
 MYTUBE-602: Dashboard edit modal and tables — backgrounds respect dark theme tokens
 
-Objective
----------
-Verify that the edit-video modal and the playlist management table backgrounds
-correctly switch to dark theme tokens instead of hardcoded white classes.
-
-Preconditions
--------------
-Dark theme is enabled (``body[data-theme="dark"]``).
-
-Steps
------
-1. Navigate to the Dashboard.
-2. Open the Edit Video modal.
-3. Switch to the Playlists tab to view the management table.
-
-Expected Result
----------------
-The modal (``.modalCard``) and table (``.playlistTable``) backgrounds are updated
-to use design tokens like ``var(--bg-content)`` / ``var(--bg-card)``.
-No hardcoded ``bg-white`` or ``bg-gray-50`` Tailwind classes appear on these elements.
-
-Test Strategy
--------------
-Two complementary layers:
-
-**Layer A — Static CSS analysis** (always runs):
-  - Parses ``_content.module.css`` to verify ``.modalCard`` background uses
-    ``var(--bg-content)`` or another CSS variable (not hardcoded white).
-  - Parses ``.playlistTable`` background uses ``var(--bg-content)`` or another
-    CSS variable (not hardcoded white).
-  - Verifies ``_content.tsx`` does NOT contain hardcoded ``bg-white`` or
-    ``bg-gray-50`` Tailwind classes on the modal or playlist table elements.
-
-**Layer B — HTML fixture (Playwright, always runs)**:
-  - Renders a self-contained HTML page embedding the actual ``_content.module.css``
-    and ``globals.css`` with ``data-theme="dark"`` set on ``<body>``.
-  - Uses ``getComputedStyle()`` to assert that the resolved background-color of
-    the modal card and playlist table wrapper matches the dark token values
-    (``--bg-content = #1a1a1f``), NOT ``rgb(255, 255, 255)`` (white).
+See ``testing/tests/MYTUBE-602/README.md`` for full objective, steps, expected
+result, preconditions, and linked bugs.
 
 Architecture
 ------------
-- Playwright sync API with pytest module-scoped fixtures.
-- HTML fixture mode uses page.set_content() with inline CSS — no external deps.
-
-Linked bugs
------------
-MYTUBE-593 (Done): Dashboard My Videos and Playlists look broken in dark theme.
-  Fix replaced all hardcoded Tailwind colour classes and inline hex values in
-  ``_content.tsx`` and ``DashboardVideoCard.module.css`` with CSS design tokens.
-  The modal (``bg-white rounded-2xl``) and playlist table (``rounded-2xl bg-white``)
-  were specifically called out as unthemed elements that now use ``var(--bg-content)``.
+- Layer A uses ``testing.core.utils.css_analysis`` helpers for static CSS parsing.
+- Layer B uses ``DarkThemeFixturePage`` (``testing.components.pages.dark_theme_fixture_page``)
+  to encapsulate all Playwright browser interactions. Tests do not touch the raw
+  Playwright ``Page`` object directly.
 """
 from __future__ import annotations
 
@@ -62,9 +19,13 @@ import sys
 import os
 
 import pytest
-from playwright.sync_api import Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+from testing.core.utils.css_analysis import get_rule_body, read_css, rule_contains
+from testing.components.pages.dark_theme_fixture_page.dark_theme_fixture_page import (
+    DarkThemeFixturePage,
+)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -86,106 +47,16 @@ _WHITE_RGB                     = "rgb(255, 255, 255)"  # hardcoded white — mus
 
 
 # ---------------------------------------------------------------------------
-# CSS helpers
-# ---------------------------------------------------------------------------
-
-def _read_css(path: pathlib.Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _get_rule_body(css_text: str, selector: str) -> str:
-    """Return the rule body for the given CSS selector, or empty string if not found."""
-    # Match `.selector { ... }` — handles multi-line bodies
-    pattern = re.compile(
-        r"\." + re.escape(selector) + r"\s*\{([^}]*)\}",
-        re.DOTALL,
-    )
-    m = pattern.search(css_text)
-    return m.group(1) if m else ""
-
-
-def _rule_contains(css_text: str, selector: str, token: str) -> bool:
-    body = _get_rule_body(css_text, selector)
-    return token in body
-
-
-# ---------------------------------------------------------------------------
-# HTML fixture builder
-# ---------------------------------------------------------------------------
-
-def _build_dark_theme_fixture() -> str:
-    """Return a self-contained HTML page with dark theme, modal card, and playlist table."""
-    globals_css = _read_css(_GLOBALS_CSS)
-    content_css = _read_css(_CONTENT_CSS)
-    return (
-        "<!DOCTYPE html>\n"
-        "<html lang=\"en\">\n"
-        "<head>\n"
-        "  <meta charset=\"UTF-8\">\n"
-        "  <title>Dashboard Dark Theme Fixture MYTUBE-602</title>\n"
-        "  <style>" + globals_css + "</style>\n"
-        "  <style>" + content_css + "</style>\n"
-        "</head>\n"
-        "<body data-theme=\"dark\">\n"
-        "  <!-- Edit Video modal -->\n"
-        "  <div class=\"modalCard\" id=\"modal-card\"\n"
-        "       role=\"dialog\" aria-modal=\"true\">\n"
-        "    <h2 class=\"modalTitle\">Edit Video</h2>\n"
-        "  </div>\n"
-        "  <!-- Playlist management table wrapper -->\n"
-        "  <div class=\"playlistTable\" id=\"playlist-table\">\n"
-        "    <table class=\"playlistTableEl\">\n"
-        "      <thead>\n"
-        "        <tr class=\"playlistTableHead\">\n"
-        "          <th class=\"playlistTableHeadCell\">Name</th>\n"
-        "          <th class=\"playlistTableHeadCell\">Date</th>\n"
-        "          <th class=\"playlistTableHeadCell\">Actions</th>\n"
-        "        </tr>\n"
-        "      </thead>\n"
-        "      <tbody>\n"
-        "        <tr class=\"playlistTableRow\">\n"
-        "          <td class=\"playlistTableCellTitle\">My Playlist</td>\n"
-        "          <td class=\"playlistTableCellDate\">Jan 1, 2026</td>\n"
-        "          <td class=\"playlistTableCellActions\">Rename</td>\n"
-        "        </tr>\n"
-        "      </tbody>\n"
-        "    </table>\n"
-        "  </div>\n"
-        "</body>\n"
-        "</html>"
-    )
-
-
-# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def dark_fixture_page(browser):
-    """Playwright page loaded with the dark-theme HTML fixture."""
-    page = browser.new_page()
-    page.set_content(
-        _build_dark_theme_fixture(),
-        wait_until="domcontentloaded",
-    )
-    yield page
-    page.close()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _get_computed_bg(page: Page, selector: str) -> str:
-    """Return the computed background-color of the first element matching selector."""
-    return page.evaluate(
-        """([sel]) => {
-            const el = document.querySelector(sel);
-            if (!el) return '';
-            return getComputedStyle(el).getPropertyValue('background-color').trim();
-        }""",
-        [selector],
-    )
+    """DarkThemeFixturePage component loaded with the dark-theme HTML fixture."""
+    component = DarkThemeFixturePage(browser)
+    component.load()
+    yield component
+    component.close()
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +71,7 @@ class TestDashboardModalAndTableStaticCSS:
             f"_content.module.css not found at {_CONTENT_CSS}. "
             "The file may have been moved or renamed."
         )
-        self.css = _read_css(_CONTENT_CSS)
+        self.css = read_css(_CONTENT_CSS)
 
     def test_content_css_file_exists(self) -> None:
         """_content.module.css must exist in the dashboard source directory."""
@@ -210,7 +81,7 @@ class TestDashboardModalAndTableStaticCSS:
 
     def test_modal_card_rule_exists(self) -> None:
         """A `.modalCard` rule must be defined in _content.module.css."""
-        body = _get_rule_body(self.css, "modalCard")
+        body = get_rule_body(self.css, "modalCard")
         assert body, (
             "No '.modalCard { ... }' rule found in _content.module.css. "
             "The edit-video modal card style may be missing."
@@ -223,7 +94,7 @@ class TestDashboardModalAndTableStaticCSS:
         `var(--bg-content)` to support dark theme. This test ensures the rule
         references a CSS custom property for the background.
         """
-        body = _get_rule_body(self.css, "modalCard")
+        body = get_rule_body(self.css, "modalCard")
         assert "var(" in body and "background" in body, (
             f"'.modalCard' rule does not use a CSS variable for background. "
             f"Found rule body: {body!r}. "
@@ -237,17 +108,17 @@ class TestDashboardModalAndTableStaticCSS:
         These are the canonical dark-mode surface tokens. Any other variable
         could still render white in dark mode.
         """
-        uses_bg_content = _rule_contains(self.css, "modalCard", "--bg-content")
-        uses_bg_card    = _rule_contains(self.css, "modalCard", "--bg-card")
+        uses_bg_content = rule_contains(self.css, "modalCard", "--bg-content")
+        uses_bg_card    = rule_contains(self.css, "modalCard", "--bg-card")
         assert uses_bg_content or uses_bg_card, (
             f"'.modalCard' background does not reference '--bg-content' or '--bg-card'. "
-            f"Found rule body: {_get_rule_body(self.css, 'modalCard')!r}. "
+            f"Found rule body: {get_rule_body(self.css, 'modalCard')!r}. "
             "The modal card must use one of these surface tokens for correct dark-mode rendering."
         )
 
     def test_modal_card_background_not_hardcoded_white(self) -> None:
         """`.modalCard` must NOT contain hardcoded white colour values (#fff, #ffffff, white)."""
-        body = _get_rule_body(self.css, "modalCard")
+        body = get_rule_body(self.css, "modalCard")
         for forbidden in ("#fff", "#ffffff", " white", ":white", "rgb(255"):
             assert forbidden not in body.lower(), (
                 f"'.modalCard' rule contains a hardcoded white colour ({forbidden!r}). "
@@ -257,7 +128,7 @@ class TestDashboardModalAndTableStaticCSS:
 
     def test_playlist_table_rule_exists(self) -> None:
         """A `.playlistTable` rule must be defined in _content.module.css."""
-        body = _get_rule_body(self.css, "playlistTable")
+        body = get_rule_body(self.css, "playlistTable")
         assert body, (
             "No '.playlistTable { ... }' rule found in _content.module.css. "
             "The playlist table wrapper style may be missing."
@@ -269,7 +140,7 @@ class TestDashboardModalAndTableStaticCSS:
         The MYTUBE-593 fix replaced the `rounded-2xl bg-white` playlist table with
         `var(--bg-content)` to support dark theme.
         """
-        body = _get_rule_body(self.css, "playlistTable")
+        body = get_rule_body(self.css, "playlistTable")
         assert "var(" in body and "background" in body, (
             f"'.playlistTable' rule does not use a CSS variable for background. "
             f"Found rule body: {body!r}. "
@@ -279,17 +150,17 @@ class TestDashboardModalAndTableStaticCSS:
 
     def test_playlist_table_background_uses_bg_content_or_bg_card_token(self) -> None:
         """`.playlistTable` background must reference `--bg-content` or `--bg-card`."""
-        uses_bg_content = _rule_contains(self.css, "playlistTable", "--bg-content")
-        uses_bg_card    = _rule_contains(self.css, "playlistTable", "--bg-card")
+        uses_bg_content = rule_contains(self.css, "playlistTable", "--bg-content")
+        uses_bg_card    = rule_contains(self.css, "playlistTable", "--bg-card")
         assert uses_bg_content or uses_bg_card, (
             f"'.playlistTable' background does not reference '--bg-content' or '--bg-card'. "
-            f"Found rule body: {_get_rule_body(self.css, 'playlistTable')!r}. "
+            f"Found rule body: {get_rule_body(self.css, 'playlistTable')!r}. "
             "The playlist table must use one of these surface tokens for correct dark-mode rendering."
         )
 
     def test_playlist_table_background_not_hardcoded_white(self) -> None:
         """`.playlistTable` must NOT contain hardcoded white colour values."""
-        body = _get_rule_body(self.css, "playlistTable")
+        body = get_rule_body(self.css, "playlistTable")
         for forbidden in ("#fff", "#ffffff", " white", ":white", "rgb(255"):
             assert forbidden not in body.lower(), (
                 f"'.playlistTable' rule contains a hardcoded white colour ({forbidden!r}). "
@@ -343,7 +214,7 @@ class TestDashboardModalAndTableStaticCSS:
         will resolve to is defined and not inherited from the light theme.
         """
         assert _GLOBALS_CSS.exists(), f"globals.css not found at {_GLOBALS_CSS}"
-        css_text = _GLOBALS_CSS.read_text(encoding="utf-8")
+        css_text = read_css(_GLOBALS_CSS)
         dark_block_match = re.search(
             r'body\[data-theme="dark"\]\s*\{([^}]*)\}',
             css_text,
@@ -371,16 +242,17 @@ class TestDashboardModalAndTableDarkThemeComputed:
     """Layer B: Verify computed background-color values of modal and table in dark theme.
 
     Uses a self-contained HTML fixture with actual CSS files and
-    body[data-theme="dark"] to resolve CSS variables.
+    body[data-theme="dark"] to resolve CSS variables. All browser interactions
+    go through the DarkThemeFixturePage component.
     """
 
-    def test_dark_theme_is_active_on_body(self, dark_fixture_page: Page) -> None:
+    def test_dark_theme_is_active_on_body(self, dark_fixture_page: DarkThemeFixturePage) -> None:
         """Precondition: body[data-theme="dark"] is set.
 
         Verified by checking the body's own background-color resolves to
         --bg-page = #0f0f11 = rgb(15, 15, 17).
         """
-        bg = _get_computed_bg(dark_fixture_page, "body")
+        bg = dark_fixture_page.get_body_background_color()
         assert bg == "rgb(15, 15, 17)", (
             f"body background-color in dark theme expected 'rgb(15, 15, 17)' "
             f"(--bg-page = #0f0f11) but got '{bg}'. "
@@ -388,17 +260,15 @@ class TestDashboardModalAndTableDarkThemeComputed:
             "--bg-page: #0f0f11 in the dark theme block."
         )
 
-    def test_modal_card_element_present(self, dark_fixture_page: Page) -> None:
+    def test_modal_card_element_present(self, dark_fixture_page: DarkThemeFixturePage) -> None:
         """Step 2: the modal card element (#modal-card) must be present in the DOM."""
-        count = dark_fixture_page.evaluate(
-            "() => document.querySelectorAll('#modal-card').length"
-        )
+        count = dark_fixture_page.element_count("modal-card")
         assert count == 1, (
             f"Expected 1 modal card element with id='modal-card' but found {count}."
         )
 
     def test_modal_card_background_is_dark_not_white(
-        self, dark_fixture_page: Page
+        self, dark_fixture_page: DarkThemeFixturePage
     ) -> None:
         """Step 2: Modal card background must NOT be white in dark theme.
 
@@ -406,7 +276,7 @@ class TestDashboardModalAndTableDarkThemeComputed:
         with 'var(--bg-content)'. In dark mode, --bg-content resolves to #1a1a1f
         (rgb(26, 26, 31)), NOT rgb(255, 255, 255) (white).
         """
-        bg = _get_computed_bg(dark_fixture_page, "#modal-card")
+        bg = dark_fixture_page.get_background_color("modal-card")
         assert bg != _WHITE_RGB, (
             f"Modal card background-color in dark theme is '{bg}' which equals white "
             f"({_WHITE_RGB}). The modal is NOT adapting to dark theme. "
@@ -415,10 +285,10 @@ class TestDashboardModalAndTableDarkThemeComputed:
         )
 
     def test_modal_card_background_matches_bg_content_dark_token(
-        self, dark_fixture_page: Page
+        self, dark_fixture_page: DarkThemeFixturePage
     ) -> None:
         """Step 2: Modal card background must resolve to --bg-content = #1a1a1f in dark mode."""
-        bg = _get_computed_bg(dark_fixture_page, "#modal-card")
+        bg = dark_fixture_page.get_background_color("modal-card")
         assert bg == _EXPECTED_BG_CONTENT_DARK_RGB, (
             f"Modal card background-color in dark theme expected "
             f"'{_EXPECTED_BG_CONTENT_DARK_RGB}' (--bg-content = #1a1a1f) but got '{bg}'. "
@@ -426,17 +296,15 @@ class TestDashboardModalAndTableDarkThemeComputed:
             "render in dark theme. Check .modalCard in _content.module.css."
         )
 
-    def test_playlist_table_element_present(self, dark_fixture_page: Page) -> None:
+    def test_playlist_table_element_present(self, dark_fixture_page: DarkThemeFixturePage) -> None:
         """Step 3: the playlist table wrapper (#playlist-table) must be present in the DOM."""
-        count = dark_fixture_page.evaluate(
-            "() => document.querySelectorAll('#playlist-table').length"
-        )
+        count = dark_fixture_page.element_count("playlist-table")
         assert count == 1, (
             f"Expected 1 playlist table element with id='playlist-table' but found {count}."
         )
 
     def test_playlist_table_background_is_dark_not_white(
-        self, dark_fixture_page: Page
+        self, dark_fixture_page: DarkThemeFixturePage
     ) -> None:
         """Step 3: Playlist table wrapper background must NOT be white in dark theme.
 
@@ -444,7 +312,7 @@ class TestDashboardModalAndTableDarkThemeComputed:
         on the playlist table with 'var(--bg-content)'. In dark mode, --bg-content
         resolves to #1a1a1f, NOT white.
         """
-        bg = _get_computed_bg(dark_fixture_page, "#playlist-table")
+        bg = dark_fixture_page.get_background_color("playlist-table")
         assert bg != _WHITE_RGB, (
             f"Playlist table background-color in dark theme is '{bg}' which equals white "
             f"({_WHITE_RGB}). The playlist table is NOT adapting to dark theme. "
@@ -453,10 +321,10 @@ class TestDashboardModalAndTableDarkThemeComputed:
         )
 
     def test_playlist_table_background_matches_bg_content_dark_token(
-        self, dark_fixture_page: Page
+        self, dark_fixture_page: DarkThemeFixturePage
     ) -> None:
         """Step 3: Playlist table background must resolve to --bg-content = #1a1a1f in dark mode."""
-        bg = _get_computed_bg(dark_fixture_page, "#playlist-table")
+        bg = dark_fixture_page.get_background_color("playlist-table")
         assert bg == _EXPECTED_BG_CONTENT_DARK_RGB, (
             f"Playlist table background-color in dark theme expected "
             f"'{_EXPECTED_BG_CONTENT_DARK_RGB}' (--bg-content = #1a1a1f) but got '{bg}'. "
@@ -465,7 +333,7 @@ class TestDashboardModalAndTableDarkThemeComputed:
         )
 
     def test_modal_background_contrasts_with_page_background(
-        self, dark_fixture_page: Page
+        self, dark_fixture_page: DarkThemeFixturePage
     ) -> None:
         """Modal card background must be visually distinct from the page background.
 
@@ -475,22 +343,22 @@ class TestDashboardModalAndTableDarkThemeComputed:
 
         If both are the same, the modal will be invisible.
         """
-        modal_bg = _get_computed_bg(dark_fixture_page, "#modal-card")
-        page_bg  = _get_computed_bg(dark_fixture_page, "body")
+        modal_bg = dark_fixture_page.get_background_color("modal-card")
+        page_bg  = dark_fixture_page.get_body_background_color()
         assert modal_bg != page_bg, (
             f"Modal card background ('{modal_bg}') is identical to the page background "
             f"('{page_bg}'). The modal would be invisible against the dark page background."
         )
 
     def test_playlist_table_background_contrasts_with_page_background(
-        self, dark_fixture_page: Page
+        self, dark_fixture_page: DarkThemeFixturePage
     ) -> None:
         """Playlist table background must be visually distinct from the page background.
 
         Same contrast requirement as the modal.
         """
-        table_bg = _get_computed_bg(dark_fixture_page, "#playlist-table")
-        page_bg  = _get_computed_bg(dark_fixture_page, "body")
+        table_bg = dark_fixture_page.get_background_color("playlist-table")
+        page_bg  = dark_fixture_page.get_body_background_color()
         assert table_bg != page_bg, (
             f"Playlist table background ('{table_bg}') is identical to the page background "
             f"('{page_bg}'). The playlist management table would be invisible against the "
