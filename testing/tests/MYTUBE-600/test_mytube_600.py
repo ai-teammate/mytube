@@ -89,9 +89,9 @@ Architecture
 """
 from __future__ import annotations
 
+import json as _json
 import os
 import sys
-import urllib.error
 import urllib.request
 from typing import Optional
 from urllib.parse import urlparse
@@ -110,7 +110,6 @@ from testing.components.services.playlist_api_service import PlaylistApiService
 
 _EXPECTED_ALLOWED_ORIGIN = "https://ai-teammate.github.io"
 _TEMP_PLAYLIST_TITLE = "CI Test Playlist - MYTUBE-600"
-_REQUEST_TIMEOUT = 15
 
 # CI test username is derived from the email address.
 _CI_EMAIL = os.getenv("FIREBASE_TEST_EMAIL", "tester@example.com")
@@ -124,76 +123,25 @@ _api_config = APIConfig()
 _web_config = WebConfig()
 _firebase_token: str = os.getenv("FIREBASE_TEST_TOKEN", "")
 
+# Shared service instance (no auth token needed for public reads / reachability).
+_svc = PlaylistApiService(base_url=_api_config.base_url, token=_firebase_token)
+
 
 def _is_api_reachable() -> bool:
     """Return True if the API server is reachable."""
-    health_url = _api_config.health_url()
-    try:
-        with urllib.request.urlopen(health_url, timeout=5):
-            return True
-    except Exception:
-        return False
+    return _svc.is_reachable()
 
 
-def _get_or_create_playlist_id() -> Optional[str]:
-    """Return a valid playlist UUID for testing.
-
-    Strategy:
-    1. If FIREBASE_TEST_TOKEN is set, create a temporary playlist and return
-       its ID (cleaned up after the test).
-    2. Otherwise, query the CI test user's existing playlists and return the
-       first one found.
-    Returns None when neither approach yields an ID.
-    """
-    svc = PlaylistApiService(base_url=_api_config.base_url, token=_firebase_token)
-
-    if _firebase_token:
-        status, body = svc.create_playlist(_TEMP_PLAYLIST_TITLE)
-        if status in (200, 201):
-            import json as _json
-            try:
-                data = _json.loads(body)
-                pid = data.get("id") or data.get("playlist_id")
-                if pid:
-                    return pid
-            except Exception:
-                pass
-
-    # Fallback: read existing playlists for the CI test user.
-    status, playlists = svc.get_user_playlists(_CI_USERNAME)
-    if status == 200 and playlists:
-        return playlists[0].get("id")
-
-    return None
+def _get_playlist_with_headers(playlist_id: str) -> tuple[int, dict]:
+    """Send GET /api/playlists/{id} with an Origin header via the service."""
+    return _svc.get_with_origin_header(playlist_id, _EXPECTED_ALLOWED_ORIGIN)
 
 
 def _delete_playlist(playlist_id: str) -> None:
     """Delete the temporary playlist created for the test."""
     if not _firebase_token or not playlist_id:
         return
-    svc = PlaylistApiService(base_url=_api_config.base_url, token=_firebase_token)
-    svc.delete_playlist(playlist_id)
-
-
-def _get_playlist_with_headers(playlist_id: str) -> tuple[int, dict]:
-    """Send GET /api/playlists/{id} with an Origin header.
-
-    Returns (status_code, response_headers_dict).
-    All header names are lower-cased for case-insensitive comparison.
-    """
-    url = f"{_api_config.base_url.rstrip('/')}/api/playlists/{playlist_id}"
-    req = urllib.request.Request(
-        url,
-        method="GET",
-        headers={"Origin": _EXPECTED_ALLOWED_ORIGIN},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            headers = {k.lower(): v for k, v in resp.headers.items()}
-            return resp.status, headers
-    except urllib.error.HTTPError as exc:
-        headers = {k.lower(): v for k, v in exc.headers.items()}
-        return exc.code, headers
+    _svc.delete_playlist(playlist_id)
 
 
 # ---------------------------------------------------------------------------
@@ -209,11 +157,9 @@ def setup_module(module):
     if not _is_api_reachable():
         return
     # Try to create; track whether we own it so we can clean it up.
-    svc = PlaylistApiService(base_url=_api_config.base_url, token=_firebase_token)
     if _firebase_token:
-        status, body = svc.create_playlist(_TEMP_PLAYLIST_TITLE)
+        status, body = _svc.create_playlist(_TEMP_PLAYLIST_TITLE)
         if status in (200, 201):
-            import json as _json
             try:
                 data = _json.loads(body)
                 pid = data.get("id") or data.get("playlist_id")
@@ -224,7 +170,7 @@ def setup_module(module):
             except Exception:
                 pass
     # Fallback: use an existing playlist.
-    status, playlists = svc.get_user_playlists(_CI_USERNAME)
+    status, playlists = _svc.get_user_playlists(_CI_USERNAME)
     if status == 200 and playlists:
         _playlist_id = playlists[0].get("id")
 
@@ -359,45 +305,42 @@ class TestPlaylistRequestUrlViaPlaywright:
             )
             context = browser.new_context()
 
-            def on_request(request):
-                nonlocal intercepted_request_url
-                # Capture the first request matching /api/playlists/<uuid>
-                if (
-                    "/api/playlists/" in request.url
-                    and intercepted_request_url is None
-                ):
-                    intercepted_request_url = request.url
-
-            def on_response(response):
-                nonlocal intercepted_response_headers
-                if "/api/playlists/" in response.url and not intercepted_response_headers:
-                    intercepted_response_headers = {
-                        k.lower(): v
-                        for k, v in response.headers.items()
-                    }
-
-            page = context.new_page()
-            page.on("request", on_request)
-            page.on("response", on_response)
-
             # Inject the SPA session storage key before navigation so the page
             # component reads the real playlist UUID (MYTUBE-592 fix).
             context.add_init_script(
                 f"sessionStorage.setItem('__spa_playlist_id', '{_playlist_id}');"
             )
 
-            # Try the SPA shell URL first; fall back to the direct URL.
+            page = context.new_page()
+
+            # Try the SPA shell URL first using event-driven waiting.
             try:
-                page.goto(playlist_shell_url, timeout=20_000)
-                page.wait_for_timeout(5_000)  # Wait for async data fetch
+                with page.expect_response(
+                    lambda r: "/api/playlists/" in r.url,
+                    timeout=20_000,
+                ) as resp_info:
+                    page.goto(playlist_shell_url, timeout=20_000)
+                response = resp_info.value
+                intercepted_request_url = response.request.url
+                intercepted_response_headers = {
+                    k.lower(): v for k, v in response.headers.items()
+                }
             except Exception:
-                pass
+                pass  # fall through to retry with direct URL
 
             if not intercepted_request_url:
-                # Retry with direct URL.
+                # Retry with direct URL using event-driven waiting.
                 try:
-                    page.goto(playlist_direct_url, timeout=20_000)
-                    page.wait_for_timeout(5_000)
+                    with page.expect_response(
+                        lambda r: "/api/playlists/" in r.url,
+                        timeout=20_000,
+                    ) as resp_info:
+                        page.goto(playlist_direct_url, timeout=20_000)
+                    response = resp_info.value
+                    intercepted_request_url = response.request.url
+                    intercepted_response_headers = {
+                        k.lower(): v for k, v in response.headers.items()
+                    }
                 except Exception:
                     pass
 
