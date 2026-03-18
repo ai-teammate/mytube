@@ -62,9 +62,6 @@ from testing.core.config.web_config import WebConfig
 # Constants
 # ---------------------------------------------------------------------------
 
-_DEPLOYED_API_URL = "https://mytube-api-80693608388.us-central1.run.app"
-_API_BASE_URL = os.getenv("API_BASE_URL", _DEPLOYED_API_URL)
-
 _INVALID_UUID = "not-a-valid-uuid-123"
 
 _GENERIC_FAILURE_TEXT = "Could not load playlist"
@@ -104,7 +101,7 @@ def config() -> WebConfig:
 class TestMytube598InvalidUuidApi:
     """MYTUBE-598 — Direct API: GET /api/playlists/<invalid-uuid> returns 400."""
 
-    def test_invalid_uuid_returns_400(self) -> None:
+    def test_invalid_uuid_returns_400(self, config: WebConfig) -> None:
         """
         Step 3 (API side): Call GET /api/playlists/not-a-valid-uuid-123 directly
         and assert the backend returns HTTP 400 Bad Request.
@@ -113,12 +110,12 @@ class TestMytube598InvalidUuidApi:
         correctly for a malformed ID and prevents the backend from executing
         a DB query against junk input.
         """
-        if not _is_url_reachable(f"{_API_BASE_URL}/health"):
+        if not _is_url_reachable(f"{config.api_base_url}/health"):
             pytest.skip(
-                f"API at {_API_BASE_URL} is not reachable — skipping API test."
+                f"API at {config.api_base_url} is not reachable — skipping API test."
             )
 
-        svc = PlaylistApiService(base_url=_API_BASE_URL)
+        svc = PlaylistApiService(base_url=config.api_base_url)
         result = svc.get_playlist(_INVALID_UUID)
 
         assert result.status_code == 400, (
@@ -175,68 +172,71 @@ class TestMytube598InvalidUuidUi:
             context = browser.new_context()
             page = context.new_page()
 
-            # -- Step 1: log in ---------------------------------------------------
-            login_page = LoginPage(page)
-            login_page.navigate(config.login_url())
-            login_page.wait_for_form(timeout=_PAGE_LOAD_TIMEOUT)
-            login_page.login_as(config.test_email, config.test_password)
-
-            # Wait for redirect to home after successful login.
             try:
-                page.wait_for_url(
-                    lambda u: "/login" not in u,
-                    timeout=15_000,
+                # -- Step 1: log in ---------------------------------------------------
+                login_page = LoginPage(page)
+                login_page.navigate(config.login_url())
+                login_page.wait_for_form(timeout=_PAGE_LOAD_TIMEOUT)
+                login_page.login_as(config.test_email, config.test_password)
+
+                # Wait for redirect to home after successful login.
+                try:
+                    page.wait_for_url(
+                        lambda u: "/login" not in u,
+                        timeout=15_000,
+                    )
+                except Exception as exc:
+                    # Timeout is acceptable if the redirect already completed,
+                    # but log so flakiness is visible in CI.
+                    print(f"[MYTUBE-598] wait_for_url after login timed out ({exc}); continuing.")
+
+                # -- Step 2: navigate to invalid-UUID playlist URL --------------------
+                # Intercept API responses to capture status codes.
+                def _on_response(resp) -> None:
+                    if f"/api/playlists/{_INVALID_UUID}" in resp.url:
+                        captured_api_statuses.append(resp.status)
+
+                page.on("response", _on_response)
+
+                playlist_page = PlaylistPage(page)
+                playlist_page.navigate(config.base_url, _INVALID_UUID)
+
+                # Allow time for the SPA redirect chain (404.html → base → replaceState)
+                # and React to hydrate + issue the API call.
+                page.wait_for_timeout(_POST_NAV_SETTLE)
+
+                # -- Step 3: assert API responded with 400 ----------------------------
+                if captured_api_statuses:
+                    assert 400 in captured_api_statuses, (
+                        f"Expected the intercepted API call to "
+                        f"GET /api/playlists/{_INVALID_UUID} to return HTTP 400, "
+                        f"but received status codes: {captured_api_statuses}.\n"
+                        f"The backend isValidUUID guard may not be firing correctly."
+                    )
+                # If no API call was captured the SPA may have short-circuited
+                # before reaching the fetch (e.g., showed 404 immediately) —
+                # we still assert on the UI below.
+
+                # -- Step 4: verify the UI does NOT show the generic failure text -----
+                page_text = page.evaluate("() => document.body.innerText")
+                assert _GENERIC_FAILURE_TEXT not in page_text, (
+                    f"The UI displayed the generic connection failure message "
+                    f"'{_GENERIC_FAILURE_TEXT}' when navigating to "
+                    f"/pl/{_INVALID_UUID}.\n"
+                    f"Expected: 'Playlist not found.' or a specific validation error.\n"
+                    f"Actual UI text (truncated):\n{page_text[:500]}"
                 )
-            except Exception:
-                pass  # may already have navigated
 
-            # -- Step 2: navigate to invalid-UUID playlist URL --------------------
-            # Intercept API responses to capture status codes.
-            def _on_response(resp) -> None:
-                if f"/api/playlists/{_INVALID_UUID}" in resp.url:
-                    captured_api_statuses.append(resp.status)
+                # -- Step 5: verify the UI shows a meaningful error state -------------
+                shows_not_found = playlist_page.is_not_found()
+                shows_error_alert = playlist_page.is_error_displayed()
 
-            page.on("response", _on_response)
-
-            playlist_page = PlaylistPage(page)
-            playlist_page.navigate(config.base_url, _INVALID_UUID)
-
-            # Allow time for the SPA redirect chain (404.html → base → replaceState)
-            # and React to hydrate + issue the API call.
-            page.wait_for_timeout(_POST_NAV_SETTLE)
-
-            # -- Step 3: assert API responded with 400 ----------------------------
-            if captured_api_statuses:
-                assert 400 in captured_api_statuses, (
-                    f"Expected the intercepted API call to "
-                    f"GET /api/playlists/{_INVALID_UUID} to return HTTP 400, "
-                    f"but received status codes: {captured_api_statuses}.\n"
-                    f"The backend isValidUUID guard may not be firing correctly."
+                assert shows_not_found or shows_error_alert, (
+                    f"The UI did not display either 'Playlist not found.' or an "
+                    f"error alert after navigating to /pl/{_INVALID_UUID}.\n"
+                    f"shows_not_found={shows_not_found}, "
+                    f"shows_error_alert={shows_error_alert}.\n"
+                    f"Page text (truncated):\n{page_text[:500]}"
                 )
-            # If no API call was captured the SPA may have short-circuited
-            # before reaching the fetch (e.g., showed 404 immediately) —
-            # we still assert on the UI below.
-
-            # -- Step 4: verify the UI does NOT show the generic failure text -----
-            page_text = page.evaluate("() => document.body.innerText")
-            assert _GENERIC_FAILURE_TEXT not in page_text, (
-                f"The UI displayed the generic connection failure message "
-                f"'{_GENERIC_FAILURE_TEXT}' when navigating to "
-                f"/pl/{_INVALID_UUID}.\n"
-                f"Expected: 'Playlist not found.' or a specific validation error.\n"
-                f"Actual UI text (truncated):\n{page_text[:500]}"
-            )
-
-            # -- Step 5: verify the UI shows a meaningful error state -------------
-            shows_not_found = playlist_page.is_not_found()
-            shows_error_alert = playlist_page.is_error_displayed()
-
-            assert shows_not_found or shows_error_alert, (
-                f"The UI did not display either 'Playlist not found.' or an "
-                f"error alert after navigating to /pl/{_INVALID_UUID}.\n"
-                f"shows_not_found={shows_not_found}, "
-                f"shows_error_alert={shows_error_alert}.\n"
-                f"Page text (truncated):\n{page_text[:500]}"
-            )
-
-            browser.close()
+            finally:
+                browser.close()
