@@ -25,6 +25,7 @@ class PlaylistPage:
     # Loading / error states
     _LOADING_TEXT = "text=Loading..."
     _NOT_FOUND_TEXT = "text=Playlist not found."
+    _LOAD_ERROR_TEXT = "Could not load playlist. Please try again later."
     _ERROR_ALERT = "[role='alert']"
 
     # Playlist header
@@ -87,6 +88,14 @@ class PlaylistPage:
     def is_not_found(self) -> bool:
         """Return True if 'Playlist not found.' is shown."""
         return self._page.locator(self._NOT_FOUND_TEXT).count() > 0
+
+    def has_error_message(self) -> bool:
+        """Return True if the 'Could not load playlist' error message is shown."""
+        return self._page.locator(f"text={self._LOAD_ERROR_TEXT}").count() > 0
+
+    def get_current_url(self) -> str:
+        """Return the current page URL."""
+        return self._page.url
 
     def is_error_displayed(self) -> bool:
         """Return True if an error alert is visible."""
