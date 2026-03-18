@@ -464,7 +464,8 @@
 }
 
 .btnLinkAccent:hover {
-  color: var(--accent-action-hover-bg);
+  color: var(--accent-logo);
+  opacity: 0.75;
 }
 
 .btnLinkAccent:disabled {
@@ -474,11 +475,12 @@
 
 .btnLinkDanger {
   composes: btnLink;
-  color: #dc2626;
+  color: var(--status-failed-fg);
 }
 
 .btnLinkDanger:hover {
-  color: #991b1b;
+  color: var(--status-failed-fg);
+  opacity: 0.8;
 }
 
 .btnLinkDanger:disabled {

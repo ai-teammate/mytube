@@ -215,7 +215,7 @@
 }
 
 .errorText {
-  color: #dc2626;
+  color: var(--status-failed-fg);
 }
 
 /* ─── End of playlist overlay ────────────────────────────────────────────────── */
