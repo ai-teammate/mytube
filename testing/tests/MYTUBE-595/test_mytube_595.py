@@ -63,7 +63,6 @@ Run from repo root:
 from __future__ import annotations
 
 import os
-import re
 import sys
 import urllib.request
 import urllib.error
@@ -83,7 +82,6 @@ from testing.core.config.web_config import WebConfig
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_UPLOAD_CSS = _REPO_ROOT / "web" / "src" / "app" / "upload" / "upload.module.css"
 _GLOBALS_CSS = _REPO_ROOT / "web" / "src" / "app" / "globals.css"
 
 # ---------------------------------------------------------------------------
@@ -92,10 +90,6 @@ _GLOBALS_CSS = _REPO_ROOT / "web" / "src" / "app" / "globals.css"
 
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
 _VIEWPORT = {"width": 1280, "height": 800}
-
-# CSS variable values resolved from globals.css (both themes use same accent-cta)
-_ACCENT_CTA_LIGHT = "#62c235"
-_ACCENT_CTA_DARK = "#62c235"
 
 
 # ---------------------------------------------------------------------------
@@ -116,20 +110,6 @@ def _is_base_url_reachable(url: str, timeout: int = 10) -> bool:
         return False
 
 
-def _get_file_selector_button_rule(css_text: str) -> str | None:
-    """Return the declaration block of the ``.fileInput::file-selector-button`` rule."""
-    pattern = r"\.fileInput\s*::\s*file-selector-button\s*\{([^}]*)\}"
-    match = re.search(pattern, css_text, re.DOTALL | re.IGNORECASE)
-    return match.group(1) if match else None
-
-
-def _get_file_selector_button_hover_rule(css_text: str) -> str | None:
-    """Return the declaration block of the ``.fileInput::file-selector-button:hover`` rule."""
-    pattern = r"\.fileInput\s*::\s*file-selector-button\s*:\s*hover\s*\{([^}]*)\}"
-    match = re.search(pattern, css_text, re.DOTALL | re.IGNORECASE)
-    return match.group(1) if match else None
-
-
 # ---------------------------------------------------------------------------
 # Layer A — Static CSS analysis (no browser required)
 # ---------------------------------------------------------------------------
@@ -139,76 +119,60 @@ class TestFileSelectorButtonCSS:
     """Layer A: Verify that upload.module.css contains the required
     ``::file-selector-button`` rules introduced in the MYTUBE-591 fix."""
 
+    @pytest.fixture(autouse=True)
+    def css_module(self) -> None:
+        self._css = UploadCSSModule()
+
     def test_upload_css_file_exists(self) -> None:
         """The upload.module.css file must exist in the repository."""
-        assert _UPLOAD_CSS.exists(), (
-            f"upload.module.css not found at {_UPLOAD_CSS}. "
+        assert self._css.file_exists(), (
+            "upload.module.css not found. "
             "The file may have been moved or deleted."
         )
 
     def test_file_selector_button_rule_exists(self) -> None:
         """A ``::file-selector-button`` rule must be defined for ``.fileInput``."""
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        rule_body = _get_file_selector_button_rule(css_text)
-        assert rule_body is not None, (
+        # get_rule_body raises AssertionError if the rule is not found
+        body = self._css.get_rule_body("fileInput::file-selector-button")
+        assert body is not None, (
             "No '.fileInput::file-selector-button { ... }' rule found in "
-            f"{_UPLOAD_CSS.name}. "
+            "upload.module.css. "
             "The MYTUBE-591 fix requires this rule for the button to be visible."
         )
 
     def test_file_selector_button_has_background(self) -> None:
         """The ``::file-selector-button`` rule must declare a background colour."""
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        rule_body = _get_file_selector_button_rule(css_text)
-        assert rule_body is not None, "::file-selector-button rule not found"
-        normalised = re.sub(r"\s+", " ", rule_body).strip().lower()
-        assert "background" in normalised, (
-            f"'.fileInput::file-selector-button' rule does not declare a "
-            f"'background' property. Rule body: {normalised!r}"
+        assert self._css.rule_contains("fileInput::file-selector-button", "background"), (
+            "'.fileInput::file-selector-button' rule does not declare a "
+            "'background' property."
         )
 
     def test_file_selector_button_uses_accent_cta(self) -> None:
         """The background must use the ``--accent-cta`` design token."""
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        rule_body = _get_file_selector_button_rule(css_text)
-        assert rule_body is not None, "::file-selector-button rule not found"
-        normalised = re.sub(r"\s+", " ", rule_body).strip().lower()
-        assert "--accent-cta" in normalised, (
-            f"'.fileInput::file-selector-button' background does not reference "
-            f"'--accent-cta'. Rule body: {normalised!r}. "
-            "The button may be invisible in dark theme."
+        assert self._css.rule_contains("fileInput::file-selector-button", "--accent-cta"), (
+            "'.fileInput::file-selector-button' background does not reference "
+            "'--accent-cta'. The button may be invisible in dark theme."
         )
 
     def test_file_selector_button_has_text_cta_color(self) -> None:
         """The ``::file-selector-button`` rule must declare ``color: var(--text-cta)``."""
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        rule_body = _get_file_selector_button_rule(css_text)
-        assert rule_body is not None, "::file-selector-button rule not found"
-        normalised = re.sub(r"\s+", " ", rule_body).strip().lower()
-        assert "--text-cta" in normalised, (
-            f"'.fileInput::file-selector-button' rule does not set "
-            f"'color: var(--text-cta)'. Rule body: {normalised!r}. "
-            "Text on the button may be unreadable."
+        assert self._css.rule_contains("fileInput::file-selector-button", "--text-cta"), (
+            "'.fileInput::file-selector-button' rule does not set "
+            "'color: var(--text-cta)'. Text on the button may be unreadable."
         )
 
     def test_file_selector_button_hover_rule_exists(self) -> None:
         """A ``::file-selector-button:hover`` rule must be defined."""
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        hover_body = _get_file_selector_button_hover_rule(css_text)
-        assert hover_body is not None, (
+        body = self._css.get_rule_body("fileInput::file-selector-button:hover")
+        assert body is not None, (
             "No '.fileInput::file-selector-button:hover { ... }' rule found in "
-            f"{_UPLOAD_CSS.name}. The button has no hover feedback."
+            "upload.module.css. The button has no hover feedback."
         )
 
     def test_file_selector_button_hover_has_opacity(self) -> None:
         """The hover rule must include an ``opacity`` declaration for visual feedback."""
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        hover_body = _get_file_selector_button_hover_rule(css_text)
-        assert hover_body is not None, "::file-selector-button:hover rule not found"
-        normalised = re.sub(r"\s+", " ", hover_body).strip().lower()
-        assert "opacity" in normalised, (
-            f"'.fileInput::file-selector-button:hover' rule does not set "
-            f"'opacity'. Rule body: {normalised!r}."
+        assert self._css.rule_contains("fileInput::file-selector-button:hover", "opacity"), (
+            "'.fileInput::file-selector-button:hover' rule does not set 'opacity'."
         )
 
     def test_globals_css_defines_accent_cta_light(self) -> None:
