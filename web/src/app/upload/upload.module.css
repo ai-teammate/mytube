@@ -146,6 +146,23 @@
   cursor: pointer;
 }
 
+.fileInput::file-selector-button {
+  background: var(--accent-cta);
+  color: var(--text-cta);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: opacity 0.15s ease;
+}
+
+.fileInput::file-selector-button:hover {
+  opacity: 0.88;
+}
+
 .fileInput:disabled {
   opacity: 0.5;
   cursor: not-allowed;
