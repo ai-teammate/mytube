@@ -68,6 +68,20 @@ describe("ApiPlaylistRepository", () => {
     expect(result).toBeNull();
   });
 
+  it("getByID returns null on 400 (invalid UUID / bad request)", async () => {
+    // MYTUBE-604: a malformed playlist ID returns 400 from the API.
+    // The repository must treat this as "not found" (null) so the UI
+    // displays "Playlist not found." instead of the generic error.
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+    } as Response);
+
+    const repo = new ApiPlaylistRepository(BASE_URL);
+    const result = await repo.getByID("not-a-valid-uuid-123");
+    expect(result).toBeNull();
+  });
+
   it("getByID throws on non-404 error", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,

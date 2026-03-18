@@ -69,7 +69,7 @@ export class ApiPlaylistRepository implements PlaylistRepository {
     const res = await fetch(
       `${this.baseUrl}/api/playlists/${encodeURIComponent(playlistID)}`
     );
-    if (res.status === 404) return null;
+    if (res.status === 404 || res.status === 400) return null;
     if (!res.ok) {
       throw new Error(`Failed to fetch playlist ${playlistID}: ${res.status}`);
     }
