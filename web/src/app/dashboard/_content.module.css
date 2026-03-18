@@ -155,3 +155,377 @@
 .btnUploadCta:hover {
   opacity: 0.88;
 }
+
+/* ─── Page wrapper ───────────────────────────────────────────────────────────── */
+
+.pageWrapper {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: 40px 16px;
+}
+
+/* ─── Tabs ───────────────────────────────────────────────────────────────────── */
+
+.tabBar {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.tabNav {
+  margin-bottom: -1px;
+  display: flex;
+  gap: 24px;
+}
+
+.tabBtn {
+  padding-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.tabBtn:hover {
+  color: var(--text-primary);
+}
+
+.tabBtnActive {
+  border-bottom-color: var(--accent-logo);
+  color: var(--accent-logo);
+}
+
+/* ─── Banners ────────────────────────────────────────────────────────────────── */
+
+.bannerInfo {
+  border-radius: 8px;
+  background: var(--accent-info-bg);
+  border: 1px solid var(--accent-info-border);
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--accent-info-fg);
+}
+
+.bannerError {
+  border-radius: 8px;
+  background: var(--status-failed-bg);
+  border: 1px solid var(--status-failed-fg);
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--status-failed-fg);
+}
+
+/* ─── CTA button ─────────────────────────────────────────────────────────────── */
+
+.btnCta {
+  border-radius: 8px;
+  background: var(--accent-action-bg);
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btnCta:hover {
+  background: var(--accent-action-hover-bg);
+}
+
+.btnCta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Form inputs (modal + playlist create) ──────────────────────────────────── */
+
+.formInput {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  padding: 8px 12px;
+  font-size: 14px;
+  background: var(--bg-content);
+  color: var(--text-primary);
+  box-shadow: none;
+  outline: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.formInput:focus {
+  box-shadow: 0 0 0 2px var(--accent-logo);
+}
+
+.formInput:disabled {
+  opacity: 0.5;
+}
+
+.formInputResize {
+  composes: formInput;
+  resize: none;
+}
+
+.formLabel {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.formHint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-hint);
+}
+
+/* ─── Modal ──────────────────────────────────────────────────────────────────── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0 16px;
+}
+
+.modalCard {
+  width: 100%;
+  max-width: 512px;
+  background: var(--bg-content);
+  border-radius: 16px;
+  box-shadow: var(--shadow-main);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ─── Modal form action row ──────────────────────────────────────────────────── */
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.btnSecondary {
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.btnSecondary:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.btnSecondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Playlist create row ────────────────────────────────────────────────────── */
+
+.createRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.createRowInput {
+  flex: 1;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  padding: 8px 12px;
+  font-size: 14px;
+  background: var(--bg-content);
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.createRowInput:focus {
+  box-shadow: 0 0 0 2px var(--accent-logo);
+}
+
+/* ─── Playlist table ──────────────────────────────────────────────────────────── */
+
+.playlistTable {
+  border-radius: 16px;
+  background: var(--bg-content);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.playlistTableEl {
+  width: 100%;
+  font-size: 14px;
+  border-collapse: collapse;
+}
+
+.playlistTableHead tr {
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+}
+
+.playlistTableHeadCell {
+  padding: 12px 16px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.playlistTableRow {
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.15s ease;
+}
+
+.playlistTableRow:last-child {
+  border-bottom: none;
+}
+
+.playlistTableRow:hover {
+  background: var(--bg-card);
+}
+
+.playlistTableCellTitle {
+  padding: 12px 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.playlistTableCellDate {
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.playlistTableCellActions {
+  padding: 12px 16px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.playlistLoading {
+  color: var(--text-secondary);
+}
+
+.playlistEmpty {
+  border-radius: 16px;
+  background: var(--bg-content);
+  box-shadow: var(--shadow-card);
+  padding: 32px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* ─── Inline text actions (link-style buttons in table) ─────────────────────── */
+
+.btnLink {
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  transition: color 0.15s ease;
+}
+
+.btnLinkAccent {
+  composes: btnLink;
+  color: var(--accent-logo);
+}
+
+.btnLinkAccent:hover {
+  color: var(--accent-logo);
+  opacity: 0.75;
+}
+
+.btnLinkAccent:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnLinkDanger {
+  composes: btnLink;
+  color: var(--status-failed-fg);
+}
+
+.btnLinkDanger:hover {
+  color: var(--status-failed-fg);
+  opacity: 0.8;
+}
+
+.btnLinkDanger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnLinkMuted {
+  composes: btnLink;
+  color: var(--text-secondary);
+}
+
+.btnLinkMuted:hover {
+  color: var(--text-primary);
+}
+
+.btnLinkMuted:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Rename inline input ───────────────────────────────────────────────────── */
+
+.renameInput {
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+  padding: 4px 8px;
+  font-size: 14px;
+  background: var(--bg-content);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.renameInput:focus {
+  box-shadow: 0 0 0 2px var(--accent-logo);
+}
+
+/* ─── Playlist page link ────────────────────────────────────────────────────── */
+
+.playlistLink {
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.playlistLink:hover {
+  color: var(--accent-logo);
+}
