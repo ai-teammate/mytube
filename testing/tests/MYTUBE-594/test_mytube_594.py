@@ -41,7 +41,6 @@ Architecture
 ------------
 - UploadCSSModule from testing/components/pages/upload_page/upload_css_module.py
   for CSS static analysis.
-- WebConfig from testing/core/config/web_config.py for environment config.
 - Playwright sync API with pytest module-scoped fixtures.
 - HTML fixture mode uses page.set_content() with inline CSS -- no external deps.
 
@@ -54,6 +53,7 @@ border-radius, padding, font-weight and a hover rule.
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 import os
 
@@ -62,7 +62,6 @@ from playwright.sync_api import Page
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from testing.core.config.web_config import WebConfig
 from testing.components.pages.upload_page.upload_css_module import UploadCSSModule
 
 # ---------------------------------------------------------------------------
@@ -81,10 +80,6 @@ _GLOBALS_CSS = _REPO_ROOT / "web" / "src" / "app" / "globals.css"
 _EXPECTED_ACCENT_CTA_RGB = "rgb(98, 194, 53)"    # #62c235
 _EXPECTED_TEXT_CTA_RGB = "rgb(255, 255, 255)"    # #ffffff
 _EXPECTED_BG_CARD_DARK_RGB = "rgb(36, 36, 40)"  # #242428
-
-# CSS token names as they appear in source
-_TOKEN_ACCENT_CTA = "var(--accent-cta)"
-_TOKEN_TEXT_CTA = "var(--text-cta)"
 
 
 # ---------------------------------------------------------------------------
@@ -120,11 +115,6 @@ def _build_dark_theme_fixture() -> str:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def config() -> WebConfig:
-    return WebConfig()
-
 
 @pytest.fixture(scope="module")
 def dark_fixture_page(browser):
@@ -173,14 +163,17 @@ def _get_computed(page: Page, selector: str, prop: str) -> str:
 class TestFileInputButtonStaticCSS:
     """Step 3 static analysis: verify ::file-selector-button rules exist in CSS source."""
 
+    def setup_method(self) -> None:
+        self.css = UploadCSSModule()
+
     def test_file_selector_button_rule_exists(self) -> None:
         """
         The ::file-selector-button rule must be present in upload.module.css.
 
         This verifies the MYTUBE-591 fix is in the source file.
         """
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        assert "::file-selector-button" in css_text, (
+        rule_body = self.css.get_rule_body("fileInput::file-selector-button")
+        assert rule_body, (
             "No ::file-selector-button rule found in upload.module.css. "
             "The fix from MYTUBE-591 may be missing."
         )
@@ -191,18 +184,9 @@ class TestFileInputButtonStaticCSS:
 
         Ensures the button has the CTA green background for visibility in dark mode.
         """
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        import re
-        # Find the ::file-selector-button block
-        pattern = r"::file-selector-button\s*\{([^}]*)\}"
-        match = re.search(pattern, css_text, re.DOTALL | re.IGNORECASE)
-        assert match, (
-            "::file-selector-button rule block not found in upload.module.css."
-        )
-        rule_body = match.group(1).lower()
-        assert "var(--accent-cta)" in rule_body, (
+        assert self.css.rule_contains("fileInput::file-selector-button", "var(--accent-cta)"), (
             f"::file-selector-button rule does not contain 'var(--accent-cta)'. "
-            f"Found rule body: {rule_body.strip()!r}. "
+            f"Found rule body: {self.css.get_rule_body('fileInput::file-selector-button')!r}. "
             "The button background must use the --accent-cta design token for "
             "correct visibility in dark mode."
         )
@@ -213,17 +197,9 @@ class TestFileInputButtonStaticCSS:
 
         Ensures the button text is white (#ffffff) for readability in both themes.
         """
-        css_text = _UPLOAD_CSS.read_text(encoding="utf-8")
-        import re
-        pattern = r"::file-selector-button\s*\{([^}]*)\}"
-        match = re.search(pattern, css_text, re.DOTALL | re.IGNORECASE)
-        assert match, (
-            "::file-selector-button rule block not found in upload.module.css."
-        )
-        rule_body = match.group(1).lower()
-        assert "var(--text-cta)" in rule_body, (
+        assert self.css.rule_contains("fileInput::file-selector-button", "var(--text-cta)"), (
             f"::file-selector-button rule does not contain 'var(--text-cta)'. "
-            f"Found rule body: {rule_body.strip()!r}. "
+            f"Found rule body: {self.css.get_rule_body('fileInput::file-selector-button')!r}. "
             "The button text color must use the --text-cta token."
         )
 
@@ -234,8 +210,6 @@ class TestFileInputButtonStaticCSS:
         This confirms the button will have sufficient contrast against --bg-card (#242428).
         """
         css_text = _GLOBALS_CSS.read_text(encoding="utf-8")
-        import re
-        # Find the dark theme block
         dark_block_match = re.search(
             r'body\[data-theme="dark"\]\s*\{([^}]*)\}',
             css_text,
