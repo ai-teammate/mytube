@@ -299,12 +299,7 @@ class TestPlaylistPageLoadFromDashboard:
         This is the primary regression test for MYTUBE-592: the SPA routing
         fix must prevent the UUID validation failure that triggered the error.
         """
-        error_text_present = (
-            playlist_page_loaded._page.locator(
-                f"text={_ERROR_TEXT}"
-            ).count() > 0
-        )
-        assert not error_text_present, (
+        assert not playlist_page_loaded.has_error_message(), (
             f"Playlist detail page shows the error message: '{_ERROR_TEXT}'. "
             "The MYTUBE-592 regression has re-appeared — PlaylistPageClient.tsx "
             "is not reading the playlist UUID from sessionStorage.__spa_playlist_id "
@@ -342,7 +337,7 @@ class TestPlaylistPageLoadFromDashboard:
         the browser URL from /pl/_/ to /pl/<real-uuid>/. This test confirms
         the URL correction works.
         """
-        current_url = playlist_page_loaded._page.url
+        current_url = playlist_page_loaded.get_current_url()
         playlist_id = test_playlist["id"]
         assert playlist_id in current_url or "/pl/" in current_url, (
             f"Expected the page URL to contain the playlist ID '{playlist_id}' "
