@@ -38,6 +38,23 @@
   /* Interactive */
   --star-color: #ff6666;
 
+  /* Status badge colours (video processing states) */
+  --status-ready-bg:       #dcfce7;
+  --status-ready-fg:       #166534;
+  --status-processing-bg:  #fef9c3;
+  --status-processing-fg:  #854d0e;
+  --status-pending-bg:     #f3f4f6;
+  --status-pending-fg:     #374151;
+  --status-failed-bg:      #fee2e2;
+  --status-failed-fg:      #991b1b;
+
+  /* Info / action tokens (banners, CTAs, links) */
+  --accent-info-bg:    #eff6ff;
+  --accent-info-border:#bfdbfe;
+  --accent-info-fg:    #1d4ed8;
+  --accent-action-bg:  #2563eb;
+  --accent-action-hover-bg: #1d4ed8;
+
   /* Skeleton loading */
   --skeleton-base:      #e8e9ed;
   --skeleton-highlight: #f3f4f8;
@@ -82,6 +99,23 @@ body[data-theme="dark"] {
   --shadow-card:  0 8px 20px rgba(0, 0, 0, 0.30);
 
   --star-color: #ff6666;
+
+  /* Status badge colours (dark overrides) */
+  --status-ready-bg:       #14532d;
+  --status-ready-fg:       #86efac;
+  --status-processing-bg:  #713f12;
+  --status-processing-fg:  #fde68a;
+  --status-pending-bg:     #374151;
+  --status-pending-fg:     #d1d5db;
+  --status-failed-bg:      #7f1d1d;
+  --status-failed-fg:      #fca5a5;
+
+  /* Info / action tokens (dark overrides) */
+  --accent-info-bg:         #1e3a5f;
+  --accent-info-border:     #2563eb;
+  --accent-info-fg:         #93c5fd;
+  --accent-action-bg:       #2563eb;
+  --accent-action-hover-bg: #3b82f6;
 
   --gradient-hero: linear-gradient(135deg, #9370db 0%, #62c235 100%);
   --gradient-cta:  linear-gradient(90deg, #62c235 0%, #4fa82b 100%);
