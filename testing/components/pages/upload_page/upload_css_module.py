@@ -66,3 +66,20 @@ class UploadCSSModule:
     def file_exists(self) -> bool:
         """Return True when the CSS module file exists on disk."""
         return self._css_path.exists()
+
+    # ------------------------------------------------------------------
+    # Pseudo-element helpers
+    # ------------------------------------------------------------------
+
+    def get_pseudo_element_rule_body(self, pseudo_element: str) -> str:
+        """Return the normalised declaration block for a ::pseudo-element rule.
+
+        Returns an empty string when the rule is not found.
+        """
+        pattern = rf"{re.escape(pseudo_element)}\s*\{{([^}}]*)\}}"
+        match = re.search(pattern, self._css_text, re.DOTALL | re.IGNORECASE)
+        return _normalise(match.group(1)) if match else ""
+
+    def pseudo_element_rule_exists(self, pseudo_element: str) -> bool:
+        """Return True when a rule for *pseudo_element* exists in the stylesheet."""
+        return bool(self.get_pseudo_element_rule_body(pseudo_element))
