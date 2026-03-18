@@ -7,6 +7,7 @@ import type { PlaylistDetail, PlaylistRepository, PlaylistVideoItem } from "@/do
 import type { VideoRepository } from "@/domain/video";
 import { ApiPlaylistRepository } from "@/data/playlistRepository";
 import { ApiVideoRepository } from "@/data/videoRepository";
+import styles from "./PlaylistPageClient.module.css";
 
 // Lazy-load VideoPlayer to keep the static shell lightweight.
 const VideoPlayer = dynamic(() => import("@/components/VideoPlayer"), {
@@ -121,24 +122,24 @@ export default function PlaylistPageClient({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
+      <div className={styles.loadingState}>
+        <p className={styles.loadingText}>Loading…</p>
       </div>
     );
   }
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Playlist not found.</p>
+      <div className={styles.loadingState}>
+        <p className={styles.loadingText}>Playlist not found.</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p role="alert" className="text-red-600">
+      <div className={styles.loadingState}>
+        <p role="alert" className={styles.errorText}>
           {error}
         </p>
       </div>
@@ -148,15 +149,15 @@ export default function PlaylistPageClient({
   if (!playlist) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={styles.page}>
       {/* Playlist title */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">{playlist.title}</h1>
-        <p className="text-sm text-gray-500 mt-1">
+      <div className={styles.header}>
+        <h1 className={styles.title}>{playlist.title}</h1>
+        <p className={styles.subtitle}>
           by{" "}
           <Link
             href={`/u/${playlist.ownerUsername}`}
-            className="hover:underline text-blue-600"
+            className={styles.subtitleLink}
           >
             {playlist.ownerUsername}
           </Link>{" "}
@@ -165,27 +166,27 @@ export default function PlaylistPageClient({
       </div>
 
       {playlist.videos.length === 0 ? (
-        <div className="max-w-7xl mx-auto px-4 py-8 text-center">
-          <p className="text-gray-500">This playlist has no videos yet.</p>
+        <div className={styles.emptyMessage}>
+          <p>This playlist has no videos yet.</p>
         </div>
       ) : (
         /* Split view: player on left, queue on right */
-        <div className="max-w-7xl mx-auto px-4 pb-8 flex flex-col lg:flex-row gap-4">
+        <div className={styles.splitView}>
           {/* Player area */}
-          <div className="flex-1 min-w-0">
-            <div className="w-full bg-black rounded-lg overflow-hidden relative">
+          <div className={styles.playerArea}>
+            <div className={styles.playerWrap}>
               {ended ? (
                 /* End-of-playlist overlay (Option A: stop and prompt) */
                 <div
                   data-testid="end-of-playlist"
-                  className="w-full aspect-video flex flex-col items-center justify-center bg-black"
+                  className={styles.endOverlay}
                 >
-                  <p className="text-white text-xl font-semibold mb-4">
+                  <p className={styles.endTitle}>
                     End of playlist
                   </p>
                   <button
                     onClick={handlePlayAgain}
-                    className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                    className={styles.btnPlayAgain}
                   >
                     Play again
                   </button>
@@ -203,12 +204,12 @@ export default function PlaylistPageClient({
             {/* Now playing info */}
             {!ended && currentVideo && (
               <div className="mt-3">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">
+                <p className={styles.nowPlayingLabel}>
                   Now playing ({currentIndex + 1}/{playlist.videos.length})
                 </p>
                 <Link
                   href={`/v/${currentVideo.id}`}
-                  className="text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors line-clamp-2"
+                  className={styles.nowPlayingTitle}
                 >
                   {currentVideo.title}
                 </Link>
@@ -217,14 +218,14 @@ export default function PlaylistPageClient({
           </div>
 
           {/* Queue panel */}
-          <div className="lg:w-80 xl:w-96 flex-shrink-0">
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          <div className={styles.queuePanel}>
+            <div className={styles.queueCard}>
+              <div className={styles.queueHeader}>
+                <h2 className={styles.queueHeaderTitle}>
                   Queue
                 </h2>
               </div>
-              <div className="overflow-y-auto max-h-[500px] lg:max-h-[600px]">
+              <div className={styles.queueList}>
                 {playlist.videos.map((video, index) => (
                   <button
                     key={video.id}
@@ -232,16 +233,14 @@ export default function PlaylistPageClient({
                       setCurrentIndex(index);
                       setEnded(false);
                     }}
-                    className={`w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${
-                      index === currentIndex && !ended
-                        ? "bg-blue-50 border-l-4 border-l-blue-500"
-                        : ""
+                    className={`${styles.queueItem} ${
+                      index === currentIndex && !ended ? styles.queueItemActive : ""
                     }`}
                     aria-label={`Play ${video.title}`}
                     aria-current={index === currentIndex && !ended ? "true" : undefined}
                   >
                     {/* Thumbnail */}
-                    <div className="flex-shrink-0 w-20 h-12 bg-gray-200 rounded overflow-hidden relative">
+                    <div className={styles.queueThumb}>
                       {video.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -250,7 +249,7 @@ export default function PlaylistPageClient({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                        <div className={styles.queueThumbPlaceholder}>
                           —
                         </div>
                       )}
@@ -261,7 +260,7 @@ export default function PlaylistPageClient({
                     </div>
 
                     {/* Title */}
-                    <p className="text-sm text-gray-900 line-clamp-2 flex-1">
+                    <p className={styles.queueItemTitle}>
                       {video.title}
                     </p>
                   </button>
