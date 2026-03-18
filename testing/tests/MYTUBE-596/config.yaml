@@ -1,0 +1,6 @@
+test_id: MYTUBE-596
+type: browser-interaction
+framework: playwright-python
+platform: chromium
+dependencies:
+  - MYTUBE-591
