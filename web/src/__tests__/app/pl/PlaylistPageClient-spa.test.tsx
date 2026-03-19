@@ -208,3 +208,39 @@ describe("PlaylistPageClient — GitHub Pages SPA fallback (MYTUBE-592)", () => 
     expect(getByID).not.toHaveBeenCalledWith("stale-id");
   });
 });
+
+// ─── MYTUBE-604: HTTP 400 (invalid UUID) UX ───────────────────────────────────
+
+describe("PlaylistPageClient — HTTP 400 invalid UUID (MYTUBE-604)", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    jest.clearAllMocks();
+  });
+
+  it("shows 'Playlist not found.' when repository returns null for a 400 (invalid UUID)", async () => {
+    // The repository returns null for both 404 and 400 responses.
+    // PlaylistPageClient must render the notFound state ('Playlist not found.')
+    // rather than the generic error message.
+    const getByID = jest.fn<Promise<PlaylistDetail | null>, [string]>(() =>
+      Promise.resolve(null)
+    );
+    const repo = makeRepo({ getByID });
+
+    render(
+      <PlaylistPageClient
+        params={makeParams("not-a-valid-uuid-123")}
+        repository={repo}
+        videoRepository={makeVideoRepo()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Playlist not found.")).toBeInTheDocument();
+    });
+
+    // Must NOT show the generic connection-failure error.
+    expect(
+      screen.queryByText("Could not load playlist. Please try again later.")
+    ).not.toBeInTheDocument();
+  });
+});
