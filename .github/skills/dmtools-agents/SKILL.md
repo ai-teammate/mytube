@@ -175,10 +175,23 @@ module.exports = {
     parentTicket: 'MYPROJ-1', // Used in {parentTicket} JQL placeholder
 
     // FULL REPLACEMENT when provided (not merged with defaults)
-    statuses: { IN_REVIEW: 'In Review', DONE: 'Done', /* ... */ },
+    statuses: {
+      IN_REVIEW: 'In Review', DONE: 'Done', PO_REVIEW: 'PO REVIEW',
+      BA_ANALYSIS: 'BA Analysis',  // target status after all question subtasks are Done
+      /* ... */
+    },
     issueTypes: {
-      STORY: 'Story', BUG: 'Bug', TASK: 'Task',
+      STORY: 'Story', BUG: 'Bug', TASK: 'Task', SUBTASK: 'Subtask',
       TEST_CASE: 'Test Case'   // customize if your Jira uses e.g. 'XRay Test'
+    },
+
+    // FULL REPLACEMENT when provided — controls question subtask fetching & creation
+    questions: {
+      // JQL to find question subtasks. {ticketKey} is replaced at runtime.
+      // Override if your project uses a different issue type or label filter.
+      fetchJql: 'parent = {ticketKey} AND issuetype = Subtask ORDER BY created ASC',
+      // Jira custom field name that holds the answer on a question subtask.
+      answerField: 'Answer'
     }
   },
 
