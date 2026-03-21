@@ -373,3 +373,96 @@ my-project/
 ```
 
 Both layouts are auto-discovered. No configuration needed.
+
+---
+
+## Jira Automation — Triggering Agents
+
+Use Jira automation's **"Send web request"** action to trigger a GitHub Actions workflow.
+
+### Standard trigger (AgentByName pattern)
+
+This is the recommended pattern for multi-project setups. The agent is resolved by name,
+and the project config is discovered via `agentConfigsDir` derived from the Jira project key.
+
+**Jira automation action → Send web request:**
+
+```
+POST https://api.github.com/repos/{agents-repo-owner}/{agents-repo}/actions/workflows/ai-teammate.yml/dispatches
+```
+
+Headers:
+```
+Authorization: Bearer {{YOUR_GITHUB_PAT}}
+Content-Type: application/json
+```
+
+Body:
+```json
+{
+  "ref": "main",
+  "inputs": {
+    "config_file": "agents/agents.json",
+    "concurrency_key": "{{issue.key}}",
+    "encoded_config": "{{#urlEncode}}{
+  \"name\": \"AgentByName\",
+  \"params\": {
+    \"metadata\": {
+      \"agentId\": \"{{userInputs.agentName}}\",
+      \"contextId\": \"{{issue.project.key}}\"
+    },
+    \"inputJql\": \"key = {{issue.key}}\",
+    \"initiator\": \"{{initiator.name}}\",
+    \"request\": \"{{userInputs.requestInput.jsonEncode}}\",
+    \"fieldName\": \"{{userInputs.outputType}}\",
+    \"operationType\": \"{{userInputs.operationType}}\",
+    \"customParams\": {
+      \"agentConfigsDir\": \"projects/{{issue.project.key}}\"
+    }
+  }
+}{{/urlEncode}}"
+  }
+}
+```
+
+How it resolves:
+- `agentId` = `{{userInputs.agentName}}` — agent JSON filename (e.g. `StoryAgent`)
+- `contextId` = `{{issue.project.key}}` — Jira project key (e.g. `ALPHA`)
+- `agentConfigsDir` = `projects/{{issue.project.key}}` → discovers `projects/ALPHA/.dmtools/config.js`
+- Config contains `repository.owner`/`repository.repo` for the target product repo
+
+### Folder structure this expects
+
+```
+agents-repo/
+  projects/
+    ALPHA/
+      .dmtools/config.js   ← repository, jira, smRules for ALPHA
+      StoryAgent.json
+      BugCreation.json
+    BETA/
+      .dmtools/config.js   ← repository, jira, smRules for BETA
+      StoryAgent.json
+```
+
+Adding a new Jira project = add a new folder. The Jira automation rule stays unchanged.
+
+### What to configure per Jira project (`projects/ALPHA/.dmtools/config.js`)
+
+```js
+module.exports = {
+  repository: { owner: 'my-org', repo: 'alpha-repo' },  // target product repo
+  jira: { project: 'ALPHA', parentTicket: 'ALPHA-1' },
+  git: { baseBranch: 'main' },
+  agentConfigsDir: 'projects/ALPHA'
+};
+```
+
+### Trigger summary by scenario
+
+| Scenario | What to pass |
+|---|---|
+| Single repo, agents as submodule | `config_file` + `concurrency_key` only |
+| Agents repo, fixed product repo | `configPath: "path/to/.dmtools/config.js"` in `customParams` |
+| Agents repo, N Jira projects | `agentConfigsDir: "projects/{{issue.project.key}}"` in `customParams` |
+| SM on schedule | GitHub Actions cron workflow — no Jira automation needed |
