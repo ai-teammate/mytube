@@ -380,15 +380,15 @@ Both layouts are auto-discovered. No configuration needed.
 
 Use Jira automation's **"Send web request"** action to trigger a GitHub Actions workflow.
 
-### Standard trigger (AgentByName pattern)
-
-This is the recommended pattern for multi-project setups. The agent is resolved by name,
-and the project config is discovered via `agentConfigsDir` derived from the Jira project key.
+The workflow (`ai-teammate.yml`) accepts three inputs:
+- `config_file` — path to the agent JSON config inside the repo
+- `concurrency_key` — ticket key for deduplication (e.g. `PROJ-123`)
+- `encoded_config` — optional JSON override (URL-encoded) for `inputJql`, `configPath`, etc.
 
 **Jira automation action → Send web request:**
 
 ```
-POST https://api.github.com/repos/{agents-repo-owner}/{agents-repo}/actions/workflows/ai-teammate.yml/dispatches
+POST https://api.github.com/repos/{repo-owner}/{repo}/actions/workflows/ai-teammate.yml/dispatches
 ```
 
 Headers:
@@ -397,25 +397,46 @@ Authorization: Bearer {{YOUR_GITHUB_PAT}}
 Content-Type: application/json
 ```
 
-Body:
+---
+
+### Single repo / submodule layout
+
+Agents live in the same repo as the product. Config is auto-discovered via `.dmtools/config.js`.
+
 ```json
 {
   "ref": "main",
   "inputs": {
-    "config_file": "agents/agents.json",
+    "config_file": "agents/story_development.json",
     "concurrency_key": "{{issue.key}}",
     "encoded_config": "{{#urlEncode}}{
-  \"name\": \"AgentByName\",
   \"params\": {
-    \"metadata\": {
-      \"agentId\": \"{{userInputs.agentName}}\",
-      \"contextId\": \"{{issue.project.key}}\"
-    },
+    \"inputJql\": \"key = {{issue.key}}\",
+    \"initiator\": \"{{initiator.name}}\"
+  }
+}{{/urlEncode}}"
+  }
+}
+```
+
+---
+
+### Multi-project layout (agents repo → N product repos)
+
+Agents are in a dedicated repo. Each Jira project has its own folder with a `.dmtools/config.js`
+that points to the target product repo. The Jira automation passes `agentConfigsDir` derived
+from the Jira project key — one automation rule serves all projects.
+
+```json
+{
+  "ref": "main",
+  "inputs": {
+    "config_file": "projects/{{issue.project.key}}/story_development.json",
+    "concurrency_key": "{{issue.key}}",
+    "encoded_config": "{{#urlEncode}}{
+  \"params\": {
     \"inputJql\": \"key = {{issue.key}}\",
     \"initiator\": \"{{initiator.name}}\",
-    \"request\": \"{{userInputs.requestInput.jsonEncode}}\",
-    \"fieldName\": \"{{userInputs.outputType}}\",
-    \"operationType\": \"{{userInputs.operationType}}\",
     \"customParams\": {
       \"agentConfigsDir\": \"projects/{{issue.project.key}}\"
     }
@@ -425,44 +446,46 @@ Body:
 }
 ```
 
-How it resolves:
-- `agentId` = `{{userInputs.agentName}}` — agent JSON filename (e.g. `StoryAgent`)
-- `contextId` = `{{issue.project.key}}` — Jira project key (e.g. `ALPHA`)
-- `agentConfigsDir` = `projects/{{issue.project.key}}` → discovers `projects/ALPHA/.dmtools/config.js`
-- Config contains `repository.owner`/`repository.repo` for the target product repo
+How it resolves at runtime:
+- `config_file` = `projects/ALPHA/story_development.json` — the agent to run
+- `agentConfigsDir` = `projects/ALPHA` → discovers `projects/ALPHA/.dmtools/config.js`
+- Config contains `repository.owner`/`repository.repo` of the target product repo
 
-### Folder structure this expects
+**Folder structure:**
 
 ```
 agents-repo/
   projects/
     ALPHA/
-      .dmtools/config.js   ← repository, jira, smRules for ALPHA
-      StoryAgent.json
-      BugCreation.json
+      .dmtools/config.js       ← repository, jira config for ALPHA
+      story_development.json   ← agent configs (can share or override shared ones)
+      bug_creation.json
     BETA/
-      .dmtools/config.js   ← repository, jira, smRules for BETA
-      StoryAgent.json
+      .dmtools/config.js
+      story_development.json
+  agents/                      ← shared base agents (optional)
+    story_development.json
 ```
 
-Adding a new Jira project = add a new folder. The Jira automation rule stays unchanged.
+Adding a new Jira project = create a new folder. Automation rule stays unchanged.
 
-### What to configure per Jira project (`projects/ALPHA/.dmtools/config.js`)
-
+**`projects/ALPHA/.dmtools/config.js`:**
 ```js
 module.exports = {
-  repository: { owner: 'my-org', repo: 'alpha-repo' },  // target product repo
+  repository: { owner: 'my-org', repo: 'alpha-repo' },
   jira: { project: 'ALPHA', parentTicket: 'ALPHA-1' },
   git: { baseBranch: 'main' },
   agentConfigsDir: 'projects/ALPHA'
 };
 ```
 
-### Trigger summary by scenario
+---
 
-| Scenario | What to pass |
-|---|---|
-| Single repo, agents as submodule | `config_file` + `concurrency_key` only |
-| Agents repo, fixed product repo | `configPath: "path/to/.dmtools/config.js"` in `customParams` |
-| Agents repo, N Jira projects | `agentConfigsDir: "projects/{{issue.project.key}}"` in `customParams` |
-| SM on schedule | GitHub Actions cron workflow — no Jira automation needed |
+### Trigger summary
+
+| Scenario | `config_file` | `encoded_config` extras |
+|---|---|---|
+| Single repo, submodule | `agents/story_development.json` | `inputJql` only |
+| Agents repo, fixed project | `agents/story_development.json` | `configPath: "path/to/.dmtools/config.js"` |
+| Agents repo, N projects | `projects/{{issue.project.key}}/story_development.json` | `agentConfigsDir: "projects/{{issue.project.key}}"` |
+| SM on schedule | — | GitHub Actions cron, no Jira automation needed |
