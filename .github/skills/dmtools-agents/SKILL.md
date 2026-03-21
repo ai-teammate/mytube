@@ -399,39 +399,16 @@ Content-Type: application/json
 
 ---
 
-### Single repo / submodule layout
+### Option A — Hardcoded agent (one automation rule = one agent)
 
-Agents live in the same repo as the product. Config is auto-discovered via `.dmtools/config.js`.
+The simplest setup. Each Jira automation rule triggers a specific agent.
+`config_file` is hardcoded; `agentConfigsDir` routes to the right project config.
 
 ```json
 {
   "ref": "main",
   "inputs": {
     "config_file": "agents/story_development.json",
-    "concurrency_key": "{{issue.key}}",
-    "encoded_config": "{{#urlEncode}}{
-  \"params\": {
-    \"inputJql\": \"key = {{issue.key}}\",
-    \"initiator\": \"{{initiator.name}}\"
-  }
-}{{/urlEncode}}"
-  }
-}
-```
-
----
-
-### Multi-project layout (agents repo → N product repos)
-
-Agents are in a dedicated repo. Each Jira project has its own folder with a `.dmtools/config.js`
-that points to the target product repo. The Jira automation passes `agentConfigsDir` derived
-from the Jira project key — one automation rule serves all projects.
-
-```json
-{
-  "ref": "main",
-  "inputs": {
-    "config_file": "projects/{{issue.project.key}}/story_development.json",
     "concurrency_key": "{{issue.key}}",
     "encoded_config": "{{#urlEncode}}{
   \"params\": {
@@ -446,28 +423,54 @@ from the Jira project key — one automation rule serves all projects.
 }
 ```
 
-How it resolves at runtime:
-- `config_file` = `projects/ALPHA/story_development.json` — the agent to run
-- `agentConfigsDir` = `projects/ALPHA` → discovers `projects/ALPHA/.dmtools/config.js`
-- Config contains `repository.owner`/`repository.repo` of the target product repo
+---
 
-**Folder structure:**
+### Option B — Agent chosen by user input (one rule = many agents)
+
+The user picks the agent from a Jira automation prompt (`userInputs.agentName`).
+`config_file` is built from the input — e.g. `agents/story_development.json`.
+
+```json
+{
+  "ref": "main",
+  "inputs": {
+    "config_file": "agents/{{userInputs.agentName}}.json",
+    "concurrency_key": "{{issue.key}}",
+    "encoded_config": "{{#urlEncode}}{
+  \"params\": {
+    \"inputJql\": \"key = {{issue.key}}\",
+    \"initiator\": \"{{initiator.name}}\",
+    \"request\": \"{{userInputs.requestInput.jsonEncode}}\",
+    \"customParams\": {
+      \"agentConfigsDir\": \"projects/{{issue.project.key}}\"
+    }
+  }
+}{{/urlEncode}}"
+  }
+}
+```
+
+User sees a Jira prompt: _"Agent name?"_ → types `story_development` → triggers `agents/story_development.json`.
+
+---
+
+### How multi-project routing works
+
+`agentConfigsDir: "projects/{{issue.project.key}}"` is the only thing that differs per project.
+It resolves at runtime (e.g. `projects/ALPHA`) and tells configLoader where to find the config:
 
 ```
 agents-repo/
+  agents/                      ← shared agent JSONs (config_file always points here)
+    story_development.json
+    bug_creation.json
+    ...
   projects/
     ALPHA/
-      .dmtools/config.js       ← repository, jira config for ALPHA
-      story_development.json   ← agent configs (can share or override shared ones)
-      bug_creation.json
+      .dmtools/config.js       ← repository/jira/git config for ALPHA
     BETA/
-      .dmtools/config.js
-      story_development.json
-  agents/                      ← shared base agents (optional)
-    story_development.json
+      .dmtools/config.js       ← repository/jira/git config for BETA
 ```
-
-Adding a new Jira project = create a new folder. Automation rule stays unchanged.
 
 **`projects/ALPHA/.dmtools/config.js`:**
 ```js
@@ -479,13 +482,16 @@ module.exports = {
 };
 ```
 
+Adding a new project = add one folder with `config.js`. Agent JSONs and automation rules stay unchanged.
+
 ---
 
 ### Trigger summary
 
 | Scenario | `config_file` | `encoded_config` extras |
 |---|---|---|
-| Single repo, submodule | `agents/story_development.json` | `inputJql` only |
-| Agents repo, fixed project | `agents/story_development.json` | `configPath: "path/to/.dmtools/config.js"` |
-| Agents repo, N projects | `projects/{{issue.project.key}}/story_development.json` | `agentConfigsDir: "projects/{{issue.project.key}}"` |
+| Single repo, one agent | `agents/story_development.json` (hardcoded) | `inputJql` only |
+| Single repo, user picks agent | `agents/{{userInputs.agentName}}.json` | `inputJql` + optional `request` |
+| Multi-project, hardcoded agent | `agents/story_development.json` | + `agentConfigsDir: "projects/{{issue.project.key}}"` |
+| Multi-project, user picks agent | `agents/{{userInputs.agentName}}.json` | + `agentConfigsDir: "projects/{{issue.project.key}}"` |
 | SM on schedule | — | GitHub Actions cron, no Jira automation needed |
