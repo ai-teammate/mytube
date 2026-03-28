@@ -120,7 +120,7 @@ jobs:
             ALL_IMAGES=$(gcloud container images list-tags "$IMAGE_PATH" \
               --project="$PROJECT_ID" \
               --format="json" \
-              --sort-by=~timestamp 2>/dev/null | jq -r '[.[].digest] | unique_by(.) | .[]') || true
+              --sort-by=~timestamp 2>/dev/null | jq -r '.[].digest' | awk '!seen[$0]++') || true
 
             if [ -z "$ALL_IMAGES" ]; then
               echo "✅ No images found, skipping"
@@ -157,7 +157,7 @@ jobs:
           PROJECT_ID="${{ env.PROJECT_ID }}"
           for SECRET_NAME in mytube-db-password mytube-db-user; do
             OLD_VERSIONS=$(gcloud secrets versions list $SECRET_NAME --project=$PROJECT_ID \
-              --filter="state=ENABLED" --sort-by="~name" --format="value(name)" | tail -n +2)
+              --filter="state=ENABLED" --sort-by="~createTime" --format="value(name)" | tail -n +3)
             if [ -n "$OLD_VERSIONS" ]; then
               echo "$OLD_VERSIONS" | xargs -r -P 5 -I {} \
                 gcloud secrets versions destroy {} --secret=$SECRET_NAME --project=$PROJECT_ID --quiet || true

@@ -171,7 +171,7 @@ jobs:
           ALL_IMAGES=$(gcloud container images list-tags "$IMAGE_PATH" \
             --project="$PROJECT_ID" \
             --format="json" \
-            --sort-by=~timestamp 2>/dev/null | jq -r '[.[].digest] | unique_by(.) | .[]') || true
+            --sort-by=~timestamp 2>/dev/null | jq -r '.[].digest' | awk '!seen[$0]++') || true
 
           if [ -z "$ALL_IMAGES" ]; then exit 0; fi
 
