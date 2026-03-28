@@ -77,32 +77,89 @@ jobs:
             --format "value(status.url)" \
             --project ${{ env.PROJECT_ID }}
 
-      - name: Delete old Cloud Run revisions
+      - name: Delete old revisions (keep last 2 for rollback)
         run: |
-          OLD=$(gcloud run revisions list \
-            --service ${{ env.SERVICE }} \
-            --region ${{ env.REGION }} \
-            --project ${{ env.PROJECT_ID }} \
+          SERVICE_NAME="${{ env.SERVICE }}"
+          REGION="${{ env.REGION }}"
+          PROJECT="${{ env.PROJECT_ID }}"
+
+          REVISIONS=$(gcloud run revisions list \
+            --service $SERVICE_NAME \
+            --region $REGION \
+            --project $PROJECT \
             --format="value(name)" \
-            --sort-by="~metadata.creationTimestamp" | tail -n +2)
-          if [ -n "$OLD" ]; then
-            echo "$OLD" | xargs -I{} gcloud run revisions delete {} \
-              --region ${{ env.REGION }} \
-              --project ${{ env.PROJECT_ID }} \
-              --quiet || true
+            --sort-by="~metadata.creationTimestamp" \
+            --limit=999)
+
+          KEEP_COUNT=2
+          TOTAL=$(echo "$REVISIONS" | grep -v '^$' | wc -l | tr -d ' ')
+
+          if [ "$TOTAL" -le "$KEEP_COUNT" ]; then
+            echo "✅ No cleanup needed ($TOTAL revisions)"
+          else
+            echo "🗑️  Deleting old revisions (keeping last $KEEP_COUNT)..."
+            COUNT=0
+            for REVISION in $REVISIONS; do
+              COUNT=$((COUNT + 1))
+              if [ "$COUNT" -gt "$KEEP_COUNT" ]; then
+                gcloud run revisions delete $REVISION --region $REGION --project $PROJECT --quiet || true
+              fi
+            done
+            echo "✅ Cleanup complete"
           fi
 
-      - name: Delete old GCR images
+      - name: Cleanup old Docker images (keep last 3 for rollback)
         run: |
-          for IMG in ${{ env.IMAGE }} ${{ env.TRANSCODER_IMAGE }}; do
-            OLD=$(gcloud container images list-tags "$IMG" \
-              --project ${{ env.PROJECT_ID }} \
-              --format="get(digest)" \
-              --sort-by="~timestamp" | tail -n +2)
-            if [ -n "$OLD" ]; then
-              echo "$OLD" | xargs -I{} gcloud container images delete \
-                "$IMG@{}" \
-                --project ${{ env.PROJECT_ID }} \
-                --quiet --force-delete-tags || true
+          PROJECT_ID="${{ env.PROJECT_ID }}"
+          KEEP_COUNT=3
+
+          for IMAGE_PATH in ${{ env.IMAGE }} ${{ env.TRANSCODER_IMAGE }}; do
+            echo "--- Cleaning up: $IMAGE_PATH ---"
+
+            # NOTE: do NOT pipe to "sort -u" — it breaks timestamp order
+            ALL_IMAGES=$(gcloud container images list-tags "$IMAGE_PATH" \
+              --project="$PROJECT_ID" \
+              --format="json" \
+              --sort-by=~timestamp 2>/dev/null | jq -r '[.[].digest] | unique_by(.) | .[]') || true
+
+            if [ -z "$ALL_IMAGES" ]; then
+              echo "✅ No images found, skipping"
+              continue
+            fi
+
+            TOTAL=$(echo "$ALL_IMAGES" | grep -v '^$' | wc -l | tr -d ' ')
+
+            if [ "$TOTAL" -le "$KEEP_COUNT" ]; then
+              echo "✅ No cleanup needed ($TOTAL images)"
+              continue
+            fi
+
+            DELETED=0; FAILED=0; COUNT=0
+            while IFS= read -r IMAGE_DIGEST; do
+              [ -z "$IMAGE_DIGEST" ] && continue
+              COUNT=$((COUNT + 1))
+              if [ "$COUNT" -gt "$KEEP_COUNT" ]; then
+                if gcloud container images delete "${IMAGE_PATH}@${IMAGE_DIGEST}" \
+                    --project="$PROJECT_ID" --quiet --force-delete-tags 2>/dev/null; then
+                  DELETED=$((DELETED + 1))
+                else
+                  FAILED=$((FAILED + 1))
+                  echo "⚠️  Failed (may be in use): $IMAGE_DIGEST"
+                fi
+              fi
+            done <<< "$ALL_IMAGES"
+
+            echo "✅ Cleanup complete: deleted $DELETED, failed $FAILED"
+          done
+
+      - name: Cleanup old Secret Manager versions
+        run: |
+          PROJECT_ID="${{ env.PROJECT_ID }}"
+          for SECRET_NAME in mytube-db-password mytube-db-user; do
+            OLD_VERSIONS=$(gcloud secrets versions list $SECRET_NAME --project=$PROJECT_ID \
+              --filter="state=ENABLED" --sort-by="~name" --format="value(name)" | tail -n +2)
+            if [ -n "$OLD_VERSIONS" ]; then
+              echo "$OLD_VERSIONS" | xargs -r -P 5 -I {} \
+                gcloud secrets versions destroy {} --secret=$SECRET_NAME --project=$PROJECT_ID --quiet || true
             fi
           done
