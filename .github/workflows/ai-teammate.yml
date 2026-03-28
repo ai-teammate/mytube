@@ -192,12 +192,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.149
+          key: dmtools-v1.7.156
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.149/install.sh | bash -s v1.7.149
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.156/install.sh | bash -s v1.7.156
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
@@ -308,6 +308,7 @@ jobs:
           # DMTools Advanced Configuration
           PROMPT_CHUNK_TOKEN_LIMIT: ${{ vars.PROMPT_CHUNK_TOKEN_LIMIT }}
           CLI_ALLOWED_COMMANDS: "find,ls,cat,mkdir,bash,run-agent.sh"
+          DMTOOLS_FILE_READ_ALLOWED_PATHS: "../.dmtools/**"
 
           # GCP Configuration (for test automation)
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
