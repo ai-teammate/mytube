@@ -288,4 +288,72 @@ describe("SettingsPage", () => {
     // fetch should not have been called for profile data since token is null.
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  // ─── Avatar preview tests ───────────────────────────────────────────────────
+
+  it("does not render avatar preview when avatarUrl is empty", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ username: "alice", avatar_url: null }),
+    });
+
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/username/i)).toBeInTheDocument()
+    );
+
+    expect(screen.queryByLabelText("Avatar preview")).toBeNull();
+  });
+
+  it("renders avatar preview when avatarUrl is pre-filled from profile", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        username: "alice",
+        avatar_url: "https://example.com/avatar.png",
+      }),
+    });
+
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Avatar preview")).toBeInTheDocument()
+    );
+
+    const preview = screen.getByRole("img", { name: /avatar preview/i });
+    expect(preview.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.com/avatar.png"
+    );
+  });
+
+  it("renders avatar preview reactively as user types a URL", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ username: "alice", avatar_url: null }),
+    });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/avatar url/i)).toBeInTheDocument()
+    );
+
+    // No preview before typing.
+    expect(screen.queryByLabelText("Avatar preview")).toBeNull();
+
+    await user.type(
+      screen.getByLabelText(/avatar url/i),
+      "https://example.com/new.png"
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Avatar preview")).toBeInTheDocument()
+    );
+    const preview = screen.getByRole("img", { name: /avatar preview/i });
+    expect(preview.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.com/new.png"
+    );
+  });
 });

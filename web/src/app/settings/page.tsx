@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import RequireAuth from "@/components/RequireAuth";
+import AvatarPreview from "@/components/AvatarPreview";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -179,6 +180,11 @@ function SettingsPageContent() {
             <p className="mt-1 text-xs text-gray-400">
               Enter a URL to a profile image
             </p>
+            {form.avatarUrl && (
+              <div className="mt-3">
+                <AvatarPreview src={form.avatarUrl} />
+              </div>
+            )}
           </div>
 
           <button
