@@ -57,12 +57,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.149
+          key: dmtools-v1.7.156
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.149/install.sh | bash -s v1.7.149
+          curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/v1.7.156/install.sh | bash -s v1.7.156
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
@@ -98,6 +98,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           SOURCE_GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           CLI_ALLOWED_COMMANDS: "find,ls,cat,mkdir,bash,run-agent.sh"
+          DMTOOLS_FILE_READ_ALLOWED_PATHS: "../.dmtools/**"
         run: |
           CI_RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo "CI Run URL: ${CI_RUN_URL}"
