@@ -22,13 +22,14 @@ export default function AvatarPreview({ src }: AvatarPreviewProps) {
 
   return (
     <div
+      role="img"
       aria-label="Avatar preview"
       className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-gray-200 flex-shrink-0"
     >
       {showImage ? (
         <img
           src={src}
-          alt="Avatar preview"
+          alt=""
           onError={() => setError(true)}
           className="w-16 h-16 rounded-full object-cover"
         />

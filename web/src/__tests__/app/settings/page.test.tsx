@@ -319,9 +319,11 @@ describe("SettingsPage", () => {
       expect(screen.getByLabelText("Avatar preview")).toBeInTheDocument()
     );
 
-    expect(
-      screen.getByRole("img", { name: /avatar preview/i })
-    ).toHaveAttribute("src", "https://example.com/avatar.png");
+    const preview = screen.getByRole("img", { name: /avatar preview/i });
+    expect(preview.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.com/avatar.png"
+    );
   });
 
   it("renders avatar preview reactively as user types a URL", async () => {
@@ -348,8 +350,10 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("Avatar preview")).toBeInTheDocument()
     );
-    expect(
-      screen.getByRole("img", { name: /avatar preview/i })
-    ).toHaveAttribute("src", "https://example.com/new.png");
+    const preview = screen.getByRole("img", { name: /avatar preview/i });
+    expect(preview.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://example.com/new.png"
+    );
   });
 });
