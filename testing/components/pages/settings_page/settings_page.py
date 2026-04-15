@@ -1,12 +1,12 @@
 """SettingsPage — Page Object for the /settings page of the MyTube web application.
 
-Encapsulates all interactions with the Account Settings form, exposing only
-high-level actions and state queries to callers.
+Encapsulates all interactions with the Account Settings form, including the
+AvatarPreview component, exposing only high-level actions and state queries.
 
 Architecture notes
 ------------------
 - Dependency-injected Playwright ``Page`` is passed via constructor.
-- No hardcoded URLs — the caller provides the base URL.
+- No hardcoded URLs — the caller provides the full settings URL.
 - All waits use Playwright's built-in auto-wait; no ``time.sleep`` calls.
 """
 from __future__ import annotations
@@ -17,11 +17,14 @@ from playwright.sync_api import Page
 class SettingsPage:
     """Page Object for the MyTube Account Settings page (/settings)."""
 
-    _AVATAR_URL_INPUT = "#avatar_url"
-    _USERNAME_INPUT = "#username"
-    _SAVE_BUTTON = 'button[type="submit"]'
-    _AVATAR_PREVIEW_WRAPPER = '[role="img"][aria-label="Avatar preview"]'
+    # Selectors
+    _AVATAR_URL_INPUT = 'input[id="avatar_url"]'
+    _USERNAME_INPUT = 'input[id="username"]'
+
+    # AvatarPreview selectors
+    _AVATAR_PREVIEW_CONTAINER = '[role="img"][aria-label="Avatar preview"]'
     _AVATAR_PREVIEW_IMG = '[role="img"][aria-label="Avatar preview"] img'
+    _AVATAR_PREVIEW_SVG = '[role="img"][aria-label="Avatar preview"] svg'
 
     def __init__(self, page: Page) -> None:
         self._page = page
@@ -30,12 +33,10 @@ class SettingsPage:
     # Navigation
     # ------------------------------------------------------------------
 
-    def navigate(self, base_url: str) -> None:
-        """Navigate to /settings and wait for the page to be interactive."""
-        url = f"{base_url.rstrip('/')}/settings/"
+    def navigate(self, url: str) -> None:
+        """Navigate to the settings page URL and wait for it to load."""
         self._page.goto(url, wait_until="domcontentloaded")
-        # Wait for the form to appear (auth guard may redirect then back).
-        self._page.wait_for_selector(self._AVATAR_URL_INPUT, timeout=30_000)
+        self._page.wait_for_load_state("networkidle")
 
     # ------------------------------------------------------------------
     # Actions
@@ -43,67 +44,71 @@ class SettingsPage:
 
     def fill_avatar_url(self, url: str) -> None:
         """Clear the Avatar URL input and type *url* into it."""
+        self._page.wait_for_selector(self._AVATAR_URL_INPUT, timeout=15_000)
         self._page.fill(self._AVATAR_URL_INPUT, url)
 
+    def clear_avatar_url(self) -> None:
+        """Clear the Avatar URL input field."""
+        self._page.fill(self._AVATAR_URL_INPUT, "")
+
     # ------------------------------------------------------------------
-    # State queries — avatar preview
+    # AvatarPreview state queries
     # ------------------------------------------------------------------
 
-    def wait_for_avatar_preview(self, timeout: int = 15_000) -> None:
-        """Block until the avatar preview <img> element is visible."""
-        self._page.wait_for_selector(self._AVATAR_PREVIEW_IMG, state="visible", timeout=timeout)
+    def is_avatar_preview_container_visible(self, timeout: float = 10_000) -> bool:
+        """Return True if the AvatarPreview container div is visible."""
+        locator = self._page.locator(self._AVATAR_PREVIEW_CONTAINER)
+        try:
+            locator.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
 
-    def is_avatar_preview_visible(self) -> bool:
-        """Return True if the avatar preview <img> element is visible."""
-        locator = self._page.locator(self._AVATAR_PREVIEW_IMG)
-        return locator.count() > 0 and locator.first.is_visible()
+    def is_avatar_img_present(self) -> bool:
+        """Return True if the <img> element is present inside the AvatarPreview container."""
+        return self._page.locator(self._AVATAR_PREVIEW_IMG).count() > 0
 
-    def get_avatar_preview_src(self) -> str:
-        """Return the src attribute of the preview <img> element, or empty string."""
-        return self._page.evaluate(
-            """() => {
-                const img = document.querySelector('[role="img"][aria-label="Avatar preview"] img');
-                return img ? (img.getAttribute('src') || '') : '';
-            }"""
+    def is_avatar_svg_placeholder_visible(self, timeout: float = 10_000) -> bool:
+        """Return True if the SVG placeholder is visible inside the AvatarPreview container.
+
+        The SVG is shown when the image URL is empty or fails to load.
+        """
+        locator = self._page.locator(self._AVATAR_PREVIEW_SVG)
+        try:
+            locator.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def wait_for_avatar_error_fallback(self, timeout: float = 15_000) -> None:
+        """Wait until the AvatarPreview switches to the SVG fallback state.
+
+        This happens when the browser fires onError on the <img> element,
+        which sets React state error=true, removes the <img> and renders the SVG.
+        """
+        self._page.wait_for_selector(
+            self._AVATAR_PREVIEW_SVG,
+            state="visible",
+            timeout=timeout,
         )
 
-    def get_avatar_preview_classes(self) -> str:
-        """Return the class attribute of the preview <img> element."""
-        return self._page.evaluate(
-            """() => {
-                const img = document.querySelector('[role="img"][aria-label="Avatar preview"] img');
-                return img ? (img.getAttribute('class') || '') : '';
-            }"""
-        )
+    def is_avatar_preview_container_has_bg_gray(self) -> bool:
+        """Return True if the AvatarPreview container has the expected grey background."""
+        container = self._page.locator(self._AVATAR_PREVIEW_CONTAINER).first
+        classes: str = container.get_attribute("class") or ""
+        return "bg-gray-200" in classes
 
-    def get_avatar_preview_computed_size(self) -> tuple[float, float]:
-        """Return (width, height) in pixels as computed by the browser."""
-        result: list = self._page.evaluate(
-            """() => {
-                const img = document.querySelector('[role="img"][aria-label="Avatar preview"] img');
-                if (!img) return [0, 0];
-                const r = img.getBoundingClientRect();
-                return [r.width, r.height];
-            }"""
-        )
-        return float(result[0]), float(result[1])
+    def is_settings_page_loaded(self, timeout: float = 20_000) -> bool:
+        """Return True if the settings page title/heading is visible."""
+        try:
+            self._page.wait_for_selector(
+                'h1:has-text("Account settings")',
+                timeout=timeout,
+            )
+            return True
+        except Exception:
+            return False
 
-    def get_avatar_wrapper_computed_border_radius(self) -> str:
-        """Return the computed border-radius of the avatar preview wrapper."""
-        return self._page.evaluate(
-            """() => {
-                const el = document.querySelector('[role="img"][aria-label="Avatar preview"]');
-                if (!el) return '';
-                return window.getComputedStyle(el).borderRadius;
-            }"""
-        )
-
-    def get_avatar_img_object_fit(self) -> str:
-        """Return the computed object-fit CSS property of the preview <img>."""
-        return self._page.evaluate(
-            """() => {
-                const img = document.querySelector('[role="img"][aria-label="Avatar preview"] img');
-                if (!img) return '';
-                return window.getComputedStyle(img).objectFit;
-            }"""
-        )
+    def get_avatar_url_value(self) -> str:
+        """Return the current value of the Avatar URL input."""
+        return self._page.input_value(self._AVATAR_URL_INPUT)
