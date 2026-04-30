@@ -341,3 +341,154 @@ dmtools --debug run agents/my_config.json
 - ❌ **DON'T**: Mix string and boolean types
 
 **Remember**: The `"name"` field is a technical identifier used by DMtools to instantiate the correct Job class. It is not a display name or description.
+
+---
+
+## Config inheritance via `parent`
+
+Any job config (Teammate, TestCasesGenerator, or any other) can inherit from a base config file by adding a `"parent"` block at the root level.
+
+### Shape
+
+```json
+{
+  "name": "Teammate",
+  "parent": {
+    "path": "agents/base-teammate.json",
+    "override": ["params.agentParams"],
+    "merge":    ["params.agentParams.instructions"]
+  },
+  "params": {
+    "inputJql": "key = SPECIFIC-123",
+    "agentParams": {
+      "aiRole": "QA Engineer",
+      "instructions": ["Also check performance"]
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | Path to the parent config file. Resolved **relative to the directory of the current file**. |
+| `override` | string[] | Dot-notation paths whose values should **completely replace** the parent (no recursive merge). |
+| `merge` | string[] | Dot-notation paths that are **arrays**: parent items are prepended before child items. |
+
+### Resolution order (lowest → highest priority)
+
+| Step | What happens |
+|------|-------------|
+| 1 | Parent config is loaded (recursively — parent can itself have a parent) |
+| 2 | Child's own fields are **deep-merged** on top (child scalars & arrays win by default) |
+| 3 | `override` paths: child value **replaces** merged value at that path (no deep-merge at that node) |
+| 4 | `merge` paths: merged array = **parent items + child items** |
+| 5 | `parent` block is **stripped** from the final config before the job runs |
+
+### Default deep-merge behaviour
+
+Without `override` or `merge`, the standard deep-merge applies:
+- **Scalars** (strings, numbers, booleans): child value wins
+- **Objects**: merged recursively (child wins for conflicting keys, parent keys not in child are kept)
+- **Arrays**: child array completely replaces parent array
+
+### When to use `override`
+
+Use `override` when a parent has a nested object that you want to **completely replace**, not extend field-by-field.
+
+```json
+// parent has: "agentParams": {"aiRole": "Engineer", "knownInfo": "base knowledge"}
+// child has:  "agentParams": {"aiRole": "QA"}
+// without override → deep-merge keeps "knownInfo" from parent
+// with override:["params.agentParams"] → parent's "knownInfo" is gone, child wins entirely
+```
+
+### When to use `merge`
+
+Use `merge` for array fields where you want to **extend** the parent list rather than replace it.
+
+```json
+// parent instructions: ["be thorough", "check security"]
+// child instructions:  ["also check performance"]
+// with merge:["params.agentParams.instructions"] →
+//   result: ["be thorough", "check security", "also check performance"]
+```
+
+### Example: Shared base + specialised child agents
+
+`agents/base-reviewer.json`:
+```json
+{
+  "name": "Teammate",
+  "params": {
+    "outputType": "comment",
+    "ticketContextDepth": 2,
+    "agentParams": {
+      "aiRole": "Senior Software Engineer",
+      "instructions": [
+        "Review for bugs",
+        "Check security implications",
+        "Verify code style"
+      ]
+    }
+  }
+}
+```
+
+`agents/qa-reviewer.json` (inherits base, adds QA focus):
+```json
+{
+  "name": "Teammate",
+  "parent": {
+    "path": "base-reviewer.json",
+    "merge": ["params.agentParams.instructions"]
+  },
+  "params": {
+    "inputJql": "project = QA AND type = Story",
+    "agentParams": {
+      "aiRole": "QA Lead",
+      "instructions": [
+        "Write acceptance criteria",
+        "Identify edge cases"
+      ]
+    }
+  }
+}
+```
+
+Result after resolution:
+```json
+{
+  "name": "Teammate",
+  "params": {
+    "inputJql": "project = QA AND type = Story",
+    "outputType": "comment",
+    "ticketContextDepth": 2,
+    "agentParams": {
+      "aiRole": "QA Lead",
+      "instructions": [
+        "Review for bugs",
+        "Check security implications",
+        "Verify code style",
+        "Write acceptance criteria",
+        "Identify edge cases"
+      ]
+    }
+  }
+}
+```
+
+### Recursive parents
+
+A parent file can itself have a `parent` block. DMtools resolves the entire chain automatically before running the job.
+
+```
+grandparent.json ← parent.json ← child.json (what you run)
+```
+
+### Notes
+
+- `path` is **always relative to the file that contains the `parent` block**, not the working directory.
+- `override` and `merge` paths use **dot notation** to navigate any depth: `params.agentParams.instructions`.
+- `merge` paths must resolve to **JSONArray** values; non-array paths in `merge` are silently skipped.
+- `override` and `merge` are optional — omit them to use pure deep-merge inheritance.
+- `parent` is supported in **any** job config, not just Teammate.
