@@ -37,14 +37,15 @@ func TestDeployWorkflowRevisionCleanupToleratesErrors(t *testing.T) {
 	blockLines := []string{}
 
 	for _, line := range lines {
-		if strings.Contains(line, "xargs") && strings.Contains(line, "revisions delete") {
+		// Match both old xargs pattern and new loop pattern
+		if strings.Contains(line, "revisions delete") {
 			inBlock = true
 		}
 		if inBlock {
 			blockLines = append(blockLines, line)
 			trimmed := strings.TrimSpace(line)
-			// The block ends at the closing "fi"
-			if trimmed == "fi" {
+			// The block ends at the closing "fi" or "done"
+			if trimmed == "fi" || trimmed == "done" {
 				break
 			}
 		}
@@ -80,13 +81,14 @@ func TestDeployWorkflowImageCleanupToleratesErrors(t *testing.T) {
 	blockLines := []string{}
 
 	for _, line := range lines {
-		if strings.Contains(line, "xargs") && strings.Contains(line, "images delete") {
+		// Match both old xargs pattern and new loop pattern
+		if strings.Contains(line, "images delete") {
 			inBlock = true
 		}
 		if inBlock {
 			blockLines = append(blockLines, line)
 			trimmed := strings.TrimSpace(line)
-			if trimmed == "fi" {
+			if trimmed == "fi" || trimmed == "done" {
 				break
 			}
 		}
@@ -97,8 +99,9 @@ func TestDeployWorkflowImageCleanupToleratesErrors(t *testing.T) {
 	}
 
 	block := strings.Join(blockLines, "\n")
-	if !strings.Contains(block, "|| true") {
-		t.Errorf("image deletion block does not contain '|| true' to tolerate errors.\n"+
+	// Accept either explicit "|| true" or structured error handling (FAILED counter)
+	if !strings.Contains(block, "|| true") && !strings.Contains(block, "FAILED=") {
+		t.Errorf("image deletion block does not contain error-tolerant handling ('|| true' or FAILED counter).\n"+
 			"Block:\n%s", block)
 	}
 }

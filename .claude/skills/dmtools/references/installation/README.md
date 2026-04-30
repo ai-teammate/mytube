@@ -9,7 +9,7 @@ curl -fsSL https://raw.githubusercontent.com/IstiN/dmtools/main/install.sh | bas
 ```
 
 This script will:
-1. ✅ Check for Java 23+ (install if missing)
+1. ✅ Check for Java 17+ (install if missing)
 2. ✅ Download the latest DMtools release
 3. ✅ Install to `~/.dmtools/`
 4. ✅ Create the `dmtools` command alias
@@ -70,18 +70,18 @@ source ~/.bashrc
 
 ## ☕ Java Installation
 
-DMtools requires Java 23 or higher. The installer handles this automatically, but you can also install manually:
+DMtools requires Java 17 or higher. The installer handles this automatically, but you can also install manually:
 
 ### Automatic Java Installation
 
-The install script will automatically install Java 23 using SDKMAN if Java is missing or outdated:
+The install script will automatically install Java 17 using SDKMAN if Java is missing or outdated:
 
 ```bash
 # The installer runs these commands internally:
 curl -s "https://get.sdkman.io" | bash
 source "$HOME/.sdkman/bin/sdkman-init.sh"
-sdk install java 23-open
-sdk default java 23-open
+sdk install java 17-open
+sdk default java 17-open
 ```
 
 ### Manual Java Installation
@@ -89,8 +89,8 @@ sdk default java 23-open
 #### macOS
 ```bash
 # Using Homebrew
-brew install openjdk@23
-echo 'export PATH="/opt/homebrew/opt/openjdk@23/bin:$PATH"' >> ~/.zshrc
+brew install openjdk@17
+echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -99,18 +99,18 @@ source ~/.zshrc
 # Using SDKMAN
 curl -s "https://get.sdkman.io" | bash
 source "$HOME/.sdkman/bin/sdkman-init.sh"
-sdk install java 23-open
+sdk install java 17-open
 
 # Or using package manager (Ubuntu/Debian)
 sudo apt update
-sudo apt install openjdk-23-jdk
+sudo apt install openjdk-17-jdk
 ```
 
 #### Windows (WSL)
 ```bash
 # In WSL terminal
 sudo apt update
-sudo apt install openjdk-23-jdk
+sudo apt install openjdk-17-jdk
 
 # Or use SDKMAN as shown above
 ```
@@ -118,7 +118,7 @@ sudo apt install openjdk-23-jdk
 ### Verify Java Version
 ```bash
 java -version
-# Should show: openjdk version "23" or higher
+# Should show: openjdk version "17" or higher
 ```
 
 ## ✅ Verification
@@ -306,7 +306,7 @@ alias dmtools-dev='java -jar /path/to/your/dmtools-core/build/libs/dmtools-v*-al
 For containerized environments:
 
 ```dockerfile
-FROM openjdk:23-slim
+FROM openjdk:17-slim
 
 # Install DMtools
 RUN apt-get update && apt-get install -y curl bash \

@@ -26,6 +26,32 @@ module.exports = {
 
     agentConfigsDir: 'agents',
 
+    cliPrompts: {
+        story_development: [
+            './.dmtools/prompts/project_context.md',
+            './.dmtools/prompts/development_focus.md'
+        ],
+        bug_development: [
+            './.dmtools/prompts/project_context.md',
+            './.dmtools/prompts/development_focus.md'
+        ],
+        bug_rca: [
+            './.dmtools/prompts/project_context.md'
+        ],
+        pr_review: [
+            './.dmtools/prompts/project_context.md',
+            './.dmtools/prompts/review_focus.md'
+        ],
+        pr_rework: [
+            './.dmtools/prompts/project_context.md',
+            './.dmtools/prompts/review_focus.md'
+        ],
+        test_case_automation: [
+            './.dmtools/prompts/project_context.md',
+            './.dmtools/prompts/test_automation_focus.md'
+        ]
+    },
+
     additionalInstructions: {
         story_description: [
             'https://dmtools.atlassian.net/wiki/spaces/AINA/pages/11665485/Template+Story'

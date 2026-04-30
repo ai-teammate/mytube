@@ -175,7 +175,7 @@ function action(params) {
 ### Instruction Sources
 
 The following fields all go through **InstructionProcessor**, which resolves content from four source types:
-`instructions`, `formattingRules`, `fewShots`, `cliPrompt`, `aiRole`, `questions`, `tasks`
+`instructions`, `additionalInstructions`, `formattingRules`, `fewShots`, `cliPrompt`, `aiRole`, `questions`, `tasks`
 
 | Source | Detection | How content is fetched |
 |--------|-----------|------------------------|
@@ -211,16 +211,58 @@ If fetching fails for any reason, the original string is used as fallback — no
 SOURCE_GITHUB_TOKEN=ghp_your_token_here
 ```
 
+### `additionalInstructions` — Append Without Replacing
+
+`additionalInstructions` is a **top-level `params` field** (on `TeammateParams`, not inside `agentParams`) that lets projects add their own instructions **on top of** whatever `instructions` are defined in `agentParams`.
+
+This solves the `ConfigurationMerger` limitation: when you override a config with a different `instructions` array via encoded JSON, the whole array is replaced. With `additionalInstructions`, your project-specific rules live in a separate field and are always **appended** — never replaced — regardless of how `agentParams.instructions` is set.
+
+```json
+{
+  "name": "Teammate",
+  "params": {
+    "agentParams": {
+      "instructions": [
+        "https://github.com/your-org/shared-playbook/blob/main/instructions/default.md"
+      ]
+    },
+    "additionalInstructions": [
+      "https://yourcompany.atlassian.net/wiki/spaces/PROJ/pages/123",
+      "./instructions/project-specific-rules.md",
+      "Always use our internal API naming convention."
+    ]
+  }
+}
+```
+
+**How it works:**
+1. `agentParams.instructions` is resolved via InstructionProcessor (URLs/files → content)
+2. `additionalInstructions` is resolved the same way (same source types: plain text, file, Confluence, GitHub)
+3. The resolved additional instructions are **appended** to the resolved base instructions
+4. The AI receives one combined array: `[...instructions, ...additionalInstructions]`
+
+**When to use it:**
+- You have a shared base config (e.g. from GitHub) that you don't want to copy
+- Your project has Confluence pages or local files with project-specific rules
+- You want CI/CD to inject extra context without touching `agentParams`
+
+| Field | Location | Behavior on override |
+|-------|----------|----------------------|
+| `agentParams.instructions` | Inside `agentParams` | Replaced entirely by ConfigurationMerger |
+| `additionalInstructions` | Top-level `params` | Always appended — independent field |
+
 ### CLI Integration (NEW in v1.7.130+)
 
 | Parameter | Type | Default | Description | Example |
 |-----------|------|---------|-------------|---------|
-| `cliPrompt` | String | - | Prompt for CLI agent (supports plain text, local file paths, Confluence URLs, GitHub URLs) | `"Implement from input/"`, `"./prompts/dev.md"`, `"https://github.com/org/repo/blob/main/PROMPT.md"` |
+| `cliPrompt` | String | - | Single prompt for CLI agent (supports plain text, local file paths, Confluence URLs, GitHub URLs) | `"Implement from input/"`, `"./prompts/dev.md"`, `"https://github.com/org/repo/blob/main/PROMPT.md"` |
+| `cliPrompts` | Array | - | Array of prompts — each entry is extracted via `InstructionProcessor` and all parts are joined with `\n\n` into one combined prompt. Combined with `cliPrompt` if both are set (`cliPrompt` comes first). Supports the same sources as `cliPrompt`. | `["./base.md", "https://confluence.co/...", "Also apply coding standards"]` |
 | `cliCommands` | Array | - | CLI commands to execute | `["./cicd/scripts/run-cursor-agent.sh"]` |
 | `preCliJSAction` | String | - | JS script path executed **after** input folder is created but **before** CLI commands run. Receives `params.inputFolderPath` (absolute path). Use to write extra files into the input folder. Errors in this script are logged but do NOT stop CLI execution. | `"agents/js/extendInputFolder.js"` |
 | `skipAIProcessing` | Boolean | `false` | Skip AI processing when using CLI agents | `true` |
 | `requireCliOutputFile` | Boolean | `true` | **NEW v1.7.133**: Require `output/response.md` before updating fields (strict mode prevents data loss) | `true` (recommended) |
 | `cleanupInputFolder` | Boolean | `true` | **NEW v1.7.133**: Cleanup `input/[TICKET-KEY]/` folder after execution | `false` (for debugging) |
+| `writeAgentParamsToFiles` | Boolean | `false` | Write agent params (instructions, aiRole, knownInfo, formattingRules, fewShots) as separate files in the input folder. Keeps `request.md` minimal (ticket info only). See [below](#writeagentparamstofiles). | `true` |
 
 **Example with `cliPrompt` field:**
 ```json
@@ -231,6 +273,36 @@ SOURCE_GITHUB_TOKEN=ghp_your_token_here
     "cliCommands": ["./cicd/scripts/run-cursor-agent.sh"],
     "skipAIProcessing": true,
     "postJSAction": "agents/js/developTicketAndCreatePR.js"
+  }
+}
+```
+
+**Example with `cliPrompts` array (multiple sources combined into one prompt):**
+```json
+{
+  "name": "Teammate",
+  "params": {
+    "cliPrompts": [
+      "https://confluence.company.com/wiki/pages/base-instructions",
+      "./agents/prompts/coding-standards.md",
+      "Write results to outputs/response.md"
+    ],
+    "cliCommands": ["./cicd/scripts/run-cursor-agent.sh"]
+  }
+}
+```
+
+**Example — `cliPrompt` + `cliPrompts` combined (`cliPrompt` content comes first):**
+```json
+{
+  "name": "Teammate",
+  "params": {
+    "cliPrompt": "## Base Instructions\nAlways follow the project coding standards.",
+    "cliPrompts": [
+      "https://confluence.company.com/wiki/pages/extra-context",
+      "./agents/prompts/output-format.md"
+    ],
+    "cliCommands": ["./cicd/scripts/run-cursor-agent.sh"]
   }
 }
 ```
@@ -260,12 +332,62 @@ SOURCE_GITHUB_TOKEN=ghp_your_token_here
 ```
 
 **How it works:**
-1. Teammate processes `cliPrompt` (fetches GitHub/Confluence/file content if needed)
-2. Escapes shell special characters (`\`, `"`, `$`, `` ` ``)
-3. Appends as quoted parameter to each CLI command
-4. Example: `./script.sh` becomes `./script.sh "Your prompt content"`
+1. Teammate calls `InstructionProcessor.buildCombinedPrompt(cliPrompt, cliPrompts)` which fetches URLs/files and joins all parts with `\n\n`
+2. Combined prompt is written to a temp file
+3. Temp file path is appended as a quoted parameter to each CLI command
+4. Example: `./script.sh` becomes `./script.sh "/tmp/dmtools_cli_prompt_xxx.txt"`
 
 See [CLI Integration Guide](cli-integration.md) for complete documentation.
+
+#### `writeAgentParamsToFiles`
+
+When `true`, instead of embedding all agent params inside `request.md`, each configuration item is extracted and written as a separate file in the `input/[TICKET]/` folder. This keeps `request.md` small (ticket info only) and lets CLI agents read large context files directly.
+
+**File layout:**
+```
+input/TICKET-123/
+  request.md              ← minimal: ticket info only
+  comments.md             ← ticket comments
+  instructions/
+    instruction_001.md    ← each URL or file-path instruction
+    instruction_002.md
+    instructions_text.md  ← all plain-text instructions combined
+  ai_role.md              ← if aiRole was a URL/path
+  known_info.md           ← if knownInfo was a URL/path
+  formatting_rules.md     ← if formattingRules was a URL/path
+  few_shots.md            ← if fewShots was a URL/path
+```
+
+**Writing rules:**
+
+| Value type | Action |
+|-----------|--------|
+| URL (`https://`, GitHub) | Fetched via `InstructionProcessor` → written as file |
+| File path (`/`, `./`, `../`) | Content copied to file |
+| Plain text | Arrays: combined into `instructions_text.md`; single fields: left as-is |
+
+**Example:**
+```json
+{
+  "name": "Teammate",
+  "params": {
+    "cliCommands": ["./cicd/run-agent.sh"],
+    "writeAgentParamsToFiles": true,
+    "agentParams": {
+      "aiRole":          "https://confluence.company.com/wiki/...ROLE",
+      "knownInfo":       "https://confluence.company.com/wiki/...KNOWN",
+      "formattingRules": "https://confluence.company.com/wiki/...FORMAT",
+      "fewShots":        "https://confluence.company.com/wiki/...SHOTS",
+      "instructions": [
+        "https://confluence.company.com/wiki/...INSTR_1",
+        "https://confluence.company.com/wiki/...INSTR_2",
+        "You must write response to outputs/response.md",
+        "./agents/instructions/common/bash_tools.md"
+      ]
+    }
+  }
+}
+```
 
 #### CLI Output Safety (v1.7.133+)
 

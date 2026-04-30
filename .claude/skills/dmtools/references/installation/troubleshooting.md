@@ -2,11 +2,11 @@
 
 ## 🔍 Common Installation Issues
 
-### Issue: "Java version not found" or "Java 23+ required"
+### Issue: "Java version not found" or "Java 17+ required"
 
 **Symptoms:**
 ```
-Error: Java 23 or higher is required. Current version: 11
+Error: Java 17 or higher is required. Current version: 11
 ```
 
 **Solutions:**
@@ -22,8 +22,8 @@ Error: Java 23 or higher is required. Current version: 11
    # Using SDKMAN
    curl -s "https://get.sdkman.io" | bash
    source "$HOME/.sdkman/bin/sdkman-init.sh"
-   sdk install java 23-open
-   sdk default java 23-open
+   sdk install java 17-open
+   sdk default java 17-open
    ```
 
 3. **Verify Java is in PATH:**
@@ -148,8 +148,8 @@ brew list | grep openjdk
 # Unlink old version
 brew unlink openjdk@11
 
-# Link Java 23
-brew link openjdk@23
+# Link Java 17
+brew link openjdk@17
 ```
 
 ### Windows WSL Issues
@@ -165,13 +165,13 @@ wsl --install
 ```bash
 # In WSL terminal
 sudo apt update
-sudo apt install openjdk-23-jdk
+sudo apt install openjdk-17-jdk
 ```
 
 #### Path issues in WSL
 ```bash
 # Add to ~/.bashrc
-export JAVA_HOME=/usr/lib/jvm/java-23-openjdk-amd64
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export PATH=$JAVA_HOME/bin:$PATH
 ```
 
