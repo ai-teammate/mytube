@@ -1,3 +1,64 @@
+## [skill-v1.0.27] - 2026-03-26
+
+### Added
+
+- **5 new GitHub MCP tools** documented in `references/mcp-tools/github-tools.md`
+  - `github_update_pr_comment` — edit an existing PR/issue comment by comment ID
+  - `github_delete_pr_comment` — delete a PR/issue comment by comment ID
+  - `github_create_commit_status` — create a commit status dot (pending/success/failure/error) with `context` as unique key
+  - `github_create_check_run` — create a rich GitHub Check Run with Markdown output (in_progress); returns `id` for follow-up update
+  - `github_update_check_run` — complete a Check Run with conclusion and final summary
+- Updated **Total tools** count in `github-tools.md`: 22 → 27
+
+## [skill-v1.0.26] - 2026-03-20
+
+### Documentation
+
+- **Expanded JS agent testing guide** — rewrote "Debugging Agents" section in `javascript-agents.md` into a comprehensive "Testing and Debugging Agents" section
+  - **JSRunner as the primary testing tool**: `dmtools run agents/js/script.js '{"ticketKey":"PROJ-123"}'` runs inside real GraalJS with live MCP tools
+  - **Simulating post-actions**: full JSON config form with `ticket` + `response` fields to replicate `postJSAction` context
+  - **Dry-run pattern**: `dryRun: true` param guard to test end-to-end without side effects
+  - **Debug mode**: opt-in `debug: true` param for verbose output without polluting production logs
+  - **Node.js unit testing**: stubbing MCP functions for pure logic testing (with GraalJS caveat warning)
+  - **Decision table**: which approach to use for each testing scenario
+- **Expanded JSRunner section** in `jobs/README.md` with link to the new testing guide and example for testing post-actions with ticket + AI response context
+
+## [skill-v1.0.25] - 2026-03-20
+
+### Added
+
+- **`additionalInstructions` field for TeammateParams** — append project-specific instructions without replacing the base `instructions` array
+  - Defined on `TeammateParams` (top-level `params`), separate from `agentParams.instructions`
+  - Resolved by InstructionProcessor — supports the same source types: plain text, local file paths, Confluence URLs, GitHub URLs
+  - Appended **after** the resolved base `instructions` — the AI sees `[...instructions, ...additionalInstructions]`
+  - Solves the `ConfigurationMerger` limitation: array fields are replaced on override; `additionalInstructions` is always additive
+
+  **Problem it solves:**
+  When you override a shared config via encoded JSON, `ConfigurationMerger` replaces the entire `instructions` array. `additionalInstructions` lives in a separate field so project rules survive any override.
+
+  **Example:**
+  ```json
+  {
+    "name": "Teammate",
+    "params": {
+      "agentParams": {
+        "instructions": [
+          "https://github.com/your-org/shared-playbook/blob/main/instructions/default.md"
+        ]
+      },
+      "additionalInstructions": [
+        "https://yourcompany.atlassian.net/wiki/spaces/PROJ/pages/123",
+        "./instructions/project-specific-rules.md",
+        "Always use our internal API naming convention."
+      ]
+    }
+  }
+  ```
+
+### Documentation
+- Updated `teammate-configs.md` with `additionalInstructions` section including use-cases and comparison table
+- Updated Instruction Sources list to include `additionalInstructions`
+
 ## [skill-v1.0.24] - 2026-02-22
 
 ### Added
