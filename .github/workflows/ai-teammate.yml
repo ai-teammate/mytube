@@ -15,6 +15,9 @@ on:
       concurrency_key:
         description: 'Ticket key for concurrency grouping (e.g., JD-123)'
         required: true
+      project_key:
+        description: 'Project key (optional, accepted for DMTools compatibility)'
+        required: false
 
 permissions:
   contents: write
