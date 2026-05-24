@@ -61,9 +61,11 @@ func main() {
 	playlistRepo := repository.NewPlaylistRepository(db)
 	gcsSigner := storage.NewGCSSigner(gcsClient)
 	gcsDeleter := storage.NewGCSObjectDeleter(gcsClient)
+	gcsUploader := storage.NewGCSUploader(gcsClient)
 	authMiddleware := middleware.RequireAuth(verifier)
 
 	cdnBaseURL := os.Getenv("CDN_BASE_URL")
+	hlsBucket := os.Getenv("HLS_BUCKET")
 
 	// /api/videos (exact) handles both:
 	//   GET  ?category_id=<id>  — public category browse
@@ -88,6 +90,7 @@ func main() {
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
 	mux.Handle("/api/me/videos", authMiddleware(handler.NewMeVideosHandler(videoRepo, userRepo)))
+	mux.Handle("/api/me/avatar", authMiddleware(handler.NewAvatarUploadHandler(userRepo, gcsUploader, hlsBucket, cdnBaseURL)))
 	optionalAuthMiddleware := middleware.OptionalAuth(verifier)
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
 	// Rating and comment sub-resources are registered with wildcard patterns

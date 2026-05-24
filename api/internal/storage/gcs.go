@@ -4,6 +4,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -115,3 +116,34 @@ func NewNopObjectDeleter() *NopObjectDeleter { return &NopObjectDeleter{} }
 
 func (*NopObjectDeleter) DeleteObject(_ context.Context, _, _ string) error { return nil }
 func (*NopObjectDeleter) DeletePrefix(_ context.Context, _, _ string) error { return nil }
+
+// Uploader uploads object data to GCS.
+// Satisfied by *GCSUploader and allows tests to inject a stub.
+type Uploader interface {
+	Upload(ctx context.Context, bucket, object, contentType string, r io.Reader) error
+}
+
+// GCSUploader writes objects directly to GCS using the storage client.
+type GCSUploader struct {
+	client *gcs.Client
+}
+
+// NewGCSUploader constructs a GCSUploader backed by the provided *gcs.Client.
+func NewGCSUploader(client *gcs.Client) *GCSUploader {
+	return &GCSUploader{client: client}
+}
+
+// Upload writes r to gs://<bucket>/<object> with the given Content-Type.
+// The object is created or overwritten atomically on Close.
+func (u *GCSUploader) Upload(ctx context.Context, bucket, object, contentType string, r io.Reader) error {
+	wc := u.client.Bucket(bucket).Object(object).NewWriter(ctx)
+	wc.ContentType = contentType
+	if _, err := io.Copy(wc, r); err != nil {
+		_ = wc.Close()
+		return fmt.Errorf("upload gs://%s/%s: %w", bucket, object, err)
+	}
+	if err := wc.Close(); err != nil {
+		return fmt.Errorf("close writer for gs://%s/%s: %w", bucket, object, err)
+	}
+	return nil
+}
