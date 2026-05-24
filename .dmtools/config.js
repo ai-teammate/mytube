@@ -56,6 +56,9 @@ module.exports = {
         story_description: [
             'https://dmtools.atlassian.net/wiki/spaces/AINA/pages/11665485/Template+Story'
         ],
+        story_acceptance_criteria: [
+            'https://dmtools.atlassian.net/wiki/spaces/AINA/pages/11665485/Template+Story'
+        ],
         story_acceptance_criterias: [
             'https://dmtools.atlassian.net/wiki/spaces/AINA/pages/11665485/Template+Story'
         ],
