@@ -63,9 +63,6 @@ _PAGE_LOAD_TIMEOUT = 30_000      # ms — max time for initial page load
 _NAVIGATION_TIMEOUT = 25_000     # ms — max time to wait for post-login redirect
 _UPLOAD_RESPONSE_TIMEOUT = 10_000  # ms — max time to wait for upload error to appear
 
-# A pre-existing Avatar URL that should remain untouched after a failed upload.
-_EXISTING_AVATAR_URL = "https://www.gstatic.com/webp/gallery/1.jpg"
-
 # Minimal valid 1×1 white JPEG (base64-encoded) — used as the upload file.
 _MINIMAL_JPEG_B64 = (
     "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U"
@@ -294,11 +291,6 @@ class TestAvatarUploadApiError:
             "text. Expected a non-empty error message from the server or a fallback "
             "'Upload failed. Please try again.' message."
         )
-        # The mocked 500 response returns a JSON body with an 'error' key.
-        # The UI should display that text (or a fallback).
-        assert len(error_text.strip()) > 0, (
-            f"Upload error alert text was empty or whitespace-only: {error_text!r}"
-        )
 
     def test_avatar_url_field_preserved_on_upload_error(
         self, upload_error_triggered: SettingsPage, initial_avatar_url: str
@@ -330,14 +322,13 @@ class TestAvatarUploadApiError:
         """
         # The settings page uses <p role="alert"> for upload errors and
         # <div role="alert"> for save errors. We only expect the <p> variant here.
-        error_locator = upload_error_triggered._page.locator('p[role="alert"]')
-        assert error_locator.count() > 0, (
+        assert upload_error_triggered.get_upload_error_element_count() > 0, (
             "Expected a <p role='alert'> element (inline upload error) to be present "
             "in the DOM after the avatar upload failed, but none was found. "
             "The upload error should be displayed inline near the upload control "
             "as a paragraph, not as a div-level alert."
         )
-        assert error_locator.first.is_visible(), (
+        assert upload_error_triggered.is_upload_error_visible(timeout=5_000), (
             "Found a <p role='alert'> element but it was not visible. "
             "The upload error message must be displayed to the user."
         )

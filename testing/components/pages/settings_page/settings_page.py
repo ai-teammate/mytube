@@ -241,3 +241,7 @@ class SettingsPage:
     def is_upload_button_visible(self) -> bool:
         """Return True if the Upload button is present and visible."""
         return self._page.locator(self._UPLOAD_BUTTON).is_visible()
+
+    def get_upload_error_element_count(self) -> int:
+        """Return the number of upload error alert paragraphs present in the DOM."""
+        return self._page.locator(self._UPLOAD_ERROR_ALERT).count()
