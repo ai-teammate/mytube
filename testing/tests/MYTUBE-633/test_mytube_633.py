@@ -283,7 +283,7 @@ class TestAvatarUploadSuccess:
         """Upload button must be enabled once a valid JPEG file is selected."""
         settings_pg: SettingsPage = authenticated_settings_page["settings_page"]
 
-        settings_pg.set_avatar_file(tmp_jpeg_file)
+        settings_pg.select_avatar_file(tmp_jpeg_file)
 
         assert settings_pg.is_upload_button_enabled(), (
             "Upload button did not become enabled after selecting a valid JPEG file. "
