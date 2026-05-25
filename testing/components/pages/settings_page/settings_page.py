@@ -201,3 +201,43 @@ class SettingsPage:
     def current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    # ------------------------------------------------------------------
+    # Avatar file upload actions (MYTUBE-637)
+    # ------------------------------------------------------------------
+
+    _FILE_INPUT = 'input[id="avatar_file"]'
+    _UPLOAD_BUTTON = 'button[type="button"]:has-text("Upload")'
+    _UPLOAD_ERROR_ALERT = 'p[role="alert"]'
+    _UPLOAD_SUCCESS_STATUS = 'p[role="status"]'
+
+    def set_avatar_file(self, file_path: str) -> None:
+        """Set the file input for avatar upload to *file_path*."""
+        self._page.locator(self._FILE_INPUT).set_input_files(file_path)
+
+    def click_upload_button(self) -> None:
+        """Click the Upload button to submit the avatar file."""
+        self._page.locator(self._UPLOAD_BUTTON).click()
+
+    def get_upload_error_message(self, timeout: float = 10_000) -> str | None:
+        """Wait for and return the upload error message text, or None if not shown."""
+        try:
+            locator = self._page.locator(self._UPLOAD_ERROR_ALERT)
+            locator.wait_for(state="visible", timeout=timeout)
+            return locator.text_content()
+        except Exception:
+            return None
+
+    def is_upload_error_visible(self, timeout: float = 10_000) -> bool:
+        """Return True if the upload error alert paragraph is visible."""
+        try:
+            self._page.locator(self._UPLOAD_ERROR_ALERT).wait_for(
+                state="visible", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
+
+    def is_upload_button_visible(self) -> bool:
+        """Return True if the Upload button is present and visible."""
+        return self._page.locator(self._UPLOAD_BUTTON).is_visible()
