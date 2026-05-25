@@ -277,16 +277,16 @@ class TestClientSideValidationLiveUI:
     def test_gif_file_triggers_error_message(
         self, authenticated_settings_page: Page
     ) -> None:
-        """Selecting a .gif file must immediately show the type-rejection error."""
+        """Selecting a .gif file must immediately show the type-rejection error
+        and must NOT dispatch a POST to /api/me/avatar."""
         page = authenticated_settings_page
+        settings_pg = SettingsPage(page)
 
         # Reset any previous error state
         page.reload(wait_until="domcontentloaded")
-        settings_pg = SettingsPage(page)
         settings_pg.navigate(page.url)
 
-        file_input = page.locator('input[id="avatar_file"]')
-        file_input.set_input_files(
+        settings_pg.set_avatar_file(
             {
                 "name": "animated.gif",
                 "mimeType": "image/gif",
@@ -294,33 +294,26 @@ class TestClientSideValidationLiveUI:
             }
         )
 
-        error_locator = page.locator('[id="avatar_file"] ~ [role="alert"]').or_(
-            page.locator('p[role="alert"]')
-        )
-        error_locator.wait_for(state="visible", timeout=_ERROR_VISIBLE_TIMEOUT)
-
-        error_text = error_locator.inner_text()
+        error_text = settings_pg.get_upload_error_text(timeout=_ERROR_VISIBLE_TIMEOUT)
         assert error_text == _EXPECTED_ERROR_TEXT, (
             f"Expected error text {_EXPECTED_ERROR_TEXT!r}, got {error_text!r}"
         )
 
-    def test_gif_file_does_not_trigger_network_request(
-        self, authenticated_settings_page: Page
-    ) -> None:
-        """Selecting a .gif file must NOT dispatch a POST to /api/me/avatar."""
+        # Network assertion immediately after file selection (same test scope)
         assert self._avatar_upload_requests == [], (
-            f"Expected no POST to {_AVATAR_UPLOAD_ENDPOINT} after selecting an "
-            f"invalid file type, but got: {self._avatar_upload_requests}"
+            f"Expected no POST to {_AVATAR_UPLOAD_ENDPOINT} after selecting a "
+            f".gif file, but got: {self._avatar_upload_requests}"
         )
 
     def test_pdf_file_triggers_error_message(
         self, authenticated_settings_page: Page
     ) -> None:
-        """Selecting a .pdf file must immediately show the type-rejection error."""
+        """Selecting a .pdf file must immediately show the type-rejection error
+        and must NOT dispatch a POST to /api/me/avatar."""
         page = authenticated_settings_page
+        settings_pg = SettingsPage(page)
 
-        file_input = page.locator('input[id="avatar_file"]')
-        file_input.set_input_files(
+        settings_pg.set_avatar_file(
             {
                 "name": "document.pdf",
                 "mimeType": "application/pdf",
@@ -328,21 +321,13 @@ class TestClientSideValidationLiveUI:
             }
         )
 
-        error_locator = page.locator('[id="avatar_file"] ~ [role="alert"]').or_(
-            page.locator('p[role="alert"]')
-        )
-        error_locator.wait_for(state="visible", timeout=_ERROR_VISIBLE_TIMEOUT)
-
-        error_text = error_locator.inner_text()
+        error_text = settings_pg.get_upload_error_text(timeout=_ERROR_VISIBLE_TIMEOUT)
         assert error_text == _EXPECTED_ERROR_TEXT, (
             f"Expected error text {_EXPECTED_ERROR_TEXT!r} for .pdf file, "
             f"got {error_text!r}"
         )
 
-    def test_pdf_file_does_not_trigger_network_request(
-        self, authenticated_settings_page: Page
-    ) -> None:
-        """Selecting a .pdf file must NOT dispatch a POST to /api/me/avatar."""
+        # Network assertion immediately after file selection (same test scope)
         assert self._avatar_upload_requests == [], (
             f"Expected no POST to {_AVATAR_UPLOAD_ENDPOINT} after selecting a "
             f".pdf file, but got: {self._avatar_upload_requests}"
@@ -353,21 +338,18 @@ class TestClientSideValidationLiveUI:
     ) -> None:
         """Error must appear on file selection alone — no need to click Upload."""
         page = authenticated_settings_page
+        settings_pg = SettingsPage(page)
 
         # Re-navigate to get a fresh state
-        settings_pg = SettingsPage(page)
         settings_pg.navigate(page.url)
 
         # Confirm no error alert before file selection
-        alert_before = page.locator('p[role="alert"]')
-        # The alert should not be present yet (or not visible)
-        assert not alert_before.is_visible(), (
+        assert not settings_pg.is_upload_error_visible(), (
             "Unexpected alert visible before any file was selected."
         )
 
         # Select an invalid file
-        file_input = page.locator('input[id="avatar_file"]')
-        file_input.set_input_files(
+        settings_pg.set_avatar_file(
             {
                 "name": "image.bmp",
                 "mimeType": "image/bmp",
@@ -376,10 +358,7 @@ class TestClientSideValidationLiveUI:
         )
 
         # Verify alert appears without clicking the Upload button
-        error_locator = page.locator('p[role="alert"]')
-        error_locator.wait_for(state="visible", timeout=_ERROR_VISIBLE_TIMEOUT)
-
-        visible_text = error_locator.inner_text()
+        visible_text = settings_pg.get_upload_error_text(timeout=_ERROR_VISIBLE_TIMEOUT)
         assert _EXPECTED_ERROR_TEXT in visible_text, (
             f"Expected {_EXPECTED_ERROR_TEXT!r} in visible error text, "
             f"got {visible_text!r}"
@@ -393,10 +372,9 @@ class TestClientSideValidationLiveUI:
         Because setUploadFile(null) is called in handleFileChange, the Upload
         button's disabled={!uploadFile} condition keeps it disabled.
         """
-        page = authenticated_settings_page
+        settings_pg = SettingsPage(authenticated_settings_page)
 
-        upload_button = page.get_by_role("button", name="Upload", exact=True)
-        assert upload_button.is_disabled(), (
+        assert settings_pg.is_upload_button_disabled(), (
             "Expected the Upload button to be disabled after an invalid file was "
             "selected (uploadFile is null — button must have disabled attribute)."
         )

@@ -201,3 +201,42 @@ class SettingsPage:
     def current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    # ------------------------------------------------------------------
+    # Avatar file upload (MYTUBE-635 API)
+    # ------------------------------------------------------------------
+
+    _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
+    _UPLOAD_ERROR_PRIMARY = '[id="avatar_file"] ~ [role="alert"]'
+    _UPLOAD_ERROR_FALLBACK = 'p[role="alert"]'
+    _UPLOAD_BUTTON_NAME = "Upload"
+
+    def set_avatar_file(self, file_payload: dict) -> None:
+        """Set a file on the hidden avatar file input via Playwright's set_input_files.
+
+        *file_payload* is a dict with keys ``name``, ``mimeType``, and ``buffer``
+        (bytes), as accepted by Playwright's ``set_input_files``.
+        """
+        self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(file_payload)
+
+    def get_upload_error_text(self, timeout: float = 5_000) -> str:
+        """Wait for the upload error alert to become visible and return its text.
+
+        Tries the sibling-of-input selector first and falls back to any
+        ``p[role="alert"]`` on the page.
+        """
+        locator = self._page.locator(self._UPLOAD_ERROR_PRIMARY).or_(
+            self._page.locator(self._UPLOAD_ERROR_FALLBACK)
+        )
+        locator.first.wait_for(state="visible", timeout=timeout)
+        return locator.first.inner_text()
+
+    def is_upload_error_visible(self) -> bool:
+        """Return True if an upload error alert is currently visible."""
+        return self._page.locator(self._UPLOAD_ERROR_FALLBACK).is_visible()
+
+    def is_upload_button_disabled(self) -> bool:
+        """Return True if the Upload button currently has the disabled attribute."""
+        return self._page.get_by_role(
+            "button", name=self._UPLOAD_BUTTON_NAME, exact=True
+        ).is_disabled()
