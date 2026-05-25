@@ -26,6 +26,38 @@ class AvatarApiService:
         self._base_url = api_config.base_url.rstrip("/")
         self._token = token
 
+    def upload_avatar_unauthenticated(
+        self,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        filename: str = "test_avatar.jpg",
+        timeout: int = 15,
+    ) -> int:
+        """POST *image_bytes* to /api/me/avatar WITHOUT an Authorization header.
+
+        Returns the HTTP status code.  This is the test-facing method for
+        MYTUBE-628: verifying that the endpoint rejects unauthenticated callers
+        with HTTP 401.
+        """
+        import urllib.error
+        import urllib.request as _ureq
+
+        boundary = uuid.uuid4().hex
+        body = _build_multipart_body(boundary, image_bytes, mime_type, filename)
+        url = f"{self._base_url}/api/me/avatar"
+        req = _ureq.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        # No Authorization header — this is deliberate.
+        try:
+            with _ureq.urlopen(req, timeout=timeout) as resp:
+                return resp.status
+        except urllib.error.HTTPError as exc:
+            return exc.code
+
     def upload_avatar(
         self,
         file_bytes: bytes,
