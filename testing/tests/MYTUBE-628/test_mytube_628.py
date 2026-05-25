@@ -18,7 +18,7 @@ The API returns HTTP 401 Unauthorized.
 
 Architecture
 ------------
-- Pure API test using Python stdlib (urllib / http.client) — no auth token needed.
+- AvatarApiService encapsulates all HTTP/multipart details (testing/components/services/).
 - APIConfig: centralised base URL from environment variable API_BASE_URL.
 
 Environment Variables
@@ -32,18 +32,15 @@ Run from repo root:
 from __future__ import annotations
 
 import base64
-import io
 import os
 import sys
-import urllib.error
-import urllib.request
-import uuid
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.api_config import APIConfig
+from testing.components.services.avatar_api_service import AvatarApiService
 
 # ---------------------------------------------------------------------------
 # Minimal 1×1 white-pixel JPEG (standard test image, <1 KB)
@@ -64,30 +61,14 @@ _JPEG_BYTES = base64.b64decode(_MINIMAL_JPEG_B64)
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _build_multipart(field_name: str, filename: str, data: bytes, content_type: str) -> tuple[bytes, str]:
-    """Return (body_bytes, boundary) for a single-file multipart/form-data payload."""
-    boundary = uuid.uuid4().hex
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
-        f"Content-Type: {content_type}\r\n"
-        f"\r\n"
-    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
-    return body, boundary
-
-
-# ---------------------------------------------------------------------------
-# Fixture
+# Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
-def api_base_url() -> str:
-    return APIConfig().base_url
+def avatar_service() -> AvatarApiService:
+    """Return an AvatarApiService instance configured from the environment."""
+    return AvatarApiService(APIConfig(), token="")
 
 
 # ---------------------------------------------------------------------------
@@ -95,31 +76,9 @@ def api_base_url() -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_upload_avatar_without_auth_returns_401(api_base_url: str) -> None:
+def test_upload_avatar_without_auth_returns_401(avatar_service: AvatarApiService) -> None:
     """POST /api/me/avatar without Authorization header must return 401."""
-    url = f"{api_base_url}/api/me/avatar"
-
-    body, boundary = _build_multipart(
-        field_name="avatar",
-        filename="test_avatar.jpg",
-        data=_JPEG_BYTES,
-        content_type="image/jpeg",
-    )
-
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
-    # No Authorization header is added — this is the core of the test.
-
-    status_code: int
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            status_code = resp.status
-    except urllib.error.HTTPError as exc:
-        status_code = exc.code
+    status_code = avatar_service.upload_avatar_unauthenticated(_JPEG_BYTES)
 
     assert status_code == 401, (
         f"Expected HTTP 401 Unauthorized for unauthenticated POST /api/me/avatar, "
