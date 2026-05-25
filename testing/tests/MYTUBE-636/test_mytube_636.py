@@ -190,6 +190,7 @@ class TestAvatarFileSizeValidation:
         self,
         web_config: WebConfig,
         login_page: LoginPage,
+        settings_page: SettingsPage,
         page: Page,
     ) -> None:
         """No POST to /api/me/avatar must occur when the client rejects the file.
@@ -206,19 +207,17 @@ class TestAvatarFileSizeValidation:
         page.on("request", _on_request)
 
         # Authenticate and reach /settings.
-        lp = LoginPage(page)
-        lp.navigate(web_config.login_url())
-        lp.login_as(web_config.test_email, web_config.test_password)
-        lp.wait_for_navigation_to(web_config.home_url(), timeout=_NAVIGATION_TIMEOUT)
+        login_page.navigate(web_config.login_url())
+        login_page.login_as(web_config.test_email, web_config.test_password)
+        login_page.wait_for_navigation_to(web_config.home_url(), timeout=_NAVIGATION_TIMEOUT)
 
-        sp = SettingsPage(page)
-        sp.navigate(web_config.settings_url())
+        settings_page.navigate(web_config.settings_url())
 
         # Simulate the oversized file selection.
-        sp.simulate_large_avatar_file(size_bytes=_FILE_SIZE_6MB)
+        settings_page.simulate_large_avatar_file(size_bytes=_FILE_SIZE_6MB)
 
         # Wait long enough for any async validation + potential XHR to fire.
-        sp.wait_for_upload_error(timeout=_ERROR_APPEAR_TIMEOUT)
+        settings_page.wait_for_upload_error(timeout=_ERROR_APPEAR_TIMEOUT)
 
         # Give a short additional window for any rogue async request.
         page.wait_for_timeout(1_000)
