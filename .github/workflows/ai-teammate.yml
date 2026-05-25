@@ -16,7 +16,7 @@ on:
         description: 'Ticket key for concurrency grouping (e.g., JD-123)'
         required: true
       project_key:
-        description: 'Project key (optional, accepted for DMTools compatibility)'
+        description: 'Project key for multi-project config selection'
         required: false
 
 permissions:
@@ -78,14 +78,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Cache web node_modules
         id: cache-web-deps
         uses: actions/cache@v4
         with:
           path: web/node_modules
-          key: ${{ runner.os }}-node20-web-node-modules-${{ hashFiles('web/package-lock.json') }}
+          key: ${{ runner.os }}-node24-web-node-modules-${{ hashFiles('web/package-lock.json') }}
 
       - name: Install web dependencies
         if: steps.cache-web-deps.outputs.cache-hit != 'true'
@@ -195,12 +195,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.dmtools
-          key: dmtools-v1.7.179
+          key: dmtools-v1.7.180
 
       - name: Install DMTools CLI
         if: steps.cache-dmtools.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL https://raw.githubusercontent.com/epam/dm.ai/v1.7.179/install.sh | bash -s v1.7.179
+          curl -fsSL https://raw.githubusercontent.com/epam/dm.ai/v1.7.180/install.sh | bash -s v1.7.180
 
       - name: Add DMTools to PATH
         run: echo "$HOME/.dmtools/bin" >> $GITHUB_PATH
