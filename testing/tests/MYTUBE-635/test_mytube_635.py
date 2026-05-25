@@ -374,6 +374,18 @@ class TestClientSideValidationLiveUI:
         """
         settings_pg = SettingsPage(authenticated_settings_page)
 
+        # Navigate to a fresh state so the test is self-contained
+        settings_pg.navigate(authenticated_settings_page.url)
+
+        # Select an invalid file to trigger the client-side validation
+        settings_pg.set_avatar_file(
+            {
+                "name": "image.bmp",
+                "mimeType": "image/bmp",
+                "buffer": b"BM\x1a\x00\x00\x00\x00\x00\x00\x00\x1a\x00\x00\x00",
+            }
+        )
+
         assert settings_pg.is_upload_button_disabled(), (
             "Expected the Upload button to be disabled after an invalid file was "
             "selected (uploadFile is null — button must have disabled attribute)."

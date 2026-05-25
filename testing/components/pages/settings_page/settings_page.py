@@ -203,7 +203,7 @@ class SettingsPage:
         return self._page.url
 
     # ------------------------------------------------------------------
-    # Avatar file upload (MYTUBE-635 API)
+    # Avatar file upload
     # ------------------------------------------------------------------
 
     _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
@@ -211,13 +211,30 @@ class SettingsPage:
     _UPLOAD_ERROR_FALLBACK = 'p[role="alert"]'
     _UPLOAD_BUTTON_NAME = "Upload"
 
-    def set_avatar_file(self, file_payload: dict) -> None:
+    def set_avatar_file(self, file_payload) -> None:
         """Set a file on the hidden avatar file input via Playwright's set_input_files.
 
-        *file_payload* is a dict with keys ``name``, ``mimeType``, and ``buffer``
-        (bytes), as accepted by Playwright's ``set_input_files``.
+        *file_payload* may be a file-path string (for MYTUBE-633 style tests) or a
+        dict with keys ``name``, ``mimeType``, and ``buffer`` (bytes), as accepted
+        by Playwright's ``set_input_files`` (for MYTUBE-635 style tests).
         """
         self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(file_payload)
+
+    def click_upload_button(self) -> None:
+        """Click the Upload button to initiate avatar upload."""
+        self._page.locator('button[type="button"]:has-text("Upload")').click()
+
+    def wait_for_upload_success_message(self, timeout: float = 10_000) -> bool:
+        """Wait for and return True when the upload success status message is visible."""
+        try:
+            self._page.wait_for_selector(
+                'p[role="status"]:has-text("Avatar uploaded successfully")',
+                state="visible",
+                timeout=timeout,
+            )
+            return True
+        except Exception:
+            return False
 
     def get_upload_error_text(self, timeout: float = 5_000) -> str:
         """Wait for the upload error alert to become visible and return its text.
@@ -240,3 +257,8 @@ class SettingsPage:
         return self._page.get_by_role(
             "button", name=self._UPLOAD_BUTTON_NAME, exact=True
         ).is_disabled()
+
+    def is_upload_button_enabled(self) -> bool:
+        """Return True if the Upload button is enabled (not disabled)."""
+        btn = self._page.locator('button[type="button"]:has-text("Upload")')
+        return btn.is_enabled()
