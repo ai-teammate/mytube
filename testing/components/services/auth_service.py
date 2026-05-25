@@ -117,9 +117,6 @@ class AuthService:
 
         Returns (status_code, response_body).
         """
-        import email.generator
-        import io
-        import mimetypes
         import uuid
 
         boundary = uuid.uuid4().hex
