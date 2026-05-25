@@ -35,7 +35,7 @@ Environment variables
 Architecture notes
 ------------------
 - ApiProcessService starts/stops the Go API binary; all HTTP calls go through it.
-- Multipart form data is encoded manually with email.mime / io.BytesIO.
+- Multipart form data is encoded manually using raw bytes and uuid boundaries.
 - Direct psycopg2 SQL is used for idempotent test-user seeding.
 - No hardcoded waits; ApiProcessService.wait_for_ready() polls /health.
 
@@ -45,9 +45,6 @@ Run from repo root:
 from __future__ import annotations
 
 import base64
-import email.generator
-import email.mime.multipart
-import email.mime.base
 import io
 import json
 import os
