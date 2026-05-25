@@ -440,8 +440,12 @@ class TestUploadButtonLive:
         return str(tmp)
 
     @pytest.fixture(scope="class")
-    def live_page(self, web_config: WebConfig, png_temp_file: str):
-        """Authenticate and navigate to the settings page with a route intercept."""
+    def live_settings(self, web_config: WebConfig):
+        """Authenticate, intercept the avatar route, navigate to settings.
+
+        Yields a ``SettingsPage`` instance pointed at the live deployed app.
+        All upload-related interactions must go through ``SettingsPage`` methods.
+        """
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
                 headless=web_config.headless, slow_mo=web_config.slow_mo
@@ -449,18 +453,17 @@ class TestUploadButtonLive:
             page = browser.new_page()
 
             # 1. Log in.
-            login_url = f"{web_config.base_url}/login/"
             login_pg = LoginPage(page)
-            login_pg.navigate(login_url)
+            login_pg.navigate(f"{web_config.base_url}/login/")
             login_pg.login_as(web_config.test_email, web_config.test_password)
 
-            # Wait for redirect to home / dashboard.
+            # Wait for redirect away from /login.
             page.wait_for_url(
                 lambda url: "/login" not in url,
                 timeout=_PAGE_LOAD_TIMEOUT,
             )
 
-            # 2. Intercept POST /api/me/avatar to add a delay so the in-flight
+            # 2. Intercept POST /api/me/avatar with a delay so the in-flight
             #    state is observable without network variability.
             def _slow_route(route):
                 time.sleep(_LIVE_ROUTE_DELAY_S)
@@ -479,51 +482,44 @@ class TestUploadButtonLive:
                 "Settings page did not load in live mode."
             )
 
-            yield page, png_temp_file
+            yield settings_pg
             browser.close()
 
-    def test_live_button_disabled_during_upload(self, live_page) -> None:
-        """Live: Upload button is disabled while the intercepted request is in flight."""
-        page, png_file = live_page
+    def test_live_button_disabled_during_upload(
+        self, live_settings: SettingsPage, png_temp_file: str
+    ) -> None:
+        """Live: Upload button is disabled while the intercepted request is in flight.
 
-        # Attach a valid PNG file.
-        file_input = page.locator("#avatar_file")
-        file_input.set_input_files(png_file)
-
-        # Click the Upload button.
-        upload_btn = page.locator('button[type="button"]:has-text("Upload")')
-        page.wait_for_function(
-            """() => {
-                const btns = [...document.querySelectorAll('button[type="button"]')];
-                const btn = btns.find(b => b.textContent.includes('Upload'));
-                return btn && !btn.disabled;
-            }""",
-            timeout=5_000,
-        )
-        upload_btn.click()
-
-        # The button must become disabled immediately (before the 3-second delay).
-        page.wait_for_function(
-            """() => {
-                const btns = [...document.querySelectorAll('button[type="button"]')];
-                const btn = btns.find(b => b.textContent.includes('Upload'));
-                return btn && btn.disabled;
-            }""",
-            timeout=_IN_FLIGHT_TIMEOUT,
-        )
-        uploading_btn = page.locator('button[type="button"]:has-text("Uploading")')
-        assert uploading_btn.count() > 0 or upload_btn.is_disabled(), (
-            "Live: Expected the Upload button to be disabled and/or show 'Uploading…' "
-            "while the intercepted API request is in flight."
+        A MutationObserver is armed before clicking so the browser records the
+        'Uploading…' + disabled state independently of Playwright's event loop
+        (which is blocked by the route-handler delay).
+        """
+        settings_pg = live_settings
+        settings_pg.arm_uploading_observer()
+        settings_pg.select_avatar_file(png_temp_file)
+        settings_pg.wait_for_upload_button_enabled()
+        settings_pg.click_upload_button()
+        assert settings_pg.was_upload_disabled_observed(), (
+            "Live: Expected the Upload button to be disabled and show 'Uploading…' "
+            "while the intercepted API request was in flight."
         )
 
-    def test_live_button_shows_uploading_text(self, live_page) -> None:
-        """Live: button label shows 'Uploading…' while the request is in flight."""
-        page, _ = live_page
-        # The button should already be showing 'Uploading…' from the previous test.
-        uploading_btn = page.locator('button[type="button"]').filter(has_text="Uploading")
-        # It may have already transitioned back if the route delay elapsed.
-        count = uploading_btn.count()
-        # Accept either: still showing "Uploading…" or already transitioned back.
-        # The main assertion (disabled state) was in the previous test.
-        assert count >= 0, "Unexpected state in live button text check."
+    def test_live_button_shows_uploading_text(
+        self, live_settings: SettingsPage, png_temp_file: str
+    ) -> None:
+        """Live: button label shows 'Uploading…' while the request is in flight.
+
+        Arms a fresh MutationObserver, re-selects the file (the previous upload
+        reset the uploadFile state to null), triggers a new upload, and asserts
+        that the observer captured 'Uploading…' text while the route delay was active.
+        """
+        settings_pg = live_settings
+        settings_pg.arm_uploading_observer()
+        # Re-select the file (previous upload reset the uploadFile state to null).
+        settings_pg.select_avatar_file(png_temp_file)
+        settings_pg.wait_for_upload_button_enabled()
+        settings_pg.click_upload_button()
+        assert settings_pg.was_uploading_text_observed(), (
+            "Live: Expected the Upload button to show 'Uploading…' while the "
+            "intercepted API request was in flight."
+        )
