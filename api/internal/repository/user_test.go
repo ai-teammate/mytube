@@ -761,3 +761,96 @@ func TestUpdateProfile_NilAvatarURL_PassedThrough(t *testing.T) {
 		t.Errorf("expected nil *string arg[1], got %v (%T)", avatarArg, avatarArg)
 	}
 }
+
+// ─── UpdateAvatarURL tests ────────────────────────────────────────────────────
+
+func TestUpdateAvatarURL_ExecError(t *testing.T) {
+	dbErr := errors.New("update avatar failed")
+	q := &updateQuerier{t: t, execErr: dbErr, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	user, err := repo.UpdateAvatarURL(context.Background(), "uid1", "https://cdn.example.com/avatars/uid1.jpg")
+
+	if user != nil {
+		t.Errorf("expected nil user on exec error")
+	}
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected wrapped dbErr, got: %v", err)
+	}
+}
+
+func TestUpdateAvatarURL_NoRowsAffected_ReturnsNilUser(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	user, err := repo.UpdateAvatarURL(context.Background(), "unknown-uid", "https://cdn.example.com/avatars/x.jpg")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user != nil {
+		t.Errorf("expected nil user when no rows affected")
+	}
+}
+
+func TestUpdateAvatarURL_RowAffected_ReturnsUpdatedUser(t *testing.T) {
+	avatarURL := "https://cdn.example.com/avatars/uid10.jpg"
+	now := time.Now().Truncate(time.Second)
+	expected := &repository.User{
+		ID:          "00000000-0000-0000-0000-000000000010",
+		FirebaseUID: "firebase-uid-10",
+		Username:    "alice",
+		AvatarURL:   &avatarURL,
+		CreatedAt:   now,
+	}
+	q := &updateQuerier{t: t, user: expected, rowsAffected: 1}
+	repo := repository.NewUserRepository(q)
+
+	got, err := repo.UpdateAvatarURL(context.Background(), "firebase-uid-10", avatarURL)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if got.AvatarURL == nil || *got.AvatarURL != avatarURL {
+		t.Errorf("AvatarURL: got %v, want %q", got.AvatarURL, avatarURL)
+	}
+}
+
+func TestUpdateAvatarURL_PassesAvatarURLAsFirstArg(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.UpdateAvatarURL(context.Background(), "uid", "https://cdn.example.com/avatars/uid.png")
+
+	if len(q.capturedExecArgs) < 1 {
+		t.Fatalf("expected ≥1 exec args, got %d", len(q.capturedExecArgs))
+	}
+	avatarArg, ok := q.capturedExecArgs[0].(string)
+	if !ok {
+		t.Fatalf("expected string arg[0], got %T", q.capturedExecArgs[0])
+	}
+	if avatarArg != "https://cdn.example.com/avatars/uid.png" {
+		t.Errorf("arg[0] (avatar_url): got %q", avatarArg)
+	}
+}
+
+func TestUpdateAvatarURL_PassesFirebaseUIDAsSecondArg(t *testing.T) {
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
+
+	_, _ = repo.UpdateAvatarURL(context.Background(), "my-firebase-uid", "https://cdn.example.com/avatars/x.jpg")
+
+	if len(q.capturedExecArgs) < 2 {
+		t.Fatalf("expected ≥2 exec args, got %d", len(q.capturedExecArgs))
+	}
+	uid, ok := q.capturedExecArgs[1].(string)
+	if !ok {
+		t.Fatalf("expected string arg[1], got %T", q.capturedExecArgs[1])
+	}
+	if uid != "my-firebase-uid" {
+		t.Errorf("arg[1] (firebase_uid): got %q, want %q", uid, "my-firebase-uid")
+	}
+}
