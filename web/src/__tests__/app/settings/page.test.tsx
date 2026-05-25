@@ -495,6 +495,8 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("https://cdn.example.com/alice.jpg")).toBeInTheDocument()
     );
+    // File input value should be cleared after successful upload.
+    expect((screen.getByLabelText(/upload avatar/i) as HTMLInputElement).value).toBe("");
 
     // Success message auto-dismisses after 3 seconds.
     act(() => {

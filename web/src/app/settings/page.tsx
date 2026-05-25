@@ -37,6 +37,7 @@ function SettingsPageContent() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [uploading, setUploading] = useState(false);
   const uploadSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Clean up auto-dismiss timer on unmount.
   useEffect(() => {
@@ -169,6 +170,7 @@ function SettingsPageContent() {
       const data = await res.json();
       setForm((prev) => ({ ...prev, avatarUrl: data.avatar_url ?? prev.avatarUrl }));
       setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setUploadSuccess(true);
 
       if (uploadSuccessTimerRef.current) {
@@ -279,6 +281,7 @@ function SettingsPageContent() {
               Upload avatar
             </label>
             <input
+              ref={fileInputRef}
               id="avatar_file"
               type="file"
               accept="image/jpeg,image/png"
