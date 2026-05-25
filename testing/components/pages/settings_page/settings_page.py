@@ -205,6 +205,35 @@ class SettingsPage:
         return self._page.url
 
     # ------------------------------------------------------------------
+    # Avatar file upload (MYTUBE-633)
+    # ------------------------------------------------------------------
+
+    def set_avatar_file(self, file_path: str) -> None:
+        """Set the file input for avatar upload to the file at *file_path*."""
+        self._page.set_input_files('input[id="avatar_file"]', file_path)
+
+    def click_upload_button(self) -> None:
+        """Click the Upload button to initiate avatar upload."""
+        self._page.locator('button[type="button"]:has-text("Upload")').click()
+
+    def wait_for_upload_success_message(self, timeout: float = 10_000) -> bool:
+        """Wait for and return True when the upload success status message is visible."""
+        try:
+            self._page.wait_for_selector(
+                'p[role="status"]:has-text("Avatar uploaded successfully")',
+                state="visible",
+                timeout=timeout,
+            )
+            return True
+        except Exception:
+            return False
+
+    def is_upload_button_enabled(self) -> bool:
+        """Return True if the Upload button is enabled (not disabled)."""
+        btn = self._page.locator('button[type="button"]:has-text("Upload")')
+        return btn.is_enabled()
+
+    # ------------------------------------------------------------------
     # File upload actions and queries (MYTUBE-636)
     # ------------------------------------------------------------------
 
