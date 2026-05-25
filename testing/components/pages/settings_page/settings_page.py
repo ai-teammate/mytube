@@ -203,7 +203,7 @@ class SettingsPage:
         return self._page.url
 
     # ------------------------------------------------------------------
-    # Avatar file upload actions (MYTUBE-637)
+    # Avatar file upload actions (MYTUBE-633 / MYTUBE-637)
     # ------------------------------------------------------------------
 
     _FILE_INPUT = 'input[id="avatar_file"]'
@@ -218,6 +218,18 @@ class SettingsPage:
     def click_upload_button(self) -> None:
         """Click the Upload button to submit the avatar file."""
         self._page.locator(self._UPLOAD_BUTTON).click()
+
+    def wait_for_upload_success_message(self, timeout: float = 10_000) -> bool:
+        """Wait for and return True when the upload success status message is visible."""
+        try:
+            self._page.wait_for_selector(
+                'p[role="status"]:has-text("Avatar uploaded successfully")',
+                state="visible",
+                timeout=timeout,
+            )
+            return True
+        except Exception:
+            return False
 
     def get_upload_error_message(self, timeout: float = 10_000) -> str | None:
         """Wait for and return the upload error message text, or None if not shown."""
@@ -238,9 +250,20 @@ class SettingsPage:
         except Exception:
             return False
 
+    def get_upload_error_text(self) -> str | None:
+        """Return the text of the upload error paragraph, or None if absent."""
+        locator = self._page.locator(self._UPLOAD_ERROR_ALERT)
+        if locator.count() > 0:
+            return locator.first.inner_text()
+        return None
+
     def is_upload_button_visible(self) -> bool:
         """Return True if the Upload button is present and visible."""
         return self._page.locator(self._UPLOAD_BUTTON).is_visible()
+
+    def is_upload_button_enabled(self) -> bool:
+        """Return True if the Upload button is enabled (not disabled)."""
+        return self._page.locator(self._UPLOAD_BUTTON).is_enabled()
 
     def get_upload_error_element_count(self) -> int:
         """Return the number of upload error alert paragraphs present in the DOM."""
