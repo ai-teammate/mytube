@@ -45,32 +45,30 @@ CDN_BASE_URL           : Public CDN base URL for the HLS bucket.
 Architecture
 ------------
 - ApiProcessService manages the Go API subprocess lifecycle.
+- AvatarApiService encapsulates multipart POST /api/me/avatar requests.
 - psycopg2 is used for idempotent test-user seeding.
-- Multipart POST uses the `requests` library (available in the test environment).
 - GCS verification uses google-cloud-storage when credentials are present.
 - No hardcoded URLs, credentials, or secrets.
 """
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
 import struct
 import subprocess
 import sys
 import zlib
-from typing import Optional
 
 import psycopg2
 import pytest
-import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from testing.core.config.api_config import APIConfig
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.avatar_api_service import AvatarApiService
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -155,21 +153,12 @@ def _build_binary() -> None:
         )
 
 
-def _post_avatar(base_url: str, token: str, image_bytes: bytes, filename: str = "avatar.png") -> tuple[int, dict]:
-    """POST *image_bytes* as multipart/form-data to /api/me/avatar.
-
-    Returns (status_code, parsed_json_body).  On non-JSON responses, body is
-    ``{"raw": <text>}``.
-    """
-    url = f"{base_url}/api/me/avatar"
-    headers = {"Authorization": f"Bearer {token}"}
-    files = {"avatar": (filename, io.BytesIO(image_bytes), "image/png")}
-    resp = requests.post(url, headers=headers, files=files, timeout=30)
+def _parse_response_body(raw: str) -> dict:
+    """Parse a JSON response body string; fall back to ``{"raw": raw}``."""
     try:
-        body = resp.json()
+        return json.loads(raw)
     except Exception:
-        body = {"raw": resp.text}
-    return resp.status_code, body
+        return {"raw": raw}
 
 
 # ---------------------------------------------------------------------------
@@ -281,19 +270,34 @@ def seeded_user(api_server, db_conn) -> dict:
 
 
 @pytest.fixture(scope="module")
-def first_upload_result(api_server, seeded_user) -> dict:
-    """Upload image_a and capture the HTTP response."""
-    base_url = f"http://127.0.0.1:{_PORT}"
-    status, body = _post_avatar(base_url, _FIREBASE_TOKEN, _IMAGE_A, "avatar_a.png")
-    return {"status": status, "body": body}
+def avatar_service(api_server) -> AvatarApiService:
+    """Return an AvatarApiService pointing at the local test server."""
+    api_cfg = APIConfig.__new__(APIConfig)
+    api_cfg.base_url = f"http://127.0.0.1:{_PORT}"
+    api_cfg.health_token = ""
+    return AvatarApiService(api_cfg, token=_FIREBASE_TOKEN)
 
 
 @pytest.fixture(scope="module")
-def second_upload_result(api_server, seeded_user, first_upload_result) -> dict:
+def first_upload_result(avatar_service: AvatarApiService, seeded_user) -> dict:
+    """Upload image_a and capture the HTTP response."""
+    status, raw = avatar_service.upload_avatar(
+        file_bytes=_IMAGE_A,
+        mime_type="image/png",
+        filename="avatar_a.png",
+    )
+    return {"status": status, "body": _parse_response_body(raw)}
+
+
+@pytest.fixture(scope="module")
+def second_upload_result(avatar_service: AvatarApiService, seeded_user, first_upload_result) -> dict:
     """Upload image_b immediately after image_a and capture the HTTP response."""
-    base_url = f"http://127.0.0.1:{_PORT}"
-    status, body = _post_avatar(base_url, _FIREBASE_TOKEN, _IMAGE_B, "avatar_b.png")
-    return {"status": status, "body": body}
+    status, raw = avatar_service.upload_avatar(
+        file_bytes=_IMAGE_B,
+        mime_type="image/png",
+        filename="avatar_b.png",
+    )
+    return {"status": status, "body": _parse_response_body(raw)}
 
 
 @pytest.fixture(scope="module")
