@@ -207,13 +207,22 @@ class SettingsPage:
     # ------------------------------------------------------------------
 
     _FILE_INPUT = 'input[id="avatar_file"]'
+    _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
     _UPLOAD_BUTTON = 'button[type="button"]:has-text("Upload")'
+    _UPLOAD_BUTTON_NAME = "Upload"
     _UPLOAD_ERROR_ALERT = 'p[role="alert"]'
+    _UPLOAD_ERROR_PRIMARY = '[id="avatar_file"] ~ [role="alert"]'
+    _UPLOAD_ERROR_FALLBACK = 'p[role="alert"]'
     _UPLOAD_SUCCESS_STATUS = 'p[role="status"]'
 
-    def set_avatar_file(self, file_path: str) -> None:
-        """Set the file input for avatar upload to *file_path*."""
-        self._page.locator(self._FILE_INPUT).set_input_files(file_path)
+    def set_avatar_file(self, file_payload) -> None:
+        """Set a file on the hidden avatar file input via Playwright's set_input_files.
+
+        *file_payload* may be a file-path string (for MYTUBE-633/637 style tests) or a
+        dict with keys ``name``, ``mimeType``, and ``buffer`` (bytes), as accepted
+        by Playwright's ``set_input_files`` (for MYTUBE-635 style tests).
+        """
+        self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(file_payload)
 
     def click_upload_button(self) -> None:
         """Click the Upload button to submit the avatar file."""
@@ -250,12 +259,23 @@ class SettingsPage:
         except Exception:
             return False
 
-    def get_upload_error_text(self) -> str | None:
-        """Return the text of the upload error paragraph, or None if absent."""
-        locator = self._page.locator(self._UPLOAD_ERROR_ALERT)
-        if locator.count() > 0:
-            return locator.first.inner_text()
-        return None
+    def get_upload_error_text(self, timeout: float = 5_000) -> str:
+        """Wait for the upload error alert to become visible and return its text.
+
+        Tries the sibling-of-input selector first and falls back to any
+        ``p[role="alert"]`` on the page.
+        """
+        locator = self._page.locator(self._UPLOAD_ERROR_PRIMARY).or_(
+            self._page.locator(self._UPLOAD_ERROR_FALLBACK)
+        )
+        locator.first.wait_for(state="visible", timeout=timeout)
+        return locator.first.inner_text()
+
+    def is_upload_button_disabled(self) -> bool:
+        """Return True if the Upload button currently has the disabled attribute."""
+        return self._page.get_by_role(
+            "button", name=self._UPLOAD_BUTTON_NAME, exact=True
+        ).is_disabled()
 
     def is_upload_button_visible(self) -> bool:
         """Return True if the Upload button is present and visible."""
