@@ -103,6 +103,52 @@ class AuthService:
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
 
+    def post_multipart(
+        self,
+        path: str,
+        fields: dict,
+        files: dict,
+        extra_headers: Optional[dict] = None,
+    ) -> tuple[int, str]:
+        """Issue an authenticated POST *path* with a multipart/form-data body.
+
+        *fields* is a dict of plain text fields {name: value}.
+        *files* is a dict of file fields {name: (filename, data_bytes, content_type)}.
+
+        Returns (status_code, response_body).
+        """
+        import uuid
+
+        boundary = uuid.uuid4().hex
+        body_parts: list[bytes] = []
+        for name, value in fields.items():
+            body_parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+            )
+        for name, (filename, data_bytes, content_type) in files.items():
+            header = (
+                f'--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
+                f'Content-Type: {content_type}\r\n\r\n'
+            ).encode()
+            body_parts.append(header + data_bytes + b"\r\n")
+        body_parts.append(f'--{boundary}--\r\n'.encode())
+        body = b"".join(body_parts)
+
+        url = f"{self._base_url}{path}"
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        req = urllib.request.Request(url, data=body, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
     @staticmethod
     def sign_in_with_email_password(api_key: str, email: str, password: str) -> Optional[str]:
         """Sign in with Firebase email/password; return the ID token or None on error."""
