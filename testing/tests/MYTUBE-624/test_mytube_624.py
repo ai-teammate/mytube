@@ -36,16 +36,15 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
-import urllib.request
-import uuid
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+from testing.core.config.api_config import APIConfig
 from testing.core.config.db_config import DBConfig
 from testing.components.services.api_process_service import ApiProcessService
+from testing.components.services.avatar_api_service import AvatarApiService
 
 # ---------------------------------------------------------------------------
 # Minimal valid JPEG (1x1 pixel) — generated programmatically.
@@ -98,42 +97,6 @@ def _build_binary() -> str:
     return _REBUILT_BINARY
 
 
-def _build_multipart(
-    file_bytes: bytes,
-    field: str = "avatar",
-    filename: str = "avatar.jpg",
-    mime: str = "image/jpeg",
-) -> tuple[bytes, str]:
-    """Return (body_bytes, Content-Type header value) for a multipart upload."""
-    boundary = uuid.uuid4().hex
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
-        f"Content-Type: {mime}\r\n\r\n"
-    ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
-    return body, f"multipart/form-data; boundary={boundary}"
-
-
-def _upload_avatar(base_url: str, token: str, jpeg_bytes: bytes) -> tuple[int, str, dict]:
-    """POST /api/me/avatar and return (status, raw_body, parsed_json)."""
-    body, ct = _build_multipart(jpeg_bytes)
-    url = f"{base_url.rstrip('/')}/api/me/avatar"
-    req = urllib.request.Request(
-        url, data=body, method="POST",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": ct},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            status, raw = resp.status, resp.read().decode()
-    except urllib.error.HTTPError as exc:
-        status, raw = exc.code, exc.read().decode()
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = {}
-    return status, raw, parsed
-
-
 def _get_db_avatar_url(firebase_uid: str) -> str | None:
     """Return the avatar_url stored for firebase_uid, or None."""
     try:
@@ -178,7 +141,15 @@ def setup_module(module) -> None:
         pytest.fail(f"API server did not become ready within 20 s.\nLogs:\n{logs}")
 
     base_url = f"http://127.0.0.1:{_PORT}"
-    _upload_status, _upload_raw, _upload_body = _upload_avatar(base_url, _FIREBASE_TOKEN, _MINIMAL_JPEG_BYTES)
+    api_cfg = APIConfig.__new__(APIConfig)
+    api_cfg.base_url = base_url
+    api_cfg.health_token = ""
+    avatar_svc = AvatarApiService(api_cfg, token=_FIREBASE_TOKEN)
+    _upload_status, _upload_raw = avatar_svc.upload_avatar(_MINIMAL_JPEG_BYTES)
+    try:
+        _upload_body.update(json.loads(_upload_raw))
+    except json.JSONDecodeError:
+        pass
 
 
 def teardown_module(module) -> None:
