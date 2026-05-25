@@ -123,21 +123,21 @@ func TestStubSigner_CapturesOptions(t *testing.T) {
 
 // stubUploader implements storage.Uploader for testing.
 type stubUploader struct {
-err              error
-capturedBucket   string
-capturedObject   string
-capturedMIMEType string
-capturedBody     []byte
+	err              error
+	capturedBucket   string
+	capturedObject   string
+	capturedMIMEType string
+	capturedBody     []byte
 }
 
 func (s *stubUploader) Upload(_ context.Context, bucket, object, contentType string, r io.Reader) error {
-s.capturedBucket = bucket
-s.capturedObject = object
-s.capturedMIMEType = contentType
-if r != nil {
-s.capturedBody, _ = io.ReadAll(r)
-}
-return s.err
+	s.capturedBucket = bucket
+	s.capturedObject = object
+	s.capturedMIMEType = contentType
+	if r != nil {
+		s.capturedBody, _ = io.ReadAll(r)
+	}
+	return s.err
 }
 
 // Compile-time interface check.
@@ -146,35 +146,35 @@ var _ storage.Uploader = (*stubUploader)(nil)
 // ─── Uploader interface tests ─────────────────────────────────────────────────
 
 func TestStubUploader_CapturesArguments(t *testing.T) {
-u := &stubUploader{}
-body := []byte("hello-avatar")
+	u := &stubUploader{}
+	body := []byte("hello-avatar")
 
-err := u.Upload(context.Background(), "my-bucket", "avatars/uid.jpg", "image/jpeg", bytes.NewReader(body))
+	err := u.Upload(context.Background(), "my-bucket", "avatars/uid.jpg", "image/jpeg", bytes.NewReader(body))
 
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
-if u.capturedBucket != "my-bucket" {
-t.Errorf("bucket: got %q, want %q", u.capturedBucket, "my-bucket")
-}
-if u.capturedObject != "avatars/uid.jpg" {
-t.Errorf("object: got %q, want %q", u.capturedObject, "avatars/uid.jpg")
-}
-if u.capturedMIMEType != "image/jpeg" {
-t.Errorf("contentType: got %q, want %q", u.capturedMIMEType, "image/jpeg")
-}
-if !bytes.Equal(u.capturedBody, body) {
-t.Errorf("body: got %q, want %q", u.capturedBody, body)
-}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.capturedBucket != "my-bucket" {
+		t.Errorf("bucket: got %q, want %q", u.capturedBucket, "my-bucket")
+	}
+	if u.capturedObject != "avatars/uid.jpg" {
+		t.Errorf("object: got %q, want %q", u.capturedObject, "avatars/uid.jpg")
+	}
+	if u.capturedMIMEType != "image/jpeg" {
+		t.Errorf("contentType: got %q, want %q", u.capturedMIMEType, "image/jpeg")
+	}
+	if !bytes.Equal(u.capturedBody, body) {
+		t.Errorf("body: got %q, want %q", u.capturedBody, body)
+	}
 }
 
 func TestStubUploader_ReturnsError(t *testing.T) {
-uploadErr := errors.New("gcs unreachable")
-u := &stubUploader{err: uploadErr}
+	uploadErr := errors.New("gcs unreachable")
+	u := &stubUploader{err: uploadErr}
 
-err := u.Upload(context.Background(), "b", "o", "image/png", bytes.NewReader(nil))
+	err := u.Upload(context.Background(), "b", "o", "image/png", bytes.NewReader(nil))
 
-if !errors.Is(err, uploadErr) {
-t.Errorf("expected wrapped uploadErr, got: %v", err)
-}
+	if !errors.Is(err, uploadErr) {
+		t.Errorf("expected wrapped uploadErr, got: %v", err)
+	}
 }

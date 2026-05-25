@@ -62,6 +62,20 @@ func (s *stubUploader) Upload(_ context.Context, bucket, object, contentType str
 // Compile-time interface checks.
 var _ storage.Uploader = (*stubUploader)(nil)
 
+// ─── magic-byte helpers ───────────────────────────────────────────────────────
+
+// minimalJPEG returns a byte slice whose first bytes are a valid JPEG magic
+// header so that http.DetectContentType identifies it as "image/jpeg".
+func minimalJPEG() []byte {
+	return []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01}
+}
+
+// minimalPNG returns a byte slice whose first bytes are the PNG signature so
+// that http.DetectContentType identifies it as "image/png".
+func minimalPNG() []byte {
+	return []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 // buildMultipartRequest builds a multipart/form-data POST request containing a
@@ -211,14 +225,32 @@ func TestAvatarUpload_TextPlainMIMEType_Returns400(t *testing.T) {
 	}
 }
 
+// TestAvatarUpload_SpoofedMIMEType_Returns400 verifies that a file with a
+// spoofed Content-Type header (declares image/jpeg but contains plain text) is
+// rejected by the magic-byte check even though the header MIME check passes.
+func TestAvatarUpload_SpoofedMIMEType_Returns400(t *testing.T) {
+	users := &stubAvatarUserProvider{getUser: defaultAvatarUser()}
+	h := avatarHandlerWithDefaults(users, &stubUploader{})
+
+	claims := &auth.TokenClaims{UID: "uid1", Email: "alice@example.com"}
+	// Header says image/jpeg but body is plain text — magic-byte sniff must reject it.
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", []byte("this is not an image")), claims)
+	rec := serveAvatar(h, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for spoofed MIME type, got %d", rec.Code)
+	}
+}
+
 // ─── file size validation ─────────────────────────────────────────────────────
 
 func TestAvatarUpload_FileTooLarge_Returns413(t *testing.T) {
 	users := &stubAvatarUserProvider{getUser: defaultAvatarUser()}
 	h := avatarHandlerWithDefaults(users, &stubUploader{})
 
-	// 5 MB + 1 byte exceeds the limit.
+	// 5 MB + 1 byte with a valid PNG magic header — the size check must reject it.
 	oversized := make([]byte, 5*1024*1024+1)
+	copy(oversized, minimalPNG())
 	claims := &auth.TokenClaims{UID: "uid1", Email: "alice@example.com"}
 	req := withClaims(buildMultipartRequest(t, "avatar", "image/png", oversized), claims)
 	rec := serveAvatar(h, req)
@@ -235,8 +267,9 @@ func TestAvatarUpload_FileExactlyAtLimit_Returns200(t *testing.T) {
 	}
 	h := avatarHandlerWithDefaults(users, &stubUploader{})
 
-	// Exactly 5 MB — must be accepted.
+	// Exactly 5 MB starting with a valid JPEG magic header — must be accepted.
 	exactly5MB := make([]byte, 5*1024*1024)
+	copy(exactly5MB, minimalJPEG())
 	claims := &auth.TokenClaims{UID: "uid1", Email: "alice@example.com"}
 	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", exactly5MB), claims)
 	rec := serveAvatar(h, req)
@@ -277,7 +310,7 @@ func TestAvatarUpload_UploaderError_Returns500(t *testing.T) {
 	h := avatarHandlerWithDefaults(users, uploader)
 
 	claims := &auth.TokenClaims{UID: "uid1", Email: "alice@example.com"}
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", []byte("fake-jpeg")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
 	rec := serveAvatar(h, req)
 
 	if rec.Code != http.StatusInternalServerError {
@@ -295,7 +328,7 @@ func TestAvatarUpload_UpdateAvatarURLError_Returns500(t *testing.T) {
 	h := avatarHandlerWithDefaults(users, &stubUploader{})
 
 	claims := &auth.TokenClaims{UID: "uid1", Email: "alice@example.com"}
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", []byte("fake-jpeg")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
 	rec := serveAvatar(h, req)
 
 	if rec.Code != http.StatusInternalServerError {
@@ -312,7 +345,7 @@ func TestAvatarUpload_JPEG_Success(t *testing.T) {
 	h := handler.NewAvatarUploadHandler(users, uploader, "my-bucket", "https://cdn.example.com")
 
 	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", []byte("fake-jpeg-data")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
 	rec := serveAvatar(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -359,7 +392,7 @@ func TestAvatarUpload_PNG_Success(t *testing.T) {
 	h := handler.NewAvatarUploadHandler(users, uploader, "my-bucket", "https://cdn.example.com")
 
 	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/png", []byte("fake-png-data")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/png", minimalPNG()), claims)
 	rec := serveAvatar(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -388,7 +421,7 @@ func TestAvatarUpload_CDNBaseURLTrailingSlash_IsNormalised(t *testing.T) {
 	h := handler.NewAvatarUploadHandler(users, &stubUploader{}, "bucket", "https://cdn.example.com/")
 
 	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", []byte("data")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
 	rec := serveAvatar(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -411,7 +444,7 @@ func TestAvatarUpload_MIMETypeWithParameters_IsAccepted(t *testing.T) {
 
 	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
 	// Content-Type includes a parameter — handler must strip it.
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg; charset=utf-8", []byte("data")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg; charset=utf-8", minimalJPEG()), claims)
 	rec := serveAvatar(h, req)
 
 	if rec.Code != http.StatusOK {
@@ -430,7 +463,7 @@ func TestAvatarUpload_Success_HasJSONContentType(t *testing.T) {
 	h := avatarHandlerWithDefaults(users, &stubUploader{})
 
 	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
-	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", []byte("data")), claims)
+	req := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
 	rec := serveAvatar(h, req)
 
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {

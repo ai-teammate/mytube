@@ -118,9 +118,22 @@ func (h *avatarUploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Sniff the first 512 bytes to verify the file's actual content type
+	// (defence-in-depth — the multipart Content-Type header is client-controlled).
+	sniffBuf := make([]byte, 512)
+	n, _ := file.Read(sniffBuf)
+	detectedMIME := http.DetectContentType(sniffBuf[:n])
+	detectedBase := strings.TrimSpace(strings.ToLower(strings.SplitN(detectedMIME, ";", 2)[0]))
+	if _, ok := allowedAvatarMIMETypes[detectedBase]; !ok {
+		writeJSONError(w, "unsupported file type; accepted types: jpeg, png", http.StatusBadRequest)
+		return
+	}
+	// Reconstruct a reader that includes the already-consumed sniff bytes.
+	fileReader := io.MultiReader(bytes.NewReader(sniffBuf[:n]), file)
+
 	// Read up to maxAvatarSize+1 bytes so we can detect files that are exactly
 	// at the boundary (MaxBytesReader only triggers above maxAvatarSize+multipartOverhead).
-	limited := io.LimitReader(file, maxAvatarSize+1)
+	limited := io.LimitReader(fileReader, maxAvatarSize+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
 		log.Printf("POST /api/me/avatar: read file for user %s: %v", claims.UID, err)
