@@ -45,7 +45,6 @@ Run from repo root:
 from __future__ import annotations
 
 import base64
-import io
 import json
 import os
 import subprocess
@@ -127,8 +126,8 @@ def _build_multipart_body(
     Returns (body_bytes, content_type_header) where content_type_header
     includes the boundary parameter.
 
-    We use Python's email library to produce a standards-compliant body
-    without pulling in third-party dependencies.
+    Body is built manually using raw bytes and a uuid boundary — no third-party
+    encoding dependencies required.
     """
     boundary = f"----FormBoundary{uuid.uuid4().hex}"
     body_lines: list[bytes] = []
