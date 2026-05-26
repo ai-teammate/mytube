@@ -90,7 +90,24 @@ func main() {
 	mux.HandleFunc("/health", handler.NewHealthHandler(db))
 	mux.Handle("/api/me", authMiddleware(handler.NewMeHandler(userRepo)))
 	mux.Handle("/api/me/videos", authMiddleware(handler.NewMeVideosHandler(videoRepo, userRepo)))
-	mux.Handle("/api/me/avatar", authMiddleware(handler.NewAvatarUploadHandler(userRepo, gcsUploader, hlsBucket, cdnBaseURL)))
+	// /api/me/avatar handles both:
+	//   POST   — upload a new avatar image
+	//   DELETE — remove the current avatar (sets avatar_url to NULL)
+	avatarUploadHandler := authMiddleware(handler.NewAvatarUploadHandler(userRepo, gcsUploader, hlsBucket, cdnBaseURL))
+	avatarDeleteHandler := authMiddleware(handler.NewAvatarDeleteHandler(userRepo))
+	mux.Handle("/api/me/avatar", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			avatarUploadHandler.ServeHTTP(w, r)
+		case http.MethodDelete:
+			avatarDeleteHandler.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Allow", "POST, DELETE")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"error":"method not allowed"}`))
+		}
+	}))
 	optionalAuthMiddleware := middleware.OptionalAuth(verifier)
 	mux.Handle("/api/users/", handler.NewUsersHandler(userRepo))
 	// Rating and comment sub-resources are registered with wildcard patterns

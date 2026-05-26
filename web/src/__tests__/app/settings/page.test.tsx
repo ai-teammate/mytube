@@ -20,6 +20,7 @@ let mockUser: { email: string } | null = null;
 let mockLoading = false;
 const mockGetIdToken = jest.fn().mockResolvedValue("mock-token");
 const mockSignOut = jest.fn().mockResolvedValue(undefined);
+const mockSetAvatarUrl = jest.fn();
 
 jest.mock("@/context/AuthContext", () => ({
   useAuth: () => ({
@@ -27,6 +28,8 @@ jest.mock("@/context/AuthContext", () => ({
     loading: mockLoading,
     getIdToken: mockGetIdToken,
     signOut: mockSignOut,
+    avatarUrl: "",
+    setAvatarUrl: mockSetAvatarUrl,
   }),
 }));
 
@@ -59,6 +62,7 @@ describe("SettingsPage", () => {
     mockLoading = false;
     mockGetIdToken.mockResolvedValue("mock-token");
     mockSignOut.mockResolvedValue(undefined);
+    mockSetAvatarUrl.mockReset();
     // Default GET /api/me response.
     mockFetch.mockResolvedValue({
       ok: true,
@@ -699,5 +703,174 @@ describe("SettingsPage", () => {
     );
     // Avatar URL field must still have the original value.
     expect(screen.getByDisplayValue("https://existing.com/avatar.png")).toBeInTheDocument();
+  });
+
+  // ─── Remove avatar tests ─────────────────────────────────────────────────────
+
+  it("does not render Remove avatar button when avatarUrl is empty", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ username: "alice", avatar_url: null }),
+    });
+
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/username/i)).toBeInTheDocument()
+    );
+
+    expect(screen.queryByRole("button", { name: /remove avatar/i })).toBeNull();
+  });
+
+  it("renders Remove avatar button when avatarUrl is non-empty", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+    });
+
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+  });
+
+  it("calls DELETE /api/me/avatar with auth header on remove click", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      const deleteCall = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === "DELETE"
+      );
+      expect(deleteCall).toBeDefined();
+      expect(deleteCall?.[0]).toContain("/api/me/avatar");
+      expect(deleteCall?.[1]?.headers?.Authorization).toBe("Bearer mock-token");
+    });
+  });
+
+  it("clears avatarUrl and calls setAvatarUrl after successful remove", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      // Remove avatar button should disappear (avatarUrl cleared).
+      expect(screen.queryByRole("button", { name: /remove avatar/i })).toBeNull();
+    });
+
+    expect(mockSetAvatarUrl).toHaveBeenCalledWith("");
+  });
+
+  it("shows inline error when DELETE /api/me/avatar returns non-ok", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "remove failed" }),
+      });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/remove failed/i);
+    });
+  });
+
+  it("shows fallback remove error when response body has no error field", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+      })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/failed to remove avatar/i);
+    });
+  });
+
+  it("shows network error on remove fetch rejection", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+      })
+      .mockRejectedValueOnce(new Error("Network error"));
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/network error/i);
+    });
+  });
+
+  it("shows remove auth error when getIdToken returns null on remove", async () => {
+    // First call (fetchProfile): returns token so profile loads with avatar.
+    // Second call (handleAvatarRemove): returns null → auth error.
+    mockGetIdToken
+      .mockResolvedValueOnce("mock-token")
+      .mockResolvedValue(null);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ username: "alice", avatar_url: "https://cdn.example.com/a.png" }),
+    });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /remove avatar/i })).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: /remove avatar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/not authenticated/i);
+    });
   });
 });

@@ -199,6 +199,30 @@ WHERE  firebase_uid = $2`
 	return r.GetByFirebaseUID(ctx, firebaseUID)
 }
 
+// ClearAvatarURL sets avatar_url to NULL for the user identified by firebaseUID.
+// Returns the updated user row. Returns (nil, nil) when no row matches the given firebaseUID.
+func (r *UserRepository) ClearAvatarURL(ctx context.Context, firebaseUID string) (*User, error) {
+	const updateSQL = `
+UPDATE users
+SET    avatar_url = NULL
+WHERE  firebase_uid = $1`
+
+	result, err := r.db.ExecContext(ctx, updateSQL, firebaseUID)
+	if err != nil {
+		return nil, fmt.Errorf("clear avatar url: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("clear avatar url rows affected: %w", err)
+	}
+	if rows == 0 {
+		return nil, nil
+	}
+
+	return r.GetByFirebaseUID(ctx, firebaseUID)
+}
+
 // emailPrefix returns the portion of addr before the first "@".
 // If addr contains no "@", the whole string is returned.
 func emailPrefix(addr string) string {

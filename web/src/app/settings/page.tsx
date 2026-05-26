@@ -25,7 +25,7 @@ export default function SettingsPage() {
 
 function SettingsPageContent() {
   const router = useRouter();
-  const { user, getIdToken, signOut } = useAuth();
+  const { user, getIdToken, signOut, setAvatarUrl } = useAuth();
 
   const [form, setForm] = useState<ProfileData>({ username: "", avatarUrl: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -38,6 +38,9 @@ function SettingsPageContent() {
   const [uploading, setUploading] = useState(false);
   const uploadSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   // Clean up auto-dismiss timer on unmount.
   useEffect(() => {
@@ -168,7 +171,9 @@ function SettingsPageContent() {
       }
 
       const data = await res.json();
-      setForm((prev) => ({ ...prev, avatarUrl: data.avatar_url ?? prev.avatarUrl }));
+      const newUrl: string = data.avatar_url ?? "";
+      setForm((prev) => ({ ...prev, avatarUrl: newUrl }));
+      setAvatarUrl(newUrl);
       setUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setUploadSuccess(true);
@@ -187,6 +192,37 @@ function SettingsPageContent() {
   async function handleSignOut() {
     await signOut();
     router.replace("/login");
+  }
+
+  async function handleAvatarRemove() {
+    setRemoveError(null);
+    setRemoving(true);
+
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setRemoveError("You are not authenticated. Please sign in again.");
+        return;
+      }
+
+      const res = await fetch(`${API_URL}/api/me/avatar`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setRemoveError(body.error ?? "Failed to remove avatar. Please try again.");
+        return;
+      }
+
+      setForm((prev) => ({ ...prev, avatarUrl: "" }));
+      setAvatarUrl("");
+    } catch {
+      setRemoveError("Network error. Please check your connection and try again.");
+    } finally {
+      setRemoving(false);
+    }
   }
 
 
@@ -269,6 +305,19 @@ function SettingsPageContent() {
             {form.avatarUrl && (
               <div className="mt-3">
                 <AvatarPreview src={form.avatarUrl} />
+                {removeError && (
+                  <p role="alert" className="mt-1 text-xs text-red-600">
+                    {removeError}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAvatarRemove}
+                  disabled={removing}
+                  className="mt-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 bg-white hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {removing ? "Removing…" : "Remove avatar"}
+                </button>
               </div>
             )}
           </div>

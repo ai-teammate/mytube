@@ -30,8 +30,9 @@ type stubAvatarUserProvider struct {
 	updateErr  error
 
 	// captured arguments
-	capturedUpdateUID string
-	capturedUpdateURL string
+	capturedUpdateUID  string
+	capturedUpdateURL  string
+	capturedClearUID   string
 }
 
 func (s *stubAvatarUserProvider) GetByFirebaseUID(_ context.Context, _ string) (*repository.User, error) {
@@ -41,6 +42,11 @@ func (s *stubAvatarUserProvider) GetByFirebaseUID(_ context.Context, _ string) (
 func (s *stubAvatarUserProvider) UpdateAvatarURL(_ context.Context, firebaseUID, avatarURL string) (*repository.User, error) {
 	s.capturedUpdateUID = firebaseUID
 	s.capturedUpdateURL = avatarURL
+	return s.updateUser, s.updateErr
+}
+
+func (s *stubAvatarUserProvider) ClearAvatarURL(_ context.Context, firebaseUID string) (*repository.User, error) {
+	s.capturedClearUID = firebaseUID
 	return s.updateUser, s.updateErr
 }
 
@@ -521,5 +527,109 @@ func TestAvatarUpload_NonMultipartBody_Returns400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for non-multipart body, got %d", rec.Code)
+	}
+}
+
+// ─── DELETE /api/me/avatar ────────────────────────────────────────────────────
+
+// deleteAvatarHandler builds a handler for DELETE /api/me/avatar.
+func deleteAvatarHandler(users handler.AvatarUserProvider) http.Handler {
+	return handler.NewAvatarDeleteHandler(users)
+}
+
+func TestAvatarDelete_WrongMethod_Returns405(t *testing.T) {
+	users := &stubAvatarUserProvider{getUser: defaultAvatarUser()}
+	h := deleteAvatarHandler(users)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me/avatar", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestAvatarDelete_NoClaims_Returns401(t *testing.T) {
+	users := &stubAvatarUserProvider{getUser: defaultAvatarUser()}
+	h := deleteAvatarHandler(users)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/me/avatar", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAvatarDelete_ClearError_Returns500(t *testing.T) {
+	users := &stubAvatarUserProvider{
+		updateErr: errors.New("db error"),
+	}
+	h := deleteAvatarHandler(users)
+
+	claims := &auth.TokenClaims{UID: "uid1", Email: "alice@example.com"}
+	req := withClaims(httptest.NewRequest(http.MethodDelete, "/api/me/avatar", nil), claims)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestAvatarDelete_UserNotFound_Returns404(t *testing.T) {
+	users := &stubAvatarUserProvider{
+		updateUser: nil,
+		updateErr:  nil,
+	}
+	h := deleteAvatarHandler(users)
+
+	claims := &auth.TokenClaims{UID: "unknown-uid", Email: "x@example.com"}
+	req := withClaims(httptest.NewRequest(http.MethodDelete, "/api/me/avatar", nil), claims)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestAvatarDelete_Success_Returns204(t *testing.T) {
+	users := &stubAvatarUserProvider{
+		updateUser: defaultAvatarUser(),
+		updateErr:  nil,
+	}
+	h := deleteAvatarHandler(users)
+
+	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
+	req := withClaims(httptest.NewRequest(http.MethodDelete, "/api/me/avatar", nil), claims)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d", rec.Code)
+	}
+	if body := rec.Body.String(); body != "" {
+		t.Errorf("expected empty body on 204, got %q", body)
+	}
+}
+
+func TestAvatarDelete_PassesFirebaseUIDToClearAvatarURL(t *testing.T) {
+	users := &stubAvatarUserProvider{
+		updateUser: defaultAvatarUser(),
+		updateErr:  nil,
+	}
+	h := deleteAvatarHandler(users)
+
+	claims := &auth.TokenClaims{UID: "my-firebase-uid", Email: "alice@example.com"}
+	req := withClaims(httptest.NewRequest(http.MethodDelete, "/api/me/avatar", nil), claims)
+	httptest.NewRecorder().Result() // discard
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if users.capturedClearUID != "my-firebase-uid" {
+		t.Errorf("expected ClearAvatarURL called with %q, got %q", "my-firebase-uid", users.capturedClearUID)
 	}
 }

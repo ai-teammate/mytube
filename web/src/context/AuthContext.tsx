@@ -37,6 +37,10 @@ export interface AuthContextValue {
   getIdToken: () => Promise<string | null>;
   /** Signs out the current user and clears all auth state. */
   signOut: () => Promise<void>;
+  /** The current user's avatar URL, or empty string if not set. */
+  avatarUrl: string;
+  /** Updates the shared avatar URL state (called after upload or delete). */
+  setAvatarUrl: (url: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   useEffect(() => {
     let auth;
@@ -112,10 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const auth = getFirebaseAuth();
     await firebaseSignOut(auth);
     setUser(null);
+    setAvatarUrl("");
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, authError, getIdToken, signOut }}>
+    <AuthContext.Provider value={{ user, loading, authError, getIdToken, signOut, avatarUrl, setAvatarUrl }}>
       {children}
     </AuthContext.Provider>
   );
