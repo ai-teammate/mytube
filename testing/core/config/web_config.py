@@ -50,3 +50,6 @@ class WebConfig:
 
     def my_videos_url(self) -> str:
         return f"{self.base_url}/my-videos/"
+
+    def settings_url(self) -> str:
+        return f"{self.base_url}/settings/"
