@@ -357,18 +357,20 @@ func TestAvatarUpload_JPEG_Success(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	wantURL := "https://cdn.example.com/avatars/00000000-0000-0000-0000-000000000001.jpg"
-	if resp.AvatarURL != wantURL {
-		t.Errorf("avatar_url: got %q, want %q", resp.AvatarURL, wantURL)
+	wantPrefix := "https://cdn.example.com/avatars/00000000-0000-0000-0000-000000000001/"
+	wantSuffix := ".jpg"
+	if !strings.HasPrefix(resp.AvatarURL, wantPrefix) || !strings.HasSuffix(resp.AvatarURL, wantSuffix) {
+		t.Errorf("avatar_url: got %q, want prefix %q and suffix %q", resp.AvatarURL, wantPrefix, wantSuffix)
 	}
 
 	// Validate GCS upload arguments.
 	if uploader.capturedBucket != "my-bucket" {
 		t.Errorf("bucket: got %q, want %q", uploader.capturedBucket, "my-bucket")
 	}
-	wantObject := "avatars/00000000-0000-0000-0000-000000000001.jpg"
-	if uploader.capturedObject != wantObject {
-		t.Errorf("object: got %q, want %q", uploader.capturedObject, wantObject)
+	wantObjectPrefix := "avatars/00000000-0000-0000-0000-000000000001/"
+	wantObjectSuffix := ".jpg"
+	if !strings.HasPrefix(uploader.capturedObject, wantObjectPrefix) || !strings.HasSuffix(uploader.capturedObject, wantObjectSuffix) {
+		t.Errorf("object key: got %q, want prefix %q and suffix %q", uploader.capturedObject, wantObjectPrefix, wantObjectSuffix)
 	}
 	if uploader.capturedMIMEType != "image/jpeg" {
 		t.Errorf("content-type: got %q, want %q", uploader.capturedMIMEType, "image/jpeg")
@@ -378,8 +380,8 @@ func TestAvatarUpload_JPEG_Success(t *testing.T) {
 	if users.capturedUpdateUID != "firebase-uid-1" {
 		t.Errorf("UpdateAvatarURL UID: got %q, want %q", users.capturedUpdateUID, "firebase-uid-1")
 	}
-	if users.capturedUpdateURL != wantURL {
-		t.Errorf("UpdateAvatarURL URL: got %q, want %q", users.capturedUpdateURL, wantURL)
+	if users.capturedUpdateURL != resp.AvatarURL {
+		t.Errorf("UpdateAvatarURL URL: got %q, want same as response %q", users.capturedUpdateURL, resp.AvatarURL)
 	}
 }
 
@@ -403,12 +405,14 @@ func TestAvatarUpload_PNG_Success(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	wantURL := "https://cdn.example.com/avatars/00000000-0000-0000-0000-000000000001.png"
-	if resp.AvatarURL != wantURL {
-		t.Errorf("avatar_url: got %q, want %q", resp.AvatarURL, wantURL)
+	wantPrefix := "https://cdn.example.com/avatars/00000000-0000-0000-0000-000000000001/"
+	wantSuffix := ".png"
+	if !strings.HasPrefix(resp.AvatarURL, wantPrefix) || !strings.HasSuffix(resp.AvatarURL, wantSuffix) {
+		t.Errorf("avatar_url: got %q, want prefix %q and suffix %q", resp.AvatarURL, wantPrefix, wantSuffix)
 	}
-	if uploader.capturedObject != "avatars/00000000-0000-0000-0000-000000000001.png" {
-		t.Errorf("GCS object key: got %q", uploader.capturedObject)
+	if !strings.HasPrefix(uploader.capturedObject, "avatars/00000000-0000-0000-0000-000000000001/") ||
+		!strings.HasSuffix(uploader.capturedObject, ".png") {
+		t.Errorf("GCS object key: got %q — expected prefix avatars/<id>/ and suffix .png", uploader.capturedObject)
 	}
 }
 
@@ -468,6 +472,38 @@ func TestAvatarUpload_Success_HasJSONContentType(t *testing.T) {
 
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type: got %q, want application/json", ct)
+	}
+}
+
+// ─── cache-busting: unique object key per upload ─────────────────────────────
+
+// TestAvatarUpload_ObjectKeyIsUniquePerUpload verifies that two consecutive
+// uploads of the same file type produce different GCS object keys (and thus
+// different CDN URLs), preventing browser/CDN cache hits on the old image.
+func TestAvatarUpload_ObjectKeyIsUniquePerUpload(t *testing.T) {
+	user := defaultAvatarUser()
+	users := &stubAvatarUserProvider{getUser: user, updateUser: user}
+
+	uploader1 := &stubUploader{}
+	h1 := handler.NewAvatarUploadHandler(users, uploader1, "my-bucket", "https://cdn.example.com")
+	claims := &auth.TokenClaims{UID: "firebase-uid-1", Email: "alice@example.com"}
+	req1 := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
+	rec1 := serveAvatar(h1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first upload: expected 200, got %d", rec1.Code)
+	}
+
+	uploader2 := &stubUploader{}
+	h2 := handler.NewAvatarUploadHandler(users, uploader2, "my-bucket", "https://cdn.example.com")
+	req2 := withClaims(buildMultipartRequest(t, "avatar", "image/jpeg", minimalJPEG()), claims)
+	rec2 := serveAvatar(h2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("second upload: expected 200, got %d", rec2.Code)
+	}
+
+	if uploader1.capturedObject == uploader2.capturedObject {
+		t.Errorf("two uploads of the same type produced identical GCS object keys %q — cache busting broken",
+			uploader1.capturedObject)
 	}
 }
 

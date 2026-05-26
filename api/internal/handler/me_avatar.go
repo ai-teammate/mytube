@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/ai-teammate/mytube/api/internal/middleware"
 	"github.com/ai-teammate/mytube/api/internal/repository"
 	"github.com/ai-teammate/mytube/api/internal/storage"
@@ -145,7 +147,7 @@ func (h *avatarUploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	objectKey := fmt.Sprintf("avatars/%s.%s", user.ID, ext)
+	objectKey := fmt.Sprintf("avatars/%s/%s.%s", user.ID, uuid.New().String(), ext)
 	if err := h.uploader.Upload(r.Context(), h.bucket, objectKey, mimeBase, bytes.NewReader(data)); err != nil {
 		log.Printf("POST /api/me/avatar: upload for user %s: %v", claims.UID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
