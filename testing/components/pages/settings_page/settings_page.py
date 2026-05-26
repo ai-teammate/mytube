@@ -22,6 +22,8 @@ class SettingsPage:
     _USERNAME_INPUT = 'input[id="username"]'
     _SAVE_BUTTON = 'button[type="submit"]'
     _LOADING_TEXT = "Loading\u2026"
+    _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
+    _UPLOAD_ERROR_ALERT = 'input[id="avatar_file"] ~ p[role="alert"]'
 
     # AvatarPreview selectors
     _AVATAR_PREVIEW_CONTAINER = '[role="img"][aria-label="Avatar preview"]'
@@ -288,3 +290,61 @@ class SettingsPage:
     def get_upload_error_element_count(self) -> int:
         """Return the number of upload error alert paragraphs present in the DOM."""
         return self._page.locator(self._UPLOAD_ERROR_ALERT).count()
+
+    # ------------------------------------------------------------------
+    # File upload actions and queries (MYTUBE-636)
+    # ------------------------------------------------------------------
+
+    _FILE_INPUT_SELECTOR = 'input[id="avatar_file"]'
+
+    def simulate_large_avatar_file(
+        self,
+        size_bytes: int = 6 * 1024 * 1024,
+        filename: str = "large_avatar.jpg",
+    ) -> None:
+        """Inject a synthetic File object with *size_bytes* into the avatar file input.
+
+        Uses JavaScript to create a File with an overridden ``size`` property and
+        dispatches a ``change`` event so React's ``onChange`` handler runs.  This
+        avoids transferring a real multi-MB file over the CDP socket.
+
+        Parameters
+        ----------
+        size_bytes:
+            Apparent file size to report (default: 6 MB, which exceeds the 5 MB limit).
+        filename:
+            Filename reported to the browser (must end with .jpg or .png so the
+            MIME-type guard passes the ``accept`` check; size guard runs first).
+        """
+        self._page.evaluate(
+            """([selector, sizeBytes, filename]) => {
+                const input = document.querySelector(selector);
+                if (!input) throw new Error('avatar_file input not found');
+
+                const file = new File(['x'], filename, { type: 'image/jpeg' });
+                Object.defineProperty(file, 'size', {
+                    value: sizeBytes,
+                    writable: false,
+                    configurable: true,
+                });
+
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                Object.defineProperty(input, 'files', {
+                    value: dt.files,
+                    writable: false,
+                    configurable: true,
+                });
+
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }""",
+            [self._FILE_INPUT_SELECTOR, size_bytes, filename],
+        )
+
+    def wait_for_upload_error(self, timeout: float = 5_000) -> None:
+        """Wait until the upload error alert paragraph is visible."""
+        self._page.wait_for_selector(
+            'p[role="alert"]',
+            state="visible",
+            timeout=timeout,
+        )
