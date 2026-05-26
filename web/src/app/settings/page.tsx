@@ -153,7 +153,7 @@ function SettingsPageContent() {
       }
 
       const formData = new FormData();
-      formData.append("file", uploadFile);
+      formData.append("avatar", uploadFile);
 
       const res = await fetch(`${API_URL}/api/me/avatar`, {
         method: "POST",

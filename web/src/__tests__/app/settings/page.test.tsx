@@ -466,6 +466,40 @@ describe("SettingsPage", () => {
     });
   });
 
+  it('sends the avatar file under the field name "avatar" (not "file")', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ avatar_url: "https://cdn.example.com/alice.jpg" }),
+      });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() => {
+      const postCall = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = postCall?.[1]?.body as FormData;
+      expect(body).toBeInstanceOf(FormData);
+      // The backend reads the field as "avatar" — the frontend must use the same name.
+      expect(body.get("avatar")).not.toBeNull();
+      expect(body.get("file")).toBeNull();
+    });
+  });
+
   it("populates avatarUrl and shows success message after successful upload", async () => {
     jest.useFakeTimers();
     mockFetch
