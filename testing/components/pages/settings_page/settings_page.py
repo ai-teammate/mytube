@@ -205,26 +205,30 @@ class SettingsPage:
         return self._page.url
 
     # ------------------------------------------------------------------
-    # Avatar file upload
+    # Avatar file upload actions (MYTUBE-633 / MYTUBE-637)
     # ------------------------------------------------------------------
 
+    _FILE_INPUT = 'input[id="avatar_file"]'
     _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
+    _UPLOAD_BUTTON = 'button[type="button"]:has-text("Upload")'
+    _UPLOAD_BUTTON_NAME = "Upload"
+    _UPLOAD_ERROR_ALERT = 'p[role="alert"]'
     _UPLOAD_ERROR_PRIMARY = '[id="avatar_file"] ~ [role="alert"]'
     _UPLOAD_ERROR_FALLBACK = 'p[role="alert"]'
-    _UPLOAD_BUTTON_NAME = "Upload"
+    _UPLOAD_SUCCESS_STATUS = 'p[role="status"]'
 
     def set_avatar_file(self, file_payload) -> None:
         """Set a file on the hidden avatar file input via Playwright's set_input_files.
 
-        *file_payload* may be a file-path string (for MYTUBE-633 style tests) or a
+        *file_payload* may be a file-path string (for MYTUBE-633/637 style tests) or a
         dict with keys ``name``, ``mimeType``, and ``buffer`` (bytes), as accepted
         by Playwright's ``set_input_files`` (for MYTUBE-635 style tests).
         """
         self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(file_payload)
 
     def click_upload_button(self) -> None:
-        """Click the Upload button to initiate avatar upload."""
-        self._page.locator('button[type="button"]:has-text("Upload")').click()
+        """Click the Upload button to submit the avatar file."""
+        self._page.locator(self._UPLOAD_BUTTON).click()
 
     def wait_for_upload_success_message(self, timeout: float = 10_000) -> bool:
         """Wait for and return True when the upload success status message is visible."""
@@ -233,6 +237,25 @@ class SettingsPage:
                 'p[role="status"]:has-text("Avatar uploaded successfully")',
                 state="visible",
                 timeout=timeout,
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_upload_error_message(self, timeout: float = 10_000) -> str | None:
+        """Wait for and return the upload error message text, or None if not shown."""
+        try:
+            locator = self._page.locator(self._UPLOAD_ERROR_ALERT)
+            locator.wait_for(state="visible", timeout=timeout)
+            return locator.text_content()
+        except Exception:
+            return None
+
+    def is_upload_error_visible(self, timeout: float = 10_000) -> bool:
+        """Return True if the upload error alert paragraph is visible."""
+        try:
+            self._page.locator(self._UPLOAD_ERROR_ALERT).wait_for(
+                state="visible", timeout=timeout
             )
             return True
         except Exception:
@@ -250,21 +273,23 @@ class SettingsPage:
         locator.first.wait_for(state="visible", timeout=timeout)
         return locator.first.inner_text()
 
-    def is_upload_error_visible(self) -> bool:
-        """Return True if an upload error alert is currently visible."""
-        return self._page.locator(self._UPLOAD_ERROR_FALLBACK).is_visible()
-
     def is_upload_button_disabled(self) -> bool:
         """Return True if the Upload button currently has the disabled attribute."""
         return self._page.get_by_role(
             "button", name=self._UPLOAD_BUTTON_NAME, exact=True
         ).is_disabled()
 
+    def is_upload_button_visible(self) -> bool:
+        """Return True if the Upload button is present and visible."""
+        return self._page.locator(self._UPLOAD_BUTTON).is_visible()
 
     def is_upload_button_enabled(self) -> bool:
         """Return True if the Upload button is enabled (not disabled)."""
-        btn = self._page.locator('button[type="button"]:has-text("Upload")')
-        return btn.is_enabled()
+        return self._page.locator(self._UPLOAD_BUTTON).is_enabled()
+
+    def get_upload_error_element_count(self) -> int:
+        """Return the number of upload error alert paragraphs present in the DOM."""
+        return self._page.locator(self._UPLOAD_ERROR_ALERT).count()
 
     # ------------------------------------------------------------------
     # File upload actions and queries (MYTUBE-636)
