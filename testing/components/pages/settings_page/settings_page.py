@@ -205,7 +205,7 @@ class SettingsPage:
         return self._page.url
 
     # ------------------------------------------------------------------
-    # Avatar file upload actions (MYTUBE-633 / MYTUBE-637)
+    # Avatar file upload actions (MYTUBE-633 / MYTUBE-634 / MYTUBE-637)
     # ------------------------------------------------------------------
 
     _FILE_INPUT = 'input[id="avatar_file"]'
@@ -225,11 +225,6 @@ class SettingsPage:
         by Playwright's ``set_input_files`` (for MYTUBE-635 style tests).
         """
         self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(file_payload)
-
-    def click_upload_button(self) -> None:
-        """Click the Upload button to submit the avatar file."""
-        self._page.locator(self._UPLOAD_BUTTON).click()
-
     def wait_for_upload_success_message(self, timeout: float = 10_000) -> bool:
         """Wait for and return True when the upload success status message is visible."""
         try:
@@ -290,6 +285,117 @@ class SettingsPage:
     def get_upload_error_element_count(self) -> int:
         """Return the number of upload error alert paragraphs present in the DOM."""
         return self._page.locator(self._UPLOAD_ERROR_ALERT).count()
+
+    # ------------------------------------------------------------------
+    # Avatar upload actions and state queries (MYTUBE-634 API)
+    # ------------------------------------------------------------------
+
+    _UPLOAD_BUTTON = 'button[type="button"]:has-text("Upload")'
+
+    def select_avatar_file(self, path: str) -> None:
+        """Attach a local file to the avatar file input."""
+        self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(path)
+
+    def wait_for_upload_button_enabled(self, timeout: float = 5_000) -> None:
+        """Wait until the Upload button is enabled (a file has been selected)."""
+        self._page.wait_for_function(
+            """() => {
+                const btns = [...document.querySelectorAll('button[type="button"]')];
+                const btn = btns.find(b => b.textContent.includes('Upload'));
+                return btn && !btn.disabled;
+            }""",
+            timeout=timeout,
+        )
+
+    def click_upload_button(self) -> None:
+        """Click the Upload button."""
+        self._page.locator(self._UPLOAD_BUTTON).click()
+
+    def wait_for_upload_in_flight(self, timeout: float = 5_000) -> None:
+        """Wait until the upload button shows 'Uploading…' (in-flight state)."""
+        self._page.wait_for_function(
+            """() => {
+                return Array.from(document.querySelectorAll('button[type="button"]'))
+                    .some(b => b.textContent && b.textContent.includes('Uploading'));
+            }""",
+            timeout=timeout,
+        )
+
+    def is_uploading_text_visible(self) -> bool:
+        """Return True if the upload button currently shows 'Uploading…'."""
+        return bool(self._page.evaluate(
+            """() => {
+                return Array.from(document.querySelectorAll('button[type="button"]'))
+                    .some(b => b.textContent && b.textContent.includes('Uploading'));
+            }"""
+        ))
+
+    def get_upload_button_label(self) -> str:
+        """Return the current text content of the upload button."""
+        return self._page.locator(self._UPLOAD_BUTTON).text_content() or ""
+
+    def wait_for_upload_button_idle(self, timeout: float = 15_000) -> None:
+        """Wait until the upload button shows 'Upload' (upload has completed or not started)."""
+        self._page.wait_for_function(
+            r"""() => {
+                const btns = [...document.querySelectorAll('button[type="button"]')];
+                const btn = btns.find(b => /^Upload$/.test(b.textContent.trim()));
+                return btn !== undefined;
+            }""",
+            timeout=timeout,
+        )
+
+    # ------------------------------------------------------------------
+    # Avatar upload — observer-based in-flight state capture (MYTUBE-634)
+    #
+    # Because Playwright's sync route handlers block the Python event loop,
+    # wait_for_function / locator.wait_for cannot observe the brief
+    # "Uploading…" window from Python.  A browser-side MutationObserver is
+    # set up BEFORE the click and fires independently of Python's event loop,
+    # recording whether the in-flight states were ever reached.
+    # ------------------------------------------------------------------
+
+    def arm_uploading_observer(self) -> None:
+        """Arm a DOM MutationObserver that captures the 'Uploading…' button state.
+
+        Resets the observation flags each time it is called.  Must be called
+        before ``click_upload_button()`` for the results to be meaningful.
+        """
+        self._page.evaluate(
+            """() => {
+                window._uploadingTextObserved   = false;
+                window._uploadingDisabledObserved = false;
+                if (window._uploadingObserver) {
+                    window._uploadingObserver.disconnect();
+                }
+                window._uploadingObserver = new MutationObserver(() => {
+                    const btns = Array.from(
+                        document.querySelectorAll('button[type="button"]')
+                    );
+                    const uploading = btns.find(
+                        b => b.textContent && b.textContent.includes('Uploading')
+                    );
+                    if (uploading) {
+                        window._uploadingTextObserved = true;
+                        if (uploading.disabled) {
+                            window._uploadingDisabledObserved = true;
+                        }
+                    }
+                });
+                window._uploadingObserver.observe(document.body, {
+                    childList: true, subtree: true,
+                    characterData: true, attributes: true
+                });
+            }"""
+        )
+
+    def was_uploading_text_observed(self) -> bool:
+        """Return True if the observer captured 'Uploading…' button text since arm_uploading_observer()."""
+        return bool(self._page.evaluate("() => window._uploadingTextObserved || false"))
+
+    def was_upload_disabled_observed(self) -> bool:
+        """Return True if the observer captured the button as both 'Uploading…' and disabled."""
+        return bool(self._page.evaluate("() => window._uploadingDisabledObserved || false"))
 
     # ------------------------------------------------------------------
     # File upload actions and queries (MYTUBE-636)
