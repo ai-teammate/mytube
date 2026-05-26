@@ -22,6 +22,8 @@ class SettingsPage:
     _USERNAME_INPUT = 'input[id="username"]'
     _SAVE_BUTTON = 'button[type="submit"]'
     _LOADING_TEXT = "Loading\u2026"
+    _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
+    _UPLOAD_ERROR_ALERT = 'input[id="avatar_file"] ~ p[role="alert"]'
 
     # AvatarPreview selectors
     _AVATAR_PREVIEW_CONTAINER = '[role="img"][aria-label="Avatar preview"]'
@@ -201,3 +203,254 @@ class SettingsPage:
     def current_url(self) -> str:
         """Return the current browser URL."""
         return self._page.url
+
+    # ------------------------------------------------------------------
+    # Avatar file upload actions (MYTUBE-633 / MYTUBE-634 / MYTUBE-637)
+    # ------------------------------------------------------------------
+
+    _FILE_INPUT = 'input[id="avatar_file"]'
+    _AVATAR_FILE_INPUT = 'input[id="avatar_file"]'
+    _UPLOAD_BUTTON = 'button[type="button"]:has-text("Upload")'
+    _UPLOAD_BUTTON_NAME = "Upload"
+    _UPLOAD_ERROR_ALERT = 'p[role="alert"]'
+    _UPLOAD_ERROR_PRIMARY = '[id="avatar_file"] ~ [role="alert"]'
+    _UPLOAD_ERROR_FALLBACK = 'p[role="alert"]'
+    _UPLOAD_SUCCESS_STATUS = 'p[role="status"]'
+
+    def set_avatar_file(self, file_payload) -> None:
+        """Set a file on the hidden avatar file input via Playwright's set_input_files.
+
+        *file_payload* may be a file-path string (for MYTUBE-633/637 style tests) or a
+        dict with keys ``name``, ``mimeType``, and ``buffer`` (bytes), as accepted
+        by Playwright's ``set_input_files`` (for MYTUBE-635 style tests).
+        """
+        self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(file_payload)
+    def wait_for_upload_success_message(self, timeout: float = 10_000) -> bool:
+        """Wait for and return True when the upload success status message is visible."""
+        try:
+            self._page.wait_for_selector(
+                'p[role="status"]:has-text("Avatar uploaded successfully")',
+                state="visible",
+                timeout=timeout,
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_upload_error_message(self, timeout: float = 10_000) -> str | None:
+        """Wait for and return the upload error message text, or None if not shown."""
+        try:
+            locator = self._page.locator(self._UPLOAD_ERROR_ALERT)
+            locator.wait_for(state="visible", timeout=timeout)
+            return locator.text_content()
+        except Exception:
+            return None
+
+    def is_upload_error_visible(self, timeout: float = 10_000) -> bool:
+        """Return True if the upload error alert paragraph is visible."""
+        try:
+            self._page.locator(self._UPLOAD_ERROR_ALERT).wait_for(
+                state="visible", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_upload_error_text(self, timeout: float = 5_000) -> str:
+        """Wait for the upload error alert to become visible and return its text.
+
+        Tries the sibling-of-input selector first and falls back to any
+        ``p[role="alert"]`` on the page.
+        """
+        locator = self._page.locator(self._UPLOAD_ERROR_PRIMARY).or_(
+            self._page.locator(self._UPLOAD_ERROR_FALLBACK)
+        )
+        locator.first.wait_for(state="visible", timeout=timeout)
+        return locator.first.inner_text()
+
+    def is_upload_button_disabled(self) -> bool:
+        """Return True if the Upload button currently has the disabled attribute."""
+        return self._page.get_by_role(
+            "button", name=self._UPLOAD_BUTTON_NAME, exact=True
+        ).is_disabled()
+
+    def is_upload_button_visible(self) -> bool:
+        """Return True if the Upload button is present and visible."""
+        return self._page.locator(self._UPLOAD_BUTTON).is_visible()
+
+    def is_upload_button_enabled(self) -> bool:
+        """Return True if the Upload button is enabled (not disabled)."""
+        return self._page.locator(self._UPLOAD_BUTTON).is_enabled()
+
+    def get_upload_error_element_count(self) -> int:
+        """Return the number of upload error alert paragraphs present in the DOM."""
+        return self._page.locator(self._UPLOAD_ERROR_ALERT).count()
+
+    # ------------------------------------------------------------------
+    # Avatar upload actions and state queries (MYTUBE-634 API)
+    # ------------------------------------------------------------------
+
+    _UPLOAD_BUTTON = 'button[type="button"]:has-text("Upload")'
+
+    def select_avatar_file(self, path: str) -> None:
+        """Attach a local file to the avatar file input."""
+        self._page.locator(self._AVATAR_FILE_INPUT).set_input_files(path)
+
+    def wait_for_upload_button_enabled(self, timeout: float = 5_000) -> None:
+        """Wait until the Upload button is enabled (a file has been selected)."""
+        self._page.wait_for_function(
+            """() => {
+                const btns = [...document.querySelectorAll('button[type="button"]')];
+                const btn = btns.find(b => b.textContent.includes('Upload'));
+                return btn && !btn.disabled;
+            }""",
+            timeout=timeout,
+        )
+
+    def click_upload_button(self) -> None:
+        """Click the Upload button."""
+        self._page.locator(self._UPLOAD_BUTTON).click()
+
+    def wait_for_upload_in_flight(self, timeout: float = 5_000) -> None:
+        """Wait until the upload button shows 'Uploading…' (in-flight state)."""
+        self._page.wait_for_function(
+            """() => {
+                return Array.from(document.querySelectorAll('button[type="button"]'))
+                    .some(b => b.textContent && b.textContent.includes('Uploading'));
+            }""",
+            timeout=timeout,
+        )
+
+    def is_uploading_text_visible(self) -> bool:
+        """Return True if the upload button currently shows 'Uploading…'."""
+        return bool(self._page.evaluate(
+            """() => {
+                return Array.from(document.querySelectorAll('button[type="button"]'))
+                    .some(b => b.textContent && b.textContent.includes('Uploading'));
+            }"""
+        ))
+
+    def get_upload_button_label(self) -> str:
+        """Return the current text content of the upload button."""
+        return self._page.locator(self._UPLOAD_BUTTON).text_content() or ""
+
+    def wait_for_upload_button_idle(self, timeout: float = 15_000) -> None:
+        """Wait until the upload button shows 'Upload' (upload has completed or not started)."""
+        self._page.wait_for_function(
+            r"""() => {
+                const btns = [...document.querySelectorAll('button[type="button"]')];
+                const btn = btns.find(b => /^Upload$/.test(b.textContent.trim()));
+                return btn !== undefined;
+            }""",
+            timeout=timeout,
+        )
+
+    # ------------------------------------------------------------------
+    # Avatar upload — observer-based in-flight state capture (MYTUBE-634)
+    #
+    # Because Playwright's sync route handlers block the Python event loop,
+    # wait_for_function / locator.wait_for cannot observe the brief
+    # "Uploading…" window from Python.  A browser-side MutationObserver is
+    # set up BEFORE the click and fires independently of Python's event loop,
+    # recording whether the in-flight states were ever reached.
+    # ------------------------------------------------------------------
+
+    def arm_uploading_observer(self) -> None:
+        """Arm a DOM MutationObserver that captures the 'Uploading…' button state.
+
+        Resets the observation flags each time it is called.  Must be called
+        before ``click_upload_button()`` for the results to be meaningful.
+        """
+        self._page.evaluate(
+            """() => {
+                window._uploadingTextObserved   = false;
+                window._uploadingDisabledObserved = false;
+                if (window._uploadingObserver) {
+                    window._uploadingObserver.disconnect();
+                }
+                window._uploadingObserver = new MutationObserver(() => {
+                    const btns = Array.from(
+                        document.querySelectorAll('button[type="button"]')
+                    );
+                    const uploading = btns.find(
+                        b => b.textContent && b.textContent.includes('Uploading')
+                    );
+                    if (uploading) {
+                        window._uploadingTextObserved = true;
+                        if (uploading.disabled) {
+                            window._uploadingDisabledObserved = true;
+                        }
+                    }
+                });
+                window._uploadingObserver.observe(document.body, {
+                    childList: true, subtree: true,
+                    characterData: true, attributes: true
+                });
+            }"""
+        )
+
+    def was_uploading_text_observed(self) -> bool:
+        """Return True if the observer captured 'Uploading…' button text since arm_uploading_observer()."""
+        return bool(self._page.evaluate("() => window._uploadingTextObserved || false"))
+
+    def was_upload_disabled_observed(self) -> bool:
+        """Return True if the observer captured the button as both 'Uploading…' and disabled."""
+        return bool(self._page.evaluate("() => window._uploadingDisabledObserved || false"))
+
+    # ------------------------------------------------------------------
+    # File upload actions and queries (MYTUBE-636)
+    # ------------------------------------------------------------------
+
+    _FILE_INPUT_SELECTOR = 'input[id="avatar_file"]'
+
+    def simulate_large_avatar_file(
+        self,
+        size_bytes: int = 6 * 1024 * 1024,
+        filename: str = "large_avatar.jpg",
+    ) -> None:
+        """Inject a synthetic File object with *size_bytes* into the avatar file input.
+
+        Uses JavaScript to create a File with an overridden ``size`` property and
+        dispatches a ``change`` event so React's ``onChange`` handler runs.  This
+        avoids transferring a real multi-MB file over the CDP socket.
+
+        Parameters
+        ----------
+        size_bytes:
+            Apparent file size to report (default: 6 MB, which exceeds the 5 MB limit).
+        filename:
+            Filename reported to the browser (must end with .jpg or .png so the
+            MIME-type guard passes the ``accept`` check; size guard runs first).
+        """
+        self._page.evaluate(
+            """([selector, sizeBytes, filename]) => {
+                const input = document.querySelector(selector);
+                if (!input) throw new Error('avatar_file input not found');
+
+                const file = new File(['x'], filename, { type: 'image/jpeg' });
+                Object.defineProperty(file, 'size', {
+                    value: sizeBytes,
+                    writable: false,
+                    configurable: true,
+                });
+
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                Object.defineProperty(input, 'files', {
+                    value: dt.files,
+                    writable: false,
+                    configurable: true,
+                });
+
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }""",
+            [self._FILE_INPUT_SELECTOR, size_bytes, filename],
+        )
+
+    def wait_for_upload_error(self, timeout: float = 5_000) -> None:
+        """Wait until the upload error alert paragraph is visible."""
+        self._page.wait_for_selector(
+            'p[role="alert"]',
+            state="visible",
+            timeout=timeout,
+        )

@@ -2,7 +2,7 @@
  * Unit tests for src/app/settings/page.tsx
  */
 import React from "react";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // ─── Mock next/navigation ─────────────────────────────────────────────────────
@@ -38,6 +38,17 @@ global.fetch = mockFetch;
 // ─── Import page AFTER mocks ──────────────────────────────────────────────────
 
 import SettingsPage from "@/app/settings/page";
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+function makeFile(
+  name: string,
+  type: string,
+  sizeBytes: number
+): File {
+  const blob = new Blob([new Uint8Array(sizeBytes)], { type });
+  return new File([blob], name, { type });
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -355,5 +366,304 @@ describe("SettingsPage", () => {
       "src",
       "https://example.com/new.png"
     );
+  });
+
+  // ─── Avatar file upload tests ────────────────────────────────────────────────
+
+  it("renders the file upload control and Upload button", async () => {
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+    expect(screen.getByRole("button", { name: /^upload$/i })).toBeInTheDocument();
+  });
+
+  it("Upload button is disabled when no file is selected", async () => {
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^upload$/i })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("button", { name: /^upload$/i })).toBeDisabled();
+  });
+
+  it("shows inline error and keeps Upload button disabled when file type is invalid", async () => {
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.gif", "image/gif", 1024);
+    const fileInput = screen.getByLabelText(/upload avatar/i) as HTMLInputElement;
+    Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
+    fireEvent.change(fileInput);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/only jpeg and png/i)
+    );
+    expect(screen.getByRole("button", { name: /^upload$/i })).toBeDisabled();
+  });
+
+  it("shows inline error when file exceeds 5 MB", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("big.jpg", "image/jpeg", 6 * 1024 * 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/too large/i)
+    );
+    expect(screen.getByRole("button", { name: /^upload$/i })).toBeDisabled();
+  });
+
+  it("enables Upload button when a valid file is selected", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.png", "image/png", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^upload$/i })).not.toBeDisabled()
+    );
+  });
+
+  it("calls POST /api/me/avatar with FormData and auth header on upload", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ avatar_url: "https://cdn.example.com/alice.jpg" }),
+      });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() => {
+      const postCall = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      expect(postCall?.[0]).toContain("/api/me/avatar");
+      expect(postCall?.[1]?.headers?.Authorization).toBe("Bearer mock-token");
+      expect(postCall?.[1]?.body).toBeInstanceOf(FormData);
+    });
+  });
+
+  it("populates avatarUrl and shows success message after successful upload", async () => {
+    jest.useFakeTimers();
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ avatar_url: "https://cdn.example.com/alice.jpg" }),
+      });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(/avatar uploaded successfully/i)
+    );
+    // avatarUrl should be updated → avatar preview should appear
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("https://cdn.example.com/alice.jpg")).toBeInTheDocument()
+    );
+    // File input value should be cleared after successful upload.
+    expect((screen.getByLabelText(/upload avatar/i) as HTMLInputElement).value).toBe("");
+
+    // Success message auto-dismisses after 3 seconds.
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("status")).toBeNull()
+    );
+
+    jest.useRealTimers();
+  });
+
+  it("shows upload error when POST /api/me/avatar returns non-ok", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "file too large" }),
+      });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/file too large/i)
+    );
+  });
+
+  it("shows fallback upload error when POST response body has no error field", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({}),
+      });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.png", "image/png", 512);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/upload failed/i)
+    );
+  });
+
+  it("shows upload network error on fetch rejection", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockRejectedValueOnce(new Error("Network error"));
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/network error/i)
+    );
+  });
+
+  it("shows upload auth error when getIdToken returns null during upload", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ username: "alice", avatar_url: null }),
+    });
+    // Second call (upload) → null token
+    mockGetIdToken
+      .mockResolvedValueOnce("mock-token") // fetchProfile
+      .mockResolvedValueOnce(null);        // handleAvatarUpload
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/not authenticated/i)
+    );
+  });
+
+  it("shows Uploading… text and disables Upload button while upload is in progress", async () => {
+    let resolveUpload!: (value: unknown) => void;
+    const uploadPromise = new Promise((res) => { resolveUpload = res; });
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: null }),
+      })
+      .mockReturnValueOnce(uploadPromise);
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/upload avatar/i)).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.png", "image/png", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    // While in-flight the button should show "Uploading…" and be disabled.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /uploading/i })).toBeDisabled()
+    );
+
+    // Resolve the upload to clean up.
+    resolveUpload({ ok: true, json: async () => ({ avatar_url: "https://cdn.example.com/a.jpg" }) });
+  });
+
+  it("does not clear the existing Avatar URL field on upload error", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "alice", avatar_url: "https://existing.com/avatar.png" }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "server error" }),
+      });
+
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("https://existing.com/avatar.png")).toBeInTheDocument()
+    );
+
+    const file = makeFile("avatar.jpg", "image/jpeg", 1024);
+    await user.upload(screen.getByLabelText(/upload avatar/i), file);
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/server error/i)
+    );
+    // Avatar URL field must still have the original value.
+    expect(screen.getByDisplayValue("https://existing.com/avatar.png")).toBeInTheDocument();
   });
 });

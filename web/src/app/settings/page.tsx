@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import RequireAuth from "@/components/RequireAuth";
 import AvatarPreview from "@/components/AvatarPreview";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png"];
 
 interface ProfileData {
   username: string;
@@ -29,6 +31,22 @@ function SettingsPageContent() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Clean up auto-dismiss timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (uploadSuccessTimerRef.current) {
+        clearTimeout(uploadSuccessTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch current profile once authenticated.
   useEffect(() => {
@@ -95,6 +113,74 @@ function SettingsPageContent() {
       setSaveError("Network error. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setUploadError(null);
+    setUploadSuccess(false);
+    const file = e.target.files?.[0] ?? null;
+    if (!file) {
+      setUploadFile(null);
+      return;
+    }
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      setUploadError("Only JPEG and PNG files are allowed.");
+      setUploadFile(null);
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      setUploadError("File is too large. Maximum size is 5 MB.");
+      setUploadFile(null);
+      e.target.value = "";
+      return;
+    }
+    setUploadFile(file);
+  }
+
+  async function handleAvatarUpload() {
+    if (!uploadFile) return;
+    setUploadError(null);
+    setUploadSuccess(false);
+    setUploading(true);
+
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        setUploadError("You are not authenticated. Please sign in again.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+
+      const res = await fetch(`${API_URL}/api/me/avatar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setUploadError(body.error ?? "Upload failed. Please try again.");
+        return;
+      }
+
+      const data = await res.json();
+      setForm((prev) => ({ ...prev, avatarUrl: data.avatar_url ?? prev.avatarUrl }));
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploadSuccess(true);
+
+      if (uploadSuccessTimerRef.current) {
+        clearTimeout(uploadSuccessTimerRef.current);
+      }
+      uploadSuccessTimerRef.current = setTimeout(() => setUploadSuccess(false), 3000);
+    } catch {
+      setUploadError("Network error. Please check your connection and try again.");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -185,6 +271,41 @@ function SettingsPageContent() {
                 <AvatarPreview src={form.avatarUrl} />
               </div>
             )}
+          </div>
+
+          <div>
+            <label
+              htmlFor="avatar_file"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Upload avatar
+            </label>
+            <input
+              ref={fileInputRef}
+              id="avatar_file"
+              type="file"
+              accept="image/jpeg,image/png"
+              onChange={handleFileChange}
+              className="w-full text-sm text-gray-700 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+            />
+            {uploadError && (
+              <p role="alert" className="mt-1 text-xs text-red-600">
+                {uploadError}
+              </p>
+            )}
+            {uploadSuccess && (
+              <p role="status" className="mt-1 text-xs text-green-600">
+                Avatar uploaded successfully.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleAvatarUpload}
+              disabled={uploading || !uploadFile}
+              className="mt-2 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {uploading ? "Uploading…" : "Upload"}
+            </button>
           </div>
 
           <button
