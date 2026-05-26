@@ -69,6 +69,7 @@ function SettingsPageContent() {
             username: data.username ?? "",
             avatarUrl: data.avatar_url ?? "",
           });
+          setAvatarUrl(data.avatar_url ?? "");
         }
       } catch {
         // Profile fetch failure is non-fatal; form will start empty.

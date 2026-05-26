@@ -71,8 +71,8 @@ func (c *fakeConn) Prepare(_ string) (driver.Stmt, error) {
 	}
 	return &fakeStmt{qr: qr}, nil
 }
-func (c *fakeConn) Close() error                 { return nil }
-func (c *fakeConn) Begin() (driver.Tx, error)    { return &fakeTx{}, nil }
+func (c *fakeConn) Close() error              { return nil }
+func (c *fakeConn) Begin() (driver.Tx, error) { return &fakeTx{}, nil }
 
 type fakeTx struct{}
 
@@ -81,8 +81,8 @@ func (*fakeTx) Rollback() error { return nil }
 
 type fakeStmt struct{ qr fakeQueryResult }
 
-func (*fakeStmt) Close() error   { return nil }
-func (*fakeStmt) NumInput() int  { return -1 }
+func (*fakeStmt) Close() error  { return nil }
+func (*fakeStmt) NumInput() int { return -1 }
 func (s *fakeStmt) Exec(_ []driver.Value) (driver.Result, error) {
 	if s.qr.zeroRowsAff {
 		return zeroResult{}, nil
@@ -858,73 +858,73 @@ func TestUpdateAvatarURL_PassesFirebaseUIDAsSecondArg(t *testing.T) {
 // ─── ClearAvatarURL tests ─────────────────────────────────────────────────────
 
 func TestClearAvatarURL_ExecError(t *testing.T) {
-dbErr := errors.New("clear avatar failed")
-q := &updateQuerier{t: t, execErr: dbErr, rowsAffected: 0}
-repo := repository.NewUserRepository(q)
+	dbErr := errors.New("clear avatar failed")
+	q := &updateQuerier{t: t, execErr: dbErr, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
 
-user, err := repo.ClearAvatarURL(context.Background(), "uid1")
+	user, err := repo.ClearAvatarURL(context.Background(), "uid1")
 
-if user != nil {
-t.Errorf("expected nil user on exec error")
-}
-if !errors.Is(err, dbErr) {
-t.Errorf("expected wrapped dbErr, got: %v", err)
-}
+	if user != nil {
+		t.Errorf("expected nil user on exec error")
+	}
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected wrapped dbErr, got: %v", err)
+	}
 }
 
 func TestClearAvatarURL_NoRowsAffected_ReturnsNilUser(t *testing.T) {
-q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
-repo := repository.NewUserRepository(q)
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
 
-user, err := repo.ClearAvatarURL(context.Background(), "unknown-uid")
+	user, err := repo.ClearAvatarURL(context.Background(), "unknown-uid")
 
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
-if user != nil {
-t.Errorf("expected nil user when no rows affected")
-}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user != nil {
+		t.Errorf("expected nil user when no rows affected")
+	}
 }
 
 func TestClearAvatarURL_RowAffected_ReturnsUserWithNilAvatarURL(t *testing.T) {
-now := time.Now().Truncate(time.Second)
-expected := &repository.User{
-ID:          "00000000-0000-0000-0000-000000000010",
-FirebaseUID: "firebase-uid-10",
-Username:    "alice",
-AvatarURL:   nil,
-CreatedAt:   now,
-}
-q := &updateQuerier{t: t, user: expected, rowsAffected: 1}
-repo := repository.NewUserRepository(q)
+	now := time.Now().Truncate(time.Second)
+	expected := &repository.User{
+		ID:          "00000000-0000-0000-0000-000000000010",
+		FirebaseUID: "firebase-uid-10",
+		Username:    "alice",
+		AvatarURL:   nil,
+		CreatedAt:   now,
+	}
+	q := &updateQuerier{t: t, user: expected, rowsAffected: 1}
+	repo := repository.NewUserRepository(q)
 
-got, err := repo.ClearAvatarURL(context.Background(), "firebase-uid-10")
+	got, err := repo.ClearAvatarURL(context.Background(), "firebase-uid-10")
 
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
-if got == nil {
-t.Fatal("expected non-nil user")
-}
-if got.AvatarURL != nil {
-t.Errorf("expected nil AvatarURL after clear, got %q", *got.AvatarURL)
-}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil user")
+	}
+	if got.AvatarURL != nil {
+		t.Errorf("expected nil AvatarURL after clear, got %q", *got.AvatarURL)
+	}
 }
 
 func TestClearAvatarURL_PassesFirebaseUIDAsFirstArg(t *testing.T) {
-q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
-repo := repository.NewUserRepository(q)
+	q := &updateQuerier{t: t, user: nil, rowsAffected: 0}
+	repo := repository.NewUserRepository(q)
 
-_, _ = repo.ClearAvatarURL(context.Background(), "my-firebase-uid")
+	_, _ = repo.ClearAvatarURL(context.Background(), "my-firebase-uid")
 
-if len(q.capturedExecArgs) < 1 {
-t.Fatalf("expected ≥1 exec args, got %d", len(q.capturedExecArgs))
-}
-uid, ok := q.capturedExecArgs[0].(string)
-if !ok {
-t.Fatalf("expected string arg[0], got %T", q.capturedExecArgs[0])
-}
-if uid != "my-firebase-uid" {
-t.Errorf("arg[0] (firebase_uid): got %q, want %q", uid, "my-firebase-uid")
-}
+	if len(q.capturedExecArgs) < 1 {
+		t.Fatalf("expected ≥1 exec args, got %d", len(q.capturedExecArgs))
+	}
+	uid, ok := q.capturedExecArgs[0].(string)
+	if !ok {
+		t.Fatalf("expected string arg[0], got %T", q.capturedExecArgs[0])
+	}
+	if uid != "my-firebase-uid" {
+		t.Errorf("arg[0] (firebase_uid): got %q, want %q", uid, "my-firebase-uid")
+	}
 }
