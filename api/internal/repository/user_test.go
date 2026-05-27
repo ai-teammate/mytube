@@ -886,16 +886,8 @@ func TestClearAvatarURL_NoRowsAffected_ReturnsNilUser(t *testing.T) {
 	}
 }
 
-func TestClearAvatarURL_RowAffected_ReturnsUserWithNilAvatarURL(t *testing.T) {
-	now := time.Now().Truncate(time.Second)
-	expected := &repository.User{
-		ID:          "00000000-0000-0000-0000-000000000010",
-		FirebaseUID: "firebase-uid-10",
-		Username:    "alice",
-		AvatarURL:   nil,
-		CreatedAt:   now,
-	}
-	q := &updateQuerier{t: t, user: expected, rowsAffected: 1}
+func TestClearAvatarURL_RowAffected_ReturnsNonNilSentinel(t *testing.T) {
+	q := &updateQuerier{t: t, rowsAffected: 1}
 	repo := repository.NewUserRepository(q)
 
 	got, err := repo.ClearAvatarURL(context.Background(), "firebase-uid-10")
@@ -904,10 +896,10 @@ func TestClearAvatarURL_RowAffected_ReturnsUserWithNilAvatarURL(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got == nil {
-		t.Fatal("expected non-nil user")
+		t.Fatal("expected non-nil sentinel user")
 	}
 	if got.AvatarURL != nil {
-		t.Errorf("expected nil AvatarURL after clear, got %q", *got.AvatarURL)
+		t.Errorf("expected nil AvatarURL on sentinel, got %q", *got.AvatarURL)
 	}
 }
 
