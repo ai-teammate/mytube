@@ -175,6 +175,7 @@ function SettingsPageContent() {
       const newUrl: string = data.avatar_url ?? "";
       setForm((prev) => ({ ...prev, avatarUrl: newUrl }));
       setAvatarUrl(newUrl);
+      setRemoveError(null);
       setUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setUploadSuccess(true);

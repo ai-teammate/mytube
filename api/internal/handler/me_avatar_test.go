@@ -537,19 +537,6 @@ func deleteAvatarHandler(users handler.AvatarUserProvider) http.Handler {
 	return handler.NewAvatarDeleteHandler(users)
 }
 
-func TestAvatarDelete_WrongMethod_Returns405(t *testing.T) {
-	users := &stubAvatarUserProvider{getUser: defaultAvatarUser()}
-	h := deleteAvatarHandler(users)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/me/avatar", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405, got %d", rec.Code)
-	}
-}
-
 func TestAvatarDelete_NoClaims_Returns401(t *testing.T) {
 	users := &stubAvatarUserProvider{getUser: defaultAvatarUser()}
 	h := deleteAvatarHandler(users)
@@ -625,7 +612,6 @@ func TestAvatarDelete_PassesFirebaseUIDToClearAvatarURL(t *testing.T) {
 
 	claims := &auth.TokenClaims{UID: "my-firebase-uid", Email: "alice@example.com"}
 	req := withClaims(httptest.NewRequest(http.MethodDelete, "/api/me/avatar", nil), claims)
-	httptest.NewRecorder().Result() // discard
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

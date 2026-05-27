@@ -18,12 +18,6 @@ func NewAvatarDeleteHandler(users AvatarUserProvider) http.Handler {
 }
 
 func (h *avatarDeleteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		w.Header().Set("Allow", "DELETE")
-		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
 		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
