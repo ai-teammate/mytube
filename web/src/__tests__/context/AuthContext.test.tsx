@@ -498,3 +498,65 @@ describe("AuthProvider — mid-session reachability heartbeat", () => {
     );
   });
 });
+
+// ─── avatarUrl / setAvatarUrl tests ──────────────────────────────────────────
+
+describe("avatarUrl and setAvatarUrl", () => {
+  function AvatarConsumer() {
+    const { avatarUrl, setAvatarUrl } = useAuth();
+    return (
+      <div>
+        <span data-testid="avatar-url">{avatarUrl}</span>
+        <button
+          data-testid="set-avatar-btn"
+          onClick={() => setAvatarUrl("https://cdn.example.com/avatar.png")}
+        >
+          Set avatar
+        </button>
+        <button
+          data-testid="clear-avatar-btn"
+          onClick={() => setAvatarUrl("")}
+        >
+          Clear avatar
+        </button>
+      </div>
+    );
+  }
+
+  function renderAvatarProvider() {
+    return render(
+      <AuthProvider>
+        <AvatarConsumer />
+      </AuthProvider>
+    );
+  }
+
+  it("initialises avatarUrl to empty string", () => {
+    renderAvatarProvider();
+    expect(screen.getByTestId("avatar-url")).toHaveTextContent("");
+  });
+
+  it("setAvatarUrl updates avatarUrl in context", async () => {
+    const user = userEvent.setup();
+    renderAvatarProvider();
+
+    await user.click(screen.getByTestId("set-avatar-btn"));
+
+    expect(screen.getByTestId("avatar-url")).toHaveTextContent(
+      "https://cdn.example.com/avatar.png"
+    );
+  });
+
+  it("setAvatarUrl with empty string clears avatarUrl", async () => {
+    const user = userEvent.setup();
+    renderAvatarProvider();
+
+    await user.click(screen.getByTestId("set-avatar-btn"));
+    expect(screen.getByTestId("avatar-url")).toHaveTextContent(
+      "https://cdn.example.com/avatar.png"
+    );
+
+    await user.click(screen.getByTestId("clear-avatar-btn"));
+    expect(screen.getByTestId("avatar-url")).toHaveTextContent("");
+  });
+});

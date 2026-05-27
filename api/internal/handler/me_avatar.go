@@ -36,10 +36,11 @@ var allowedAvatarMIMETypes = map[string]string{
 	"image/png":  "png",
 }
 
-// AvatarUserProvider is the data-access interface required by the avatar upload handler.
+// AvatarUserProvider is the data-access interface required by the avatar handlers.
 type AvatarUserProvider interface {
 	GetByFirebaseUID(ctx context.Context, firebaseUID string) (*repository.User, error)
 	UpdateAvatarURL(ctx context.Context, firebaseUID, avatarURL string) (*repository.User, error)
+	ClearAvatarURL(ctx context.Context, firebaseUID string) (*repository.User, error)
 }
 
 // AvatarUploadResponse is the JSON body returned by POST /api/me/avatar.

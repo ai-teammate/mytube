@@ -21,7 +21,7 @@ export default function SiteHeader() {
   const mobileNavRef = useRef<HTMLElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
-  const { user, loading, signOut, authError } = useAuth();
+  const { user, loading, signOut, authError, avatarUrl } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -243,14 +243,24 @@ export default function SiteHeader() {
                   color: "var(--text-primary)",
                 }}
               >
-                {/* Avatar: gradient circle (--gradient-hero) with initial letter — see MYTUBE-477 */}
-                <span
-                  className="h-7 w-7 rounded-full text-white flex items-center justify-center text-xs font-bold select-none"
-                  style={{ background: "var(--gradient-hero)" }}
-                  aria-hidden="true"
-                >
-                  {displayName[0].toUpperCase()}
-                </span>
+                {/* Avatar: show uploaded image or fallback to gradient circle with initial letter */}
+                {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-7 w-7 rounded-full object-cover select-none"
+                  />
+                ) : (
+                  <span
+                    className="h-7 w-7 rounded-full text-white flex items-center justify-center text-xs font-bold select-none"
+                    style={{ background: "var(--gradient-hero)" }}
+                    aria-hidden="true"
+                  >
+                    {displayName[0].toUpperCase()}
+                  </span>
+                )}
                 <span className="hidden sm:inline max-w-[120px] truncate">{displayName}</span>
               </button>
 
