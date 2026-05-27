@@ -454,3 +454,29 @@ class SettingsPage:
             state="visible",
             timeout=timeout,
         )
+
+    # ------------------------------------------------------------------
+    # Remove avatar button (MYTUBE-654)
+    # ------------------------------------------------------------------
+
+    _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
+
+    def is_remove_avatar_button_visible(self, timeout: float = 3_000) -> bool:
+        """Return True if the 'Remove avatar' button is visible in the DOM."""
+        try:
+            self._page.locator(self._REMOVE_AVATAR_BUTTON).wait_for(
+                state="visible", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
+
+    def is_remove_avatar_button_hidden(self, timeout: float = 3_000) -> bool:
+        """Return True if the 'Remove avatar' button is absent or hidden."""
+        try:
+            self._page.locator(self._REMOVE_AVATAR_BUTTON).wait_for(
+                state="hidden", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
