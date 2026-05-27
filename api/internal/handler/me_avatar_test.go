@@ -28,11 +28,13 @@ type stubAvatarUserProvider struct {
 	getErr     error
 	updateUser *repository.User
 	updateErr  error
+	clearUser  *repository.User
+	clearErr   error
 
 	// captured arguments
-	capturedUpdateUID  string
-	capturedUpdateURL  string
-	capturedClearUID   string
+	capturedUpdateUID string
+	capturedUpdateURL string
+	capturedClearUID  string
 }
 
 func (s *stubAvatarUserProvider) GetByFirebaseUID(_ context.Context, _ string) (*repository.User, error) {
@@ -47,7 +49,7 @@ func (s *stubAvatarUserProvider) UpdateAvatarURL(_ context.Context, firebaseUID,
 
 func (s *stubAvatarUserProvider) ClearAvatarURL(_ context.Context, firebaseUID string) (*repository.User, error) {
 	s.capturedClearUID = firebaseUID
-	return s.updateUser, s.updateErr
+	return s.clearUser, s.clearErr
 }
 
 // stubUploader satisfies storage.Uploader.
@@ -552,7 +554,7 @@ func TestAvatarDelete_NoClaims_Returns401(t *testing.T) {
 
 func TestAvatarDelete_ClearError_Returns500(t *testing.T) {
 	users := &stubAvatarUserProvider{
-		updateErr: errors.New("db error"),
+		clearErr: errors.New("db error"),
 	}
 	h := deleteAvatarHandler(users)
 
@@ -568,8 +570,8 @@ func TestAvatarDelete_ClearError_Returns500(t *testing.T) {
 
 func TestAvatarDelete_UserNotFound_Returns404(t *testing.T) {
 	users := &stubAvatarUserProvider{
-		updateUser: nil,
-		updateErr:  nil,
+		clearUser: nil,
+		clearErr:  nil,
 	}
 	h := deleteAvatarHandler(users)
 
@@ -585,8 +587,8 @@ func TestAvatarDelete_UserNotFound_Returns404(t *testing.T) {
 
 func TestAvatarDelete_Success_Returns204(t *testing.T) {
 	users := &stubAvatarUserProvider{
-		updateUser: defaultAvatarUser(),
-		updateErr:  nil,
+		clearUser: defaultAvatarUser(),
+		clearErr:  nil,
 	}
 	h := deleteAvatarHandler(users)
 
@@ -605,8 +607,8 @@ func TestAvatarDelete_Success_Returns204(t *testing.T) {
 
 func TestAvatarDelete_PassesFirebaseUIDToClearAvatarURL(t *testing.T) {
 	users := &stubAvatarUserProvider{
-		updateUser: defaultAvatarUser(),
-		updateErr:  nil,
+		clearUser: defaultAvatarUser(),
+		clearErr:  nil,
 	}
 	h := deleteAvatarHandler(users)
 
