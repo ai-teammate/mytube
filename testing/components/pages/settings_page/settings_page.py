@@ -456,13 +456,14 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Avatar removal actions (MYTUBE-653)
+    # Avatar removal actions (MYTUBE-653, MYTUBE-656)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
-    _REMOVING_TEXT = "Removing\u2026"
+    _REMOVING_TEXT = "Removing…"
+    _REMOVE_ERROR_ALERT = 'p[role="alert"]'
 
-    def is_remove_avatar_button_visible(self, timeout: float = 5_000) -> bool:
+    def is_remove_avatar_button_visible(self, timeout: float = 10_000) -> bool:
         """Return True if the 'Remove avatar' button is present and visible."""
         try:
             locator = self._page.locator(self._REMOVE_AVATAR_BUTTON)
@@ -492,3 +493,34 @@ class SettingsPage:
             }""",
             timeout=timeout,
         )
+
+    def wait_for_remove_error(self, timeout: float = 10_000) -> None:
+        """Wait until the remove-avatar error alert paragraph is visible."""
+        self._page.wait_for_selector(
+            self._REMOVE_ERROR_ALERT,
+            state="visible",
+            timeout=timeout,
+        )
+
+    def get_remove_error_text(self, timeout: float = 10_000) -> str | None:
+        """Wait for and return the remove-error alert text, or None if not shown."""
+        try:
+            locator = self._page.locator(self._REMOVE_ERROR_ALERT)
+            locator.wait_for(state="visible", timeout=timeout)
+            return locator.first.text_content()
+        except Exception:
+            return None
+
+    def is_remove_error_visible(self, timeout: float = 5_000) -> bool:
+        """Return True if the remove-error alert paragraph is visible."""
+        try:
+            self._page.locator(self._REMOVE_ERROR_ALERT).first.wait_for(
+                state="visible", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_avatar_url_field_value(self) -> str:
+        """Return the current value of the Avatar URL input field."""
+        return self._page.input_value(self._AVATAR_URL_INPUT)
