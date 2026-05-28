@@ -227,7 +227,7 @@ class TestAvatarDeleteSourceAnalysis:
     def test_removing_state_initialised_false(self) -> None:
         """The ``removing`` state must be initialised to ``false``."""
         src = _SETTINGS_TSX.read_text()
-        assert "useState(false)" in src or 'setRemoving(false)' in src, (
+        assert "useState(false)" in src, (
             "Expected ``removing`` state to be initialised to false in settings/page.tsx. "
             "The state guards the button's disabled attribute during deletion."
         )
@@ -443,12 +443,18 @@ def _make_api_me_handler(avatar_url: str):
 
 
 def _make_delete_avatar_slow_handler(delay_s: float):
-    """Return a route handler that delays the DELETE /api/me/avatar response."""
+    """Return a route handler that delays the DELETE /api/me/avatar response.
+
+    Uses a threading.Event wait instead of time.sleep so Playwright's event
+    loop is not starved while the delay is in progress.
+    """
     def handler(route):
         if route.request.method != "DELETE":
             route.fallback()
             return
-        time.sleep(delay_s)
+        # Non-blocking wait: allows Playwright to process browser events
+        # while the artificial delay is active.
+        threading.Event().wait(timeout=delay_s)
         route.fulfill(
             status=200,
             content_type="application/json",
@@ -533,8 +539,12 @@ class TestAvatarDeleteLiveMode:
                 settings_pg.arm_removing_observer()
                 settings_pg.click_remove_avatar_button()
 
-                # Wait for the route-handler delay to pass.
-                time.sleep(_LIVE_ROUTE_DELAY_S + 1.0)
+                # Poll until the MutationObserver captures the in-flight state or
+                # until the route-handler delay has elapsed (with headroom).
+                page.wait_for_function(
+                    "() => window._removingTextObserved === true",
+                    timeout=int((_LIVE_ROUTE_DELAY_S + 5.0) * 1_000),
+                )
 
                 assert settings_pg.was_removing_text_observed(), (
                     "MutationObserver did not capture 'Removing…' button text while "
