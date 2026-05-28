@@ -15,7 +15,7 @@ Preconditions
 Steps
 -----
 1. Login and navigate to /settings.
-2. Set up route interception: GET /api/me/profile returns a profile with an
+2. Set up route interception: GET /api/me returns a profile with an
    avatar URL so the "Remove avatar" button is visible.
 3. Set up route interception: DELETE /api/me/avatar returns HTTP 500 with
    ``{"error": "Internal Server Error"}``.
@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -84,7 +85,8 @@ _EXPECTED_ERROR_CONTAINS = "Internal Server Error"
 
 # Selectors used for assertions beyond SettingsPage methods.
 _AVATAR_ENDPOINT_SUFFIX = "/api/me/avatar"
-_PROFILE_ENDPOINT_SUFFIX = "/api/me/profile"
+# Regex to match the profile endpoint exactly (GET /api/me) without matching /api/me/avatar.
+_PROFILE_ENDPOINT_RE = re.compile(r".*/api/me$")
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +168,7 @@ def authenticated_page_with_avatar(
             body=json.dumps({"username": "testuser", "avatar_url": _TEST_AVATAR_URL}),
         )
 
-    page.route(f"**{_PROFILE_ENDPOINT_SUFFIX}", _handle_profile)
+    page.route(_PROFILE_ENDPOINT_RE, _handle_profile)
 
     # ---- Navigate to /settings (triggers profile fetch → intercepted) ----
     settings_page.navigate(web_config.settings_url())
@@ -253,7 +255,7 @@ class TestDeleteAvatarApiFailure:
                 body=json.dumps({"username": "testuser", "avatar_url": _TEST_AVATAR_URL}),
             )
 
-        page.route(f"**{_PROFILE_ENDPOINT_SUFFIX}", _handle_profile)
+        page.route(_PROFILE_ENDPOINT_RE, _handle_profile)
 
         # ---- Intercept DELETE to simulate 500 failure ----
         def _handle_delete(route: Route) -> None:

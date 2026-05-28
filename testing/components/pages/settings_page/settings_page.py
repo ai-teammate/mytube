@@ -456,25 +456,43 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Remove avatar actions and state queries (MYTUBE-656)
+    # Avatar removal actions (MYTUBE-653, MYTUBE-656)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
+    _REMOVING_TEXT = "Removing…"
     _REMOVE_ERROR_ALERT = 'p[role="alert"]'
 
     def is_remove_avatar_button_visible(self, timeout: float = 10_000) -> bool:
-        """Return True if the Remove avatar button is visible on the page."""
+        """Return True if the 'Remove avatar' button is present and visible."""
         try:
-            self._page.locator(self._REMOVE_AVATAR_BUTTON).wait_for(
-                state="visible", timeout=timeout
-            )
+            locator = self._page.locator(self._REMOVE_AVATAR_BUTTON)
+            locator.wait_for(state="visible", timeout=timeout)
             return True
         except Exception:
             return False
 
     def click_remove_avatar(self) -> None:
-        """Click the Remove avatar button."""
+        """Click the 'Remove avatar' button."""
         self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
+
+    def wait_for_avatar_removed(self, timeout: float = 15_000) -> None:
+        """Wait until the avatar removal completes.
+
+        Waits for the 'Remove avatar' button or the avatar URL input to
+        indicate the removal has completed (avatar URL field cleared).
+        """
+        self._page.wait_for_function(
+            """() => {
+                const input = document.querySelector('input[id="avatar_url"]');
+                if (input && input.value === '') return true;
+                // Also accept: button is back to idle (not "Removing…")
+                const btns = Array.from(document.querySelectorAll('button[type="button"]'));
+                const removing = btns.some(b => b.textContent && b.textContent.includes('Removing'));
+                return !removing;
+            }""",
+            timeout=timeout,
+        )
 
     def wait_for_remove_error(self, timeout: float = 10_000) -> None:
         """Wait until the remove-avatar error alert paragraph is visible."""
