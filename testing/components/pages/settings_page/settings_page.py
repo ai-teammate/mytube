@@ -456,23 +456,27 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Remove avatar actions and state queries (MYTUBE-655)
+    # Avatar removal actions (MYTUBE-653 / MYTUBE-655)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
     _REMOVING_BUTTON_TEXT = "Removing\u2026"
+    _REMOVING_TEXT = "Removing\u2026"
 
     def is_remove_avatar_button_visible(self, timeout: float = 5_000) -> bool:
-        """Return True if the 'Remove avatar' button is visible."""
+        """Return True if the 'Remove avatar' button is present and visible."""
         try:
-            self._page.locator(self._REMOVE_AVATAR_BUTTON).wait_for(
-                state="visible", timeout=timeout
-            )
+            locator = self._page.locator(self._REMOVE_AVATAR_BUTTON)
+            locator.wait_for(state="visible", timeout=timeout)
             return True
         except Exception:
             return False
 
     def click_remove_avatar_button(self) -> None:
+        """Click the 'Remove avatar' button."""
+        self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
+
+    def click_remove_avatar(self) -> None:
         """Click the 'Remove avatar' button."""
         self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
 
@@ -486,6 +490,24 @@ class SettingsPage:
         """Return the current text content of the Remove avatar button."""
         locator = self._page.get_by_role("button", name="Remove avatar", exact=True)
         return locator.text_content() or ""
+
+    def wait_for_avatar_removed(self, timeout: float = 15_000) -> None:
+        """Wait until the avatar removal completes.
+
+        Waits for the 'Remove avatar' button or the avatar URL input to
+        indicate the removal has completed (avatar URL field cleared).
+        """
+        self._page.wait_for_function(
+            """() => {
+                const input = document.querySelector('input[id="avatar_url"]');
+                if (input && input.value === '') return true;
+                // Also accept: button is back to idle (not "Removing…")
+                const btns = Array.from(document.querySelectorAll('button[type="button"]'));
+                const removing = btns.some(b => b.textContent && b.textContent.includes('Removing'));
+                return !removing;
+            }""",
+            timeout=timeout,
+        )
 
     def arm_removing_observer(self) -> None:
         """Arm a DOM MutationObserver that captures the 'Removing\u2026' in-flight button state.

@@ -152,6 +152,9 @@ class SiteHeader:
     # ``<header>`` button that opens the account menu.
     _AVATAR_SELECTOR = "header button span.rounded-full"
 
+    # The avatar <img> rendered by SiteHeader.tsx when avatarUrl is non-empty.
+    _AVATAR_IMG_SELECTOR = "header button img.rounded-full"
+
     # Green colour stop used in both light and dark --gradient-hero.
     _AVATAR_GREEN_HEX = "#62c235"
 
@@ -163,6 +166,31 @@ class SiteHeader:
         """Return True if the avatar span is present and visible in the header."""
         locator = self._page.locator(self._AVATAR_SELECTOR)
         return locator.count() > 0 and locator.first.is_visible()
+
+    def header_has_avatar_image(self) -> bool:
+        """Return True if the header shows an <img> avatar (custom photo, not placeholder).
+
+        When avatarUrl is non-empty in AuthContext, SiteHeader renders
+        ``<img class="...rounded-full...">`` inside the account button.
+        When avatarUrl is empty, it renders the gradient ``<span>`` placeholder.
+        """
+        locator = self._page.locator(self._AVATAR_IMG_SELECTOR)
+        return locator.count() > 0 and locator.first.is_visible()
+
+    def wait_for_avatar_placeholder(self, timeout: float = 10_000) -> None:
+        """Wait until the header shows the placeholder span (no avatar image).
+
+        This is the expected state after avatar removal: the gradient circle
+        with the user's initial letter is shown instead of the custom image.
+        """
+        self._page.wait_for_selector(self._AVATAR_SELECTOR, state="visible", timeout=timeout)
+        # Also ensure there is no <img> element present.
+        try:
+            self._page.wait_for_selector(
+                self._AVATAR_IMG_SELECTOR, state="hidden", timeout=timeout
+            )
+        except Exception:
+            pass
 
     def avatar_css(self) -> dict[str, str]:
         """Return computed CSS properties of the avatar span as a dict.
