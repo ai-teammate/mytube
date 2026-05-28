@@ -35,8 +35,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 
 import pytest
 
@@ -94,21 +92,6 @@ def _build_binary() -> None:
     )
     if result.returncode != 0:
         pytest.fail(f"Failed to build API binary:\n{result.stderr}")
-
-
-def _delete(port: int, path: str) -> tuple[int, str]:
-    """Issue a DELETE request to *path* on localhost:*port* without auth.
-
-    Returns ``(status_code, response_body)``.
-    """
-    url = f"http://127.0.0.1:{port}{path}"
-    req = urllib.request.Request(url, method="DELETE")
-    # Deliberately no Authorization header — this is the scenario under test.
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status, resp.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode()
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +155,7 @@ class TestDeleteAvatarRequiresAuth:
 
     def test_returns_401_status_code(self, api_server: ApiProcessService) -> None:
         """HTTP status code must be 401 when no Authorization header is present."""
-        status_code, _ = _delete(_PORT, "/api/me/avatar")
+        status_code, _ = api_server.delete("/api/me/avatar")
         assert status_code == 401, (
             f"Expected HTTP 401 Unauthorized, got {status_code}. "
             "DELETE /api/me/avatar must reject unauthenticated requests."
@@ -180,7 +163,7 @@ class TestDeleteAvatarRequiresAuth:
 
     def test_response_body_is_json(self, api_server: ApiProcessService) -> None:
         """Response body must be valid JSON."""
-        _, body = _delete(_PORT, "/api/me/avatar")
+        _, body = api_server.delete("/api/me/avatar")
         try:
             parsed = json.loads(body)
         except json.JSONDecodeError:
@@ -193,7 +176,7 @@ class TestDeleteAvatarRequiresAuth:
 
     def test_response_body_contains_error_field(self, api_server: ApiProcessService) -> None:
         """JSON body must contain a non-empty 'error' field."""
-        _, body = _delete(_PORT, "/api/me/avatar")
+        _, body = api_server.delete("/api/me/avatar")
         parsed = json.loads(body)
         assert "error" in parsed, (
             f"Expected an 'error' key in the JSON response body, got: {parsed!r}"
