@@ -177,6 +177,16 @@ class ApiProcessService:
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
 
+    def delete(self, path: str, headers: Optional[dict] = None) -> tuple[int, str]:
+        """Issue DELETE *path* and return (status_code, response_body)."""
+        url = f"http://127.0.0.1:{self._port}{path}"
+        req = urllib.request.Request(url, method="DELETE", headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
     # ------------------------------------------------------------------
     # Private
     # ------------------------------------------------------------------
