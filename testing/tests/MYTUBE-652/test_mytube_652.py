@@ -207,39 +207,6 @@ def authenticated_settings_page(
 
 
 # ---------------------------------------------------------------------------
-# SettingsPage — Remove avatar extensions
-# ---------------------------------------------------------------------------
-
-
-class _RemoveAvatarMixin:
-    """Helper methods for the Remove avatar scenario, used via authenticated_settings_page."""
-
-    @staticmethod
-    def click_remove_avatar(page: Page) -> None:
-        """Click the 'Remove avatar' button."""
-        page.get_by_role("button", name="Remove avatar").click()
-
-    @staticmethod
-    def wait_for_avatar_preview_gone(page: Page, timeout: float = _ACTION_TIMEOUT) -> None:
-        """Wait until the AvatarPreview container is removed from the DOM."""
-        page.wait_for_selector(
-            '[role="img"][aria-label="Avatar preview"]',
-            state="detached",
-            timeout=timeout,
-        )
-
-    @staticmethod
-    def is_remove_avatar_button_visible(page: Page) -> bool:
-        """Return True if the 'Remove avatar' button is present and visible."""
-        return page.get_by_role("button", name="Remove avatar").is_visible()
-
-    @staticmethod
-    def get_avatar_url_input_value(page: Page) -> str:
-        """Return the current value of the Avatar URL input field."""
-        return page.input_value('input[id="avatar_url"]')
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -273,9 +240,9 @@ class TestRemoveAvatarButton:
         self, authenticated_settings_page: dict
     ) -> None:
         """The 'Remove avatar' button must be visible when an avatar URL is set."""
-        page: Page = authenticated_settings_page["page"]
+        settings_pg: SettingsPage = authenticated_settings_page["settings_page"]
 
-        assert _RemoveAvatarMixin.is_remove_avatar_button_visible(page), (
+        assert settings_pg.is_remove_avatar_button_visible(), (
             "The 'Remove avatar' button was not found/visible on the settings page "
             "even though an avatar URL is set. The button should render inside the "
             "conditional block that shows when form.avatarUrl is non-empty."
@@ -285,16 +252,16 @@ class TestRemoveAvatarButton:
         self, authenticated_settings_page: dict
     ) -> None:
         """Clicking 'Remove avatar' must dispatch a DELETE /api/me/avatar request."""
-        page: Page = authenticated_settings_page["page"]
+        settings_pg: SettingsPage = authenticated_settings_page["settings_page"]
         delete_flag: dict = authenticated_settings_page["delete_called_flag"]
 
         # Reset flag in case other tests ran first.
         delete_flag["called"] = False
 
-        _RemoveAvatarMixin.click_remove_avatar(page)
+        settings_pg.click_remove_avatar()
 
         # Wait for the preview to disappear (signals async handler completed).
-        _RemoveAvatarMixin.wait_for_avatar_preview_gone(page, timeout=_ACTION_TIMEOUT)
+        settings_pg.wait_for_avatar_preview_gone(timeout=_ACTION_TIMEOUT)
 
         assert delete_flag["called"], (
             "No DELETE request was sent to /api/me/avatar after clicking 'Remove avatar'. "
@@ -306,9 +273,9 @@ class TestRemoveAvatarButton:
         self, authenticated_settings_page: dict
     ) -> None:
         """After successful removal, the Avatar URL input field must be empty."""
-        page: Page = authenticated_settings_page["page"]
+        settings_pg: SettingsPage = authenticated_settings_page["settings_page"]
 
-        avatar_url_value = _RemoveAvatarMixin.get_avatar_url_input_value(page)
+        avatar_url_value = settings_pg.get_avatar_url_input_value()
         assert avatar_url_value == "", (
             f"Avatar URL input field was not cleared after remove. "
             f"Expected empty string, got {avatar_url_value!r}. "
@@ -333,10 +300,10 @@ class TestRemoveAvatarButton:
         self, authenticated_settings_page: dict
     ) -> None:
         """The 'Remove avatar' button must disappear once the avatar URL is cleared."""
-        page: Page = authenticated_settings_page["page"]
+        settings_pg: SettingsPage = authenticated_settings_page["settings_page"]
 
         # After clearing avatarUrl the conditional block is removed — button gone.
-        button_visible = _RemoveAvatarMixin.is_remove_avatar_button_visible(page)
+        button_visible = settings_pg.is_remove_avatar_button_visible()
         assert not button_visible, (
             "The 'Remove avatar' button is still visible after the avatar was removed. "
             "The button is rendered conditionally on form.avatarUrl being non-empty; "

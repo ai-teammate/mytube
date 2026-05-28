@@ -454,3 +454,25 @@ class SettingsPage:
             state="visible",
             timeout=timeout,
         )
+
+    # ------------------------------------------------------------------
+    # Remove avatar actions and state queries (MYTUBE-652)
+    # ------------------------------------------------------------------
+
+    _REMOVE_AVATAR_BUTTON_NAME = "Remove avatar"
+
+    def click_remove_avatar(self) -> None:
+        """Click the 'Remove avatar' button."""
+        self._page.get_by_role("button", name=self._REMOVE_AVATAR_BUTTON_NAME).click()
+
+    def wait_for_avatar_preview_gone(self, timeout: float = 10_000) -> None:
+        """Wait until the AvatarPreview container is removed from the DOM."""
+        self._page.wait_for_selector(
+            self._AVATAR_PREVIEW_CONTAINER,
+            state="detached",
+            timeout=timeout,
+        )
+
+    def is_remove_avatar_button_visible(self) -> bool:
+        """Return True if the 'Remove avatar' button is present and visible."""
+        return self._page.get_by_role("button", name=self._REMOVE_AVATAR_BUTTON_NAME).is_visible()
