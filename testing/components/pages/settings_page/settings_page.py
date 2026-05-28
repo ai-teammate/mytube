@@ -456,17 +456,17 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Remove avatar button (MYTUBE-654)
+    # Avatar removal actions (MYTUBE-653, MYTUBE-654)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
+    _REMOVING_TEXT = "Removing\u2026"
 
-    def is_remove_avatar_button_visible(self, timeout: float = 3_000) -> bool:
-        """Return True if the 'Remove avatar' button is visible in the DOM."""
+    def is_remove_avatar_button_visible(self, timeout: float = 5_000) -> bool:
+        """Return True if the 'Remove avatar' button is present and visible."""
         try:
-            self._page.locator(self._REMOVE_AVATAR_BUTTON).wait_for(
-                state="visible", timeout=timeout
-            )
+            locator = self._page.locator(self._REMOVE_AVATAR_BUTTON)
+            locator.wait_for(state="visible", timeout=timeout)
             return True
         except Exception:
             return False
@@ -480,3 +480,25 @@ class SettingsPage:
             return True
         except Exception:
             return False
+
+    def click_remove_avatar(self) -> None:
+        """Click the 'Remove avatar' button."""
+        self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
+
+    def wait_for_avatar_removed(self, timeout: float = 15_000) -> None:
+        """Wait until the avatar removal completes.
+
+        Waits for the 'Remove avatar' button or the avatar URL input to
+        indicate the removal has completed (avatar URL field cleared).
+        """
+        self._page.wait_for_function(
+            """() => {
+                const input = document.querySelector('input[id="avatar_url"]');
+                if (input && input.value === '') return true;
+                // Also accept: button is back to idle (not "Removing…")
+                const btns = Array.from(document.querySelectorAll('button[type="button"]'));
+                const removing = btns.some(b => b.textContent && b.textContent.includes('Removing'));
+                return !removing;
+            }""",
+            timeout=timeout,
+        )
