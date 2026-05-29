@@ -456,7 +456,7 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Avatar removal actions (MYTUBE-653 / MYTUBE-655 / MYTUBE-656)
+    # Avatar removal actions (MYTUBE-652 / MYTUBE-653 / MYTUBE-655 / MYTUBE-656)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
@@ -491,6 +491,14 @@ class SettingsPage:
         """Return the current text content of the Remove avatar button."""
         locator = self._page.get_by_role("button", name="Remove avatar", exact=True)
         return locator.text_content() or ""
+
+    def wait_for_avatar_preview_gone(self, timeout: float = 10_000) -> None:
+        """Wait until the AvatarPreview container is removed from the DOM."""
+        self._page.wait_for_selector(
+            self._AVATAR_PREVIEW_CONTAINER,
+            state="detached",
+            timeout=timeout,
+        )
 
     def wait_for_avatar_removed(self, timeout: float = 15_000) -> None:
         """Wait until the avatar removal completes.
