@@ -456,11 +456,12 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Avatar removal actions (MYTUBE-652, MYTUBE-653, MYTUBE-654, MYTUBE-656)
+    # Avatar removal actions (MYTUBE-652 / MYTUBE-653 / MYTUBE-654 / MYTUBE-655 / MYTUBE-656)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
-    _REMOVING_TEXT = "Removing…"
+    _REMOVING_BUTTON_TEXT = "Removing\u2026"
+    _REMOVING_TEXT = "Removing\u2026"
     _REMOVE_ERROR_ALERT = 'p[role="alert"]'
 
     def is_remove_avatar_button_visible(self, timeout: float = 10_000) -> bool:
@@ -471,6 +472,10 @@ class SettingsPage:
             return True
         except Exception:
             return False
+
+    def click_remove_avatar_button(self) -> None:
+        """Click the 'Remove avatar' button."""
+        self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
 
     def is_remove_avatar_button_hidden(self, timeout: float = 3_000) -> bool:
         """Return True if the 'Remove avatar' button is absent or hidden."""
@@ -485,6 +490,17 @@ class SettingsPage:
     def click_remove_avatar(self) -> None:
         """Click the 'Remove avatar' button."""
         self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
+
+    def is_remove_avatar_button_disabled(self) -> bool:
+        """Return True if the 'Remove avatar' button is currently disabled."""
+        return self._page.get_by_role(
+            "button", name="Remove avatar", exact=True
+        ).is_disabled()
+
+    def get_remove_avatar_button_text(self) -> str:
+        """Return the current text content of the Remove avatar button."""
+        locator = self._page.get_by_role("button", name="Remove avatar", exact=True)
+        return locator.text_content() or ""
 
     def wait_for_avatar_preview_gone(self, timeout: float = 10_000) -> None:
         """Wait until the AvatarPreview container is removed from the DOM."""
@@ -511,6 +527,48 @@ class SettingsPage:
             }""",
             timeout=timeout,
         )
+
+    def arm_removing_observer(self) -> None:
+        """Arm a DOM MutationObserver that captures the 'Removing\u2026' in-flight button state.
+
+        Must be called before ``click_remove_avatar_button()`` for results to be meaningful.
+        Resets observation flags on each call.
+        """
+        self._page.evaluate(
+            """() => {
+                window._removingTextObserved    = false;
+                window._removingDisabledObserved = false;
+                if (window._removingObserver) {
+                    window._removingObserver.disconnect();
+                }
+                window._removingObserver = new MutationObserver(() => {
+                    const btns = Array.from(
+                        document.querySelectorAll('button[type="button"]')
+                    );
+                    const removing = btns.find(
+                        b => b.textContent && b.textContent.includes('Removing')
+                    );
+                    if (removing) {
+                        window._removingTextObserved = true;
+                        if (removing.disabled) {
+                            window._removingDisabledObserved = true;
+                        }
+                    }
+                });
+                window._removingObserver.observe(document.body, {
+                    childList: true, subtree: true,
+                    characterData: true, attributes: true
+                });
+            }"""
+        )
+
+    def was_removing_text_observed(self) -> bool:
+        """Return True if the observer captured 'Removing\u2026' button text since arm_removing_observer()."""
+        return bool(self._page.evaluate("() => window._removingTextObserved || false"))
+
+    def was_removing_disabled_observed(self) -> bool:
+        """Return True if the observer captured the button as both 'Removing\u2026' and disabled."""
+        return bool(self._page.evaluate("() => window._removingDisabledObserved || false"))
 
     def wait_for_remove_error(self, timeout: float = 10_000) -> None:
         """Wait until the remove-avatar error alert paragraph is visible."""
