@@ -456,7 +456,7 @@ class SettingsPage:
         )
 
     # ------------------------------------------------------------------
-    # Avatar removal actions (MYTUBE-652 / MYTUBE-653 / MYTUBE-655 / MYTUBE-656)
+    # Avatar removal actions (MYTUBE-652 / MYTUBE-653 / MYTUBE-654 / MYTUBE-655 / MYTUBE-656)
     # ------------------------------------------------------------------
 
     _REMOVE_AVATAR_BUTTON = 'button[type="button"]:has-text("Remove avatar")'
@@ -476,6 +476,16 @@ class SettingsPage:
     def click_remove_avatar_button(self) -> None:
         """Click the 'Remove avatar' button."""
         self._page.locator(self._REMOVE_AVATAR_BUTTON).click()
+
+    def is_remove_avatar_button_hidden(self, timeout: float = 3_000) -> bool:
+        """Return True if the 'Remove avatar' button is absent or hidden."""
+        try:
+            self._page.locator(self._REMOVE_AVATAR_BUTTON).wait_for(
+                state="hidden", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
 
     def click_remove_avatar(self) -> None:
         """Click the 'Remove avatar' button."""
