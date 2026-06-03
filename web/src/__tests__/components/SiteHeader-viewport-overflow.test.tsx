@@ -91,6 +91,6 @@ describe("SiteHeader — mobile viewport overflow fix (MYTUBE-567)", () => {
     render(<SiteHeader />);
     // aria-label provides an accessible name regardless of CSS visibility
     const logoLink = screen.getByRole("link", { name: /mytube/i });
-    expect(logoLink).toHaveAttribute("aria-label", "MYTUBE — Personal Video Portal");
+    expect(logoLink).toHaveAttribute("aria-label", "MYTUBE — Corp Video Portal");
   });
 });

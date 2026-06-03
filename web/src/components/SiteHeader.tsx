@@ -142,7 +142,7 @@ export default function SiteHeader() {
       </button>
 
       {/* Branded logo: SVG icon + text block */}
-      <Link href="/" aria-label="MYTUBE — Personal Video Portal" className="flex items-center gap-2 shrink-0">
+      <Link href="/" aria-label="MYTUBE — Corp Video Portal" className="flex items-center gap-2 shrink-0">
         <LogoIcon
           className="w-11 h-11"
           style={{ color: "var(--accent-logo)" }}
@@ -159,7 +159,7 @@ export default function SiteHeader() {
             className="text-[12px] uppercase tracking-wider leading-none"
             style={{ color: "var(--text-subtle)" }}
           >
-            Personal Video Portal
+            Corp Video Portal
           </span>
         </div>
       </Link>

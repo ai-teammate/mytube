@@ -231,7 +231,7 @@ describe("HomePage", () => {
 
     render(<HomePage repository={repo} />);
     expect(
-      screen.getByRole("heading", { level: 1, name: /mytube: personal video portal/i })
+      screen.getByRole("heading", { level: 1, name: /mytube: corp video portal/i })
     ).toBeInTheDocument();
   });
 
