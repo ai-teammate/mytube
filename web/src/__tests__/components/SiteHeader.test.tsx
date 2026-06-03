@@ -268,9 +268,9 @@ describe("SiteHeader — branded logo", () => {
     expect(screen.getByText("MYTUBE")).toBeInTheDocument();
   });
 
-  it("renders the logo subtitle 'Personal Video Portal'", () => {
+  it("renders the logo subtitle 'Corp Video Portal'", () => {
     render(<SiteHeader />);
-    expect(screen.getByText(/personal video portal/i)).toBeInTheDocument();
+    expect(screen.getByText(/corp video portal/i)).toBeInTheDocument();
   });
 
   it("renders the LogoIcon SVG inside the logo link", () => {

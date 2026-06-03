@@ -159,7 +159,7 @@ export default function SiteHeader() {
             className="text-[12px] uppercase tracking-wider leading-none"
             style={{ color: "var(--text-subtle)" }}
           >
-            Personal Video Portal
+            Corp Video Portal
           </span>
         </div>
       </Link>
