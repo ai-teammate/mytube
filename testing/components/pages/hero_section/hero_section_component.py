@@ -289,6 +289,26 @@ class HeroSectionComponent:
             "(single-column / stacked layout), but the panel appears beside it."
         )
 
+    # ------------------------------------------------------------------
+    # Hero headline — H1 text
+    # ------------------------------------------------------------------
+
+    _HERO_H1 = "section[aria-label='Hero'] h1"
+
+    def get_hero_headline(self, timeout: int = 10_000) -> str:
+        """Return the visible text of the H1 headline in the hero section.
+
+        Raises AssertionError if the hero-section H1 element is not found,
+        preventing silent false-positives from any page-level fallback.
+        """
+        loc = self._page.locator(self._HERO_H1).first
+        assert loc.count() > 0, (
+            f"Hero section H1 not found using selector {self._HERO_H1!r}. "
+            "The hero section may be missing or the aria-label may have changed."
+        )
+        loc.wait_for(state="visible", timeout=timeout)
+        return (loc.inner_text() or "").strip()
+
     def assert_side_by_side_layout(self) -> None:
         """Assert that at desktop width the two columns are rendered side-by-side."""
         text_box = self._page.locator(self._TEXT_COL).bounding_box()
