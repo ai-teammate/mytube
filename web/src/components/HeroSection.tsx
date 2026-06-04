@@ -52,7 +52,7 @@ export default function HeroSection() {
         </div>
 
         {/* Headline */}
-        <h1 className={styles.headline}>MYTUBE: personal video portal</h1>
+        <h1 className={styles.headline}>MYTUBE: corp video portal</h1>
 
         {/* Sub-text */}
         <p className={styles.subText}>

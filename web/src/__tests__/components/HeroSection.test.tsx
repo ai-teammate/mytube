@@ -86,7 +86,7 @@ describe("HeroSection", () => {
 
   it("renders the h1 headline with correct text", () => {
     render(<HeroSection />);
-    const h1 = screen.getByRole("heading", { level: 1, name: /mytube: personal video portal/i });
+    const h1 = screen.getByRole("heading", { level: 1, name: /mytube: corp video portal/i });
     expect(h1).toBeInTheDocument();
   });
 
