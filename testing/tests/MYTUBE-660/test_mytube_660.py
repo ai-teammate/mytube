@@ -56,7 +56,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import sync_playwright, Browser, Page
+from playwright.sync_api import sync_playwright, Browser
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -106,8 +106,8 @@ def browser(web_config: WebConfig):
 
 
 @pytest.fixture(scope="module")
-def home_page(web_config: WebConfig, browser: Browser):
-    """Navigate to the homepage and return the Playwright Page."""
+def home_page(web_config: WebConfig, browser: Browser) -> HeaderPage:
+    """Navigate to the homepage and return a HeaderPage instance."""
     context = browser.new_context()
     page = context.new_page()
     page.set_default_timeout(_PAGE_LOAD_TIMEOUT)
@@ -122,7 +122,7 @@ def home_page(web_config: WebConfig, browser: Browser):
             f"Error: {exc}"
         )
 
-    yield page
+    yield header
     context.close()
 
 
@@ -204,46 +204,35 @@ class TestSiteHeaderPositioningTextStaticAnalysis:
 class TestSiteHeaderPositioningTextLiveUI:
     """Verify the SiteHeader renders the corporate positioning text on the live app."""
 
-    def test_mytube_wordmark_visible_in_header(self, home_page: Page) -> None:
+    def test_mytube_wordmark_visible_in_header(self, home_page: HeaderPage) -> None:
         """The MYTUBE wordmark must be visible inside the <header> element."""
-        # The wordmark is inside a span within the logo Link inside the header
-        wordmark_locator = home_page.locator("header").get_by_text(
-            _EXPECTED_WORDMARK, exact=True
-        )
-        assert wordmark_locator.is_visible(), (
+        assert home_page.is_wordmark_visible(), (
             f"Expected {_EXPECTED_WORDMARK!r} wordmark to be visible inside the "
             "<header> element on the homepage."
         )
 
-    def test_corp_video_portal_subtitle_visible_in_header(self, home_page: Page) -> None:
+    def test_corp_video_portal_subtitle_visible_in_header(self, home_page: HeaderPage) -> None:
         """The 'corp video portal' subtitle must be visible inside the <header>."""
         # Playwright text matching is case-sensitive by default; the DOM text
         # node reads "Corp Video Portal" while CSS uppercases the visual output.
-        subtitle_locator = home_page.locator("header").get_by_text(
-            _EXPECTED_SUBTITLE, exact=True
-        )
-        assert subtitle_locator.is_visible(), (
+        assert home_page.is_subtitle_visible(_EXPECTED_SUBTITLE), (
             f"Expected subtitle {_EXPECTED_SUBTITLE!r} to be visible inside the "
             "<header> element. The CSS 'uppercase' class should render it as "
             f"'{_EXPECTED_SUBTITLE_LOWER.upper()}' visually."
         )
 
-    def test_logo_link_accessible_label_includes_mytube(self, home_page: Page) -> None:
+    def test_logo_link_accessible_label_includes_mytube(self, home_page: HeaderPage) -> None:
         """The logo link must have an accessible label that includes 'MYTUBE'."""
-        logo_link = home_page.locator('a[aria-label*="MYTUBE"]').first
-        assert logo_link.count() > 0, (
-            "Expected a logo link with aria-label containing 'MYTUBE' in the header."
-        )
-        label = logo_link.get_attribute("aria-label") or ""
+        label = home_page.get_logo_aria_label()
         assert "MYTUBE" in label, (
             f"Expected 'MYTUBE' in logo link aria-label, got: {label!r}"
         )
 
-    def test_header_branding_text_combined(self, home_page: Page) -> None:
+    def test_header_branding_text_combined(self, home_page: HeaderPage) -> None:
         """Human-style check: the combined header text contains both 'MYTUBE' and
         'corp video portal' (case-insensitive) — matching the ticket's expected
         result of 'MYTUBE: corp video portal'."""
-        header_text: str = home_page.locator("header").text_content() or ""
+        header_text = home_page.get_header_text()
         header_text_lower = header_text.lower()
         assert "mytube" in header_text_lower, (
             f"Expected 'mytube' in header text content. Got: {header_text!r}"
