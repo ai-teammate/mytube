@@ -8,7 +8,7 @@ Verify that the homepage hero headline correctly displays the updated corporate 
 Steps
 -----
 1. Navigate to the application homepage.
-2. Locate the main H1 headline in the Hero section.
+2. Locate the main H1 headline in the Hero section via HeroSectionComponent.
 
 Expected Result
 ---------------
@@ -36,34 +36,15 @@ import os
 import sys
 
 import pytest
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+from testing.components.pages.hero_section.hero_section_component import HeroSectionComponent
 from testing.core.config.web_config import WebConfig
 
 _EXPECTED_HEADLINE = "MYTUBE: corp video portal"
 _PAGE_LOAD_TIMEOUT = 30_000  # ms
-_HERO_H1_SELECTOR = "section[aria-label='Hero'] h1"
-_FALLBACK_H1_SELECTOR = "h1"
-
-
-class HeroHeadlinePage:
-    """Minimal page object to locate and return the hero H1 headline text."""
-
-    def __init__(self, page: Page) -> None:
-        self._page = page
-
-    def navigate(self, url: str) -> None:
-        self._page.goto(url, timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
-
-    def get_hero_headline(self) -> str:
-        """Return the visible text of the H1 headline in the hero section."""
-        loc = self._page.locator(_HERO_H1_SELECTOR).first
-        if loc.count() == 0:
-            loc = self._page.locator(_FALLBACK_H1_SELECTOR).first
-        loc.wait_for(state="visible", timeout=10_000)
-        return (loc.inner_text() or "").strip()
 
 
 @pytest.fixture(scope="module")
@@ -81,9 +62,9 @@ def hero_headline(config: WebConfig) -> str:
         )
         try:
             page = browser.new_page()
-            hero_page = HeroHeadlinePage(page)
-            hero_page.navigate(config.home_url())
-            return hero_page.get_hero_headline()
+            page.goto(config.home_url(), timeout=_PAGE_LOAD_TIMEOUT, wait_until="domcontentloaded")
+            hero = HeroSectionComponent(page)
+            return hero.get_hero_headline()
         finally:
             browser.close()
 
