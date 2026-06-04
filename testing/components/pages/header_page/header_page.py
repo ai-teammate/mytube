@@ -85,3 +85,24 @@ class HeaderPage:
             self._SEARCH_BUTTON,
         )
         return label or ""
+
+    # ------------------------------------------------------------------
+    # Branding / wordmark visibility queries
+    # ------------------------------------------------------------------
+
+    def is_wordmark_visible(self) -> bool:
+        """Return True if the MYTUBE wordmark span is visible inside the header."""
+        return self._page.locator("header").get_by_text("MYTUBE", exact=True).is_visible()
+
+    def is_subtitle_visible(self, subtitle: str) -> bool:
+        """Return True if *subtitle* text is visible inside the header."""
+        return self._page.locator("header").get_by_text(subtitle, exact=True).is_visible()
+
+    def get_logo_aria_label(self) -> str:
+        """Return the aria-label of the logo link, or empty string."""
+        link = self._page.locator('a[aria-label*="MYTUBE"]').first
+        return link.get_attribute("aria-label") or ""
+
+    def get_header_text(self) -> str:
+        """Return the full text content of the <header> element."""
+        return self._page.locator("header").text_content() or ""
