@@ -1,0 +1,8 @@
+test_id: MYTUBE-661
+type: unit
+framework: jest
+platform: node
+description: >
+  Verify that the Hero section and Site Header unit tests pass with updated
+  string matchers (new copy).
+dependencies: []
