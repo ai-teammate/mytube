@@ -26,6 +26,8 @@ export const HEARTBEAT_INTERVAL_MS = 120_000;
  */
 export const HEARTBEAT_PROBE_TIMEOUT_MS = 10_000;
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+
 export interface AuthContextValue {
   /** The currently authenticated Firebase user, or null if not signed in. */
   user: User | null;
@@ -67,7 +69,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       auth,
       (firebaseUser) => {
         setUser(firebaseUser);
+        if (!firebaseUser) {
+          setAvatarUrl("");
+          setLoading(false);
+          return;
+        }
         setLoading(false);
+        // Background fetch: populate avatarUrl from the user's stored profile so
+        // all pages (not just Settings) display the correct avatar.
+        firebaseUser
+          .getIdToken()
+          .then((token) =>
+            fetch(`${API_URL}/api/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          )
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data) setAvatarUrl(data.avatar_url ?? "");
+          })
+          .catch(() => {
+            // Avatar fetch failure is non-fatal; header falls back to initial letter.
+          });
       },
       () => {
         // Firebase auth error (e.g. auth/invalid-api-key due to missing env
