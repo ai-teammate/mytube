@@ -150,7 +150,7 @@ describe("AuthProvider", () => {
   it("sets user.email when onAuthStateChanged fires with a user", async () => {
     renderWithProvider();
     act(() => {
-      onAuthStateChangedCallback?.({ email: "alice@example.com", getIdToken: jest.fn() });
+      onAuthStateChangedCallback?.({ email: "alice@example.com", getIdToken: jest.fn().mockResolvedValue("token") });
     });
     await waitFor(() =>
       expect(screen.getByTestId("user-email")).toHaveTextContent(
@@ -174,7 +174,7 @@ describe("AuthProvider", () => {
     renderWithProvider();
 
     act(() => {
-      onAuthStateChangedCallback?.({ email: "alice@example.com", getIdToken: jest.fn() });
+      onAuthStateChangedCallback?.({ email: "alice@example.com", getIdToken: jest.fn().mockResolvedValue("token") });
     });
     await waitFor(() =>
       expect(screen.getByTestId("user-email")).toHaveTextContent("alice@example.com")
@@ -495,6 +495,132 @@ describe("AuthProvider — mid-session reachability heartbeat", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("auth-error")).toHaveTextContent("true")
+    );
+  });
+});
+
+// ─── avatarUrl auto-fetch on login (MYTUBE-663) ───────────────────────────────
+
+describe("AuthProvider — avatarUrl auto-fetch on login", () => {
+  function AvatarConsumer() {
+    const { avatarUrl } = useAuth();
+    return <span data-testid="avatar-url">{avatarUrl}</span>;
+  }
+
+  function renderWithProvider() {
+    return render(
+      <AuthProvider>
+        <AvatarConsumer />
+      </AuthProvider>
+    );
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    onAuthStateChangedCallback = null;
+  });
+
+  it("populates avatarUrl from /api/me after user signs in", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("test-token");
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ avatar_url: "https://cdn.example.com/avatar.png" }),
+    }) as jest.Mock;
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("avatar-url")).toHaveTextContent(
+        "https://cdn.example.com/avatar.png"
+      )
+    );
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/me"),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+      })
+    );
+  });
+
+  it("leaves avatarUrl empty when /api/me returns no avatar_url", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("test-token");
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ avatar_url: null }),
+    }) as jest.Mock;
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    // loading goes false, avatar fetch resolves — avatarUrl stays empty
+    await waitFor(() =>
+      expect(screen.getByTestId("avatar-url")).toHaveTextContent("")
+    );
+  });
+
+  it("leaves avatarUrl empty when /api/me request fails (non-fatal)", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("test-token");
+    global.fetch = jest.fn().mockRejectedValue(new Error("network error")) as jest.Mock;
+
+    renderWithProvider();
+
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    // Wait for loading to finish and confirm no error thrown, avatarUrl remains empty
+    await waitFor(() =>
+      expect(screen.getByTestId("avatar-url")).toHaveTextContent("")
+    );
+  });
+
+  it("clears avatarUrl when onAuthStateChanged fires with null (sign-out from another tab)", async () => {
+    const mockGetIdToken = jest.fn().mockResolvedValue("test-token");
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ avatar_url: "https://cdn.example.com/avatar.png" }),
+    }) as jest.Mock;
+
+    renderWithProvider();
+
+    // Sign in
+    act(() => {
+      onAuthStateChangedCallback?.({
+        email: "alice@example.com",
+        getIdToken: mockGetIdToken,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("avatar-url")).toHaveTextContent(
+        "https://cdn.example.com/avatar.png"
+      )
+    );
+
+    // Sign out (onAuthStateChanged fires null)
+    act(() => {
+      onAuthStateChangedCallback?.(null);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("avatar-url")).toHaveTextContent("")
     );
   });
 });
